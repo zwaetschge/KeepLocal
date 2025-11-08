@@ -1,0 +1,114 @@
+.note {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}
+
+.note:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.note-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.note-content {
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #555;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-bottom: 1rem;
+}
+
+.note-edit-title,
+.note-edit-content {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.note-edit-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.note-edit-content {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.btn-edit,
+.btn-delete,
+.btn-save,
+.btn-cancel {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.btn-edit,
+.btn-delete {
+  background: transparent;
+  font-size: 1.2rem;
+}
+
+.btn-edit:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.btn-delete:hover {
+  background: rgba(255,0,0,0.1);
+}
+
+.btn-save {
+  background: #667eea;
+  color: white;
+  font-weight: 500;
+}
+
+.btn-save:hover {
+  background: #5568d3;
+}
+
+.btn-cancel {
+  background: #e0e0e0;
+  color: #333;
+  font-weight: 500;
+}
+
+.btn-cancel:hover {
+  background: #d0d0d0;
+}
+
+@media (max-width: 768px) {
+  .note {
+    padding: 0.8rem;
+  }
+
+  .note-title {
+    font-size: 1.1rem;
+  }
+}

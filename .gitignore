@@ -18,7 +18,6 @@ build/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
@@ -26,4 +25,11 @@ Thumbs.db
 
 # Testing
 coverage/
-.nyc_output/
+
+# Uploads (user-generated content)
+uploads/
+*.upload.*
+
+# Cache
+.cache/
+*.cache

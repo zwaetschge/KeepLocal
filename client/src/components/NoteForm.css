@@ -1,0 +1,118 @@
+.note-form-container {
+  max-width: 600px;
+  margin: 0 auto 2rem;
+}
+
+.note-form {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+
+.note-form:focus-within {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.note-form-title {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0;
+  background: transparent;
+}
+
+.note-form-content {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 1rem;
+  resize: none;
+  font-family: inherit;
+  background: transparent;
+  padding: 0.5rem 0;
+}
+
+.note-form-actions {
+  margin-top: 1rem;
+}
+
+.color-picker {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+  border-color: #666;
+}
+
+.color-option.active {
+  border-color: #333;
+  border-width: 3px;
+}
+
+.form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #5568d3;
+}
+
+.btn-secondary {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #d0d0d0;
+}
+
+@media (max-width: 768px) {
+  .note-form-container {
+    margin: 0 0 1.5rem 0;
+  }
+
+  .color-picker {
+    gap: 0.4rem;
+  }
+
+  .color-option {
+    width: 28px;
+    height: 28px;
+  }
+}
