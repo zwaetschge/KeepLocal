@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>KeepLocal-MongoDB</Name>
+  <Repository>mongo:7-jammy</Repository>
+  <Registry>https://hub.docker.com/_/mongo</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/zwaetschge/KeepLocal/issues</Support>
+  <Project>https://github.com/zwaetschge/KeepLocal</Project>
+  <Overview>
+    MongoDB database for KeepLocal application.
+
+    IMPORTANT: Install this container FIRST before installing KeepLocal-Server.
+
+    This container provides the MongoDB database that stores all your notes persistently.
+
+    Default Configuration:
+    - Database Name: keeplocal
+    - Port: 27017 (internal)
+    - Data Storage: /mnt/user/appdata/keeplocal/mongodb
+  </Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/mongodb.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/mongodb-icon.png</Icon>
+  <ExtraParams>--health-cmd="echo 'db.runCommand(&quot;ping&quot;).ok' | mongosh localhost:27017/keeplocal --quiet" --health-interval=10s --health-timeout=5s --health-retries=5</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+
+  <Config Name="MongoDB Data" Target="/data/db" Default="/mnt/user/appdata/keeplocal/mongodb" Mode="rw" Description="MongoDB data storage location - all your notes are stored here" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/mongodb</Config>
+
+  <Config Name="MONGO_INITDB_DATABASE" Target="MONGO_INITDB_DATABASE" Default="keeplocal" Mode="" Description="Initial database name" Type="Variable" Display="advanced" Required="false" Mask="false">keeplocal</Config>
+</Container>

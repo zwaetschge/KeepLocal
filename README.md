@@ -95,20 +95,33 @@ docker-compose down -v
 4. Click "Compose Up"
 5. Access via `http://[UNRAID-IP]:3000`
 
-### Method 2: Using Unraid Template
+### Method 2: Using Unraid Templates
+
+Choose between installing individual containers or using the compose stack:
+
+**Option A: Individual Containers**
 
 1. Go to **Docker** tab in Unraid
 2. Click **Add Container**
 3. Under **Template repositories**, add:
    ```
-   https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid-template.xml
+   https://github.com/zwaetschge/KeepLocal/tree/main/unraid
    ```
-4. Search for **KeepLocal** and install
-5. Configure the following:
-   - **WebUI Port**: 3000 (or your preferred port)
-   - **MongoDB Data Path**: `/mnt/user/appdata/keeplocal/mongodb`
-   - **ALLOWED_ORIGINS**: Update with your Unraid IP
-6. Click **Apply**
+4. Install containers in this order:
+   - **KeepLocal-MongoDB** (database)
+   - **KeepLocal-Server** (backend API)
+   - **KeepLocal-Client** (web interface)
+5. Configure each container:
+   - Update IP addresses in environment variables
+   - Ensure ports don't conflict (27017, 5000, 3000)
+   - Set MongoDB data path: `/mnt/user/appdata/keeplocal/mongodb`
+6. Click **Apply** for each container
+
+**Option B: Docker Compose Stack**
+
+Use the template file at `unraid/keeplocal-compose.xml` with the Docker Compose Manager plugin.
+
+For detailed instructions, see the [Unraid README](unraid/README.md).
 
 ### Unraid Configuration
 
