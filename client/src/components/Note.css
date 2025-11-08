@@ -1,43 +1,55 @@
 .note {
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s ease;
   break-inside: avoid;
   margin-bottom: 1rem;
+  position: relative;
+  border: 1px solid var(--border-color);
 }
 
 .note:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-md);
+}
+
+.pin-indicator {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 1rem;
+  opacity: 0.6;
 }
 
 .note-title {
   font-size: 1.2rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .note-content {
   font-size: 1rem;
   line-height: 1.5;
-  color: #555;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-wrap: break-word;
   margin-bottom: 1rem;
 }
 
 .note-edit-title,
-.note-edit-content {
+.note-edit-content,
+.note-edit-tags {
   width: 100%;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 0.5rem;
   font-family: inherit;
   font-size: 1rem;
   margin-bottom: 0.5rem;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .note-edit-title {
@@ -50,6 +62,35 @@
   min-height: 80px;
 }
 
+.note-edit-tags {
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
+}
+
+.note-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.note-tag {
+  display: inline-block;
+  background: rgba(102, 126, 234, 0.15);
+  color: #667eea;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+body.dark-mode .note-tag {
+  background: rgba(102, 126, 234, 0.2);
+  color: #aecbfa;
+  border-color: rgba(102, 126, 234, 0.4);
+}
+
 .note-actions {
   display: flex;
   justify-content: flex-end;
@@ -57,6 +98,7 @@
   margin-top: 1rem;
 }
 
+.btn-pin,
 .btn-edit,
 .btn-delete,
 .btn-save,
@@ -69,10 +111,15 @@
   transition: all 0.2s ease;
 }
 
+.btn-pin,
 .btn-edit,
 .btn-delete {
   background: transparent;
   font-size: 1.2rem;
+}
+
+.btn-pin:hover {
+  background: rgba(255, 215, 0, 0.2);
 }
 
 .btn-edit:hover {

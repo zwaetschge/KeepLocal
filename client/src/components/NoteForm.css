@@ -4,15 +4,16 @@
 }
 
 .note-form {
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
 }
 
 .note-form:focus-within {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-md);
 }
 
 .note-form-title {
@@ -24,6 +25,7 @@
   margin-bottom: 0.5rem;
   padding: 0.5rem 0;
   background: transparent;
+  color: var(--text-primary);
 }
 
 .note-form-content {
@@ -35,6 +37,26 @@
   font-family: inherit;
   background: transparent;
   padding: 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.note-form-tags {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+  background: transparent;
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.5rem;
+  color: var(--text-tertiary);
+}
+
+.note-form-tags::placeholder,
+.note-form-title::placeholder,
+.note-form-content::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .note-form-actions {

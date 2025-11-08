@@ -1,16 +1,58 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const errorHandler = require('./middleware/errorHandler');
+const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Datenbankverbindung herstellen
+connectDB();
+
+// CORS-Konfiguration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : ['http://localhost:3000'];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Erlaube Requests ohne Origin (z.B. mobile apps, Postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+// Rate Limiting - Schutz vor Brute-Force-Angriffen
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 Minuten
+  max: 100, // Maximal 100 Requests pro IP in 15 Minuten
+  message: 'Zu viele Anfragen von dieser IP, bitte versuchen Sie es später erneut.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(helmet()); // Sicherheits-Header setzen
+app.use(cors(corsOptions));
+app.use(bodyParser.json({ limit: '10mb' })); // Limit für JSON payload
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(limiter); // Rate Limiting anwenden
+
+// Sicherheit: XSS-Schutz durch Input-Sanitization
+app.use(sanitizeInputMiddleware);
 
 // Routen
 app.use('/api/notes', notesRouter);
@@ -19,7 +61,7 @@ app.use('/api/notes', notesRouter);
 app.get('/', (req, res) => {
   res.json({
     message: 'KeepLocal API Server',
-    version: '1.0.0',
+    version: '2.0.0',
     endpoints: {
       notes: '/api/notes'
     }

@@ -1,20 +1,30 @@
 import React, { useState } from 'react';
 import './Note.css';
+import ConfirmDialog from './ConfirmDialog';
 
-function Note({ note, onDelete, onUpdate }) {
+function Note({ note, onDelete, onUpdate, onTogglePin }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editedTitle, setEditedTitle] = useState(note.title);
   const [editedContent, setEditedContent] = useState(note.content);
+  const [editedTags, setEditedTags] = useState((note.tags || []).join(', '));
 
   const handleSave = () => {
     if (editedContent.trim() === '') {
       return;
     }
 
-    onUpdate(note.id, {
+    // Tags in Array umwandeln
+    const tagArray = editedTags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag !== '');
+
+    onUpdate(note._id, {
       title: editedTitle.trim(),
       content: editedContent.trim(),
-      color: note.color
+      color: note.color,
+      tags: tagArray
     });
 
     setIsEditing(false);
@@ -23,7 +33,21 @@ function Note({ note, onDelete, onUpdate }) {
   const handleCancel = () => {
     setEditedTitle(note.title);
     setEditedContent(note.content);
+    setEditedTags((note.tags || []).join(', '));
     setIsEditing(false);
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(note._id);
+    setShowDeleteConfirm(false);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -46,6 +70,13 @@ function Note({ note, onDelete, onUpdate }) {
             className="note-edit-content"
             rows="4"
           />
+          <input
+            type="text"
+            value={editedTags}
+            onChange={(e) => setEditedTags(e.target.value)}
+            className="note-edit-tags"
+            placeholder="Tags (durch Komma getrennt)"
+          />
           <div className="note-actions">
             <button onClick={handleCancel} className="btn-cancel">
               Abbrechen
@@ -57,9 +88,26 @@ function Note({ note, onDelete, onUpdate }) {
         </>
       ) : (
         <>
+          {note.isPinned && <div className="pin-indicator">📌</div>}
           {note.title && <h3 className="note-title">{note.title}</h3>}
           <p className="note-content">{note.content}</p>
+          {note.tags && note.tags.length > 0 && (
+            <div className="note-tags">
+              {note.tags.map((tag, index) => (
+                <span key={index} className="note-tag">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="note-actions">
+            <button
+              onClick={() => onTogglePin(note._id)}
+              className="btn-pin"
+              title={note.isPinned ? "Abheften" : "Anheften"}
+            >
+              {note.isPinned ? '📌' : '📍'}
+            </button>
             <button
               onClick={() => setIsEditing(true)}
               className="btn-edit"
@@ -68,7 +116,7 @@ function Note({ note, onDelete, onUpdate }) {
               ✏️
             </button>
             <button
-              onClick={() => onDelete(note.id)}
+              onClick={handleDeleteClick}
               className="btn-delete"
               title="Löschen"
             >
@@ -77,6 +125,14 @@ function Note({ note, onDelete, onUpdate }) {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Notiz löschen?"
+        message="Möchten Sie diese Notiz wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   );
 }

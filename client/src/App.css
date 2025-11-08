@@ -30,7 +30,7 @@
   text-align: center;
   padding: 3rem;
   font-size: 1.2rem;
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 @media (max-width: 768px) {

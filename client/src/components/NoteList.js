@@ -2,7 +2,7 @@ import React from 'react';
 import Note from './Note';
 import './NoteList.css';
 
-function NoteList({ notes, onDeleteNote, onUpdateNote }) {
+function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin }) {
   if (notes.length === 0) {
     return (
       <div className="empty-state">
@@ -16,10 +16,11 @@ function NoteList({ notes, onDeleteNote, onUpdateNote }) {
     <div className="note-list">
       {notes.map((note) => (
         <Note
-          key={note.id}
+          key={note._id}
           note={note}
           onDelete={onDeleteNote}
           onUpdate={onUpdateNote}
+          onTogglePin={onTogglePin}
         />
       ))}
     </div>

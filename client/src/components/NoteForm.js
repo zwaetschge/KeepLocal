@@ -5,6 +5,7 @@ function NoteForm({ onCreateNote }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [color, setColor] = useState('#ffffff');
+  const [tags, setTags] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
 
   const colors = [
@@ -27,16 +28,24 @@ function NoteForm({ onCreateNote }) {
       return;
     }
 
+    // Tags in Array umwandeln (durch Komma getrennt)
+    const tagArray = tags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag !== '');
+
     onCreateNote({
       title: title.trim(),
       content: content.trim(),
-      color: color
+      color: color,
+      tags: tagArray
     });
 
     // Formular zurücksetzen
     setTitle('');
     setContent('');
     setColor('#ffffff');
+    setTags('');
     setIsExpanded(false);
   };
 
@@ -67,6 +76,16 @@ function NoteForm({ onCreateNote }) {
         />
 
         {isExpanded && (
+          <input
+            type="text"
+            placeholder="Tags (durch Komma getrennt, z.B. arbeit, privat)"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            className="note-form-tags"
+          />
+        )}
+
+        {isExpanded && (
           <div className="note-form-actions">
             <div className="color-picker">
               {colors.map((c) => (
@@ -89,6 +108,7 @@ function NoteForm({ onCreateNote }) {
                   setTitle('');
                   setContent('');
                   setColor('#ffffff');
+                  setTags('');
                 }}
                 className="btn-secondary"
               >
