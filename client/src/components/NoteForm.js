@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useImperativeHandle } from 'react';
 import './NoteForm.css';
 
-function NoteForm({ onCreateNote }) {
+const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [color, setColor] = useState('#ffffff');
   const [tags, setTags] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const contentRef = useRef(null);
+
+  // Expose focus method to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      contentRef.current?.focus();
+      setIsExpanded(true);
+    }
+  }));
 
   const colors = [
     '#ffffff', // Weiß
@@ -63,16 +72,22 @@ function NoteForm({ onCreateNote }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="note-form-title"
+            disabled={loading}
+            aria-label="Notiztitel"
           />
         )}
 
         <textarea
+          ref={contentRef}
           placeholder={isExpanded ? "Notiz erstellen..." : "Notiz eingeben..."}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onFocus={() => setIsExpanded(true)}
           className="note-form-content"
           rows={isExpanded ? 4 : 1}
+          disabled={loading}
+          aria-label="Notizinhalt"
+          aria-required="true"
         />
 
         {isExpanded && (
@@ -82,6 +97,8 @@ function NoteForm({ onCreateNote }) {
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             className="note-form-tags"
+            disabled={loading}
+            aria-label="Tags"
           />
         )}
 
@@ -111,11 +128,18 @@ function NoteForm({ onCreateNote }) {
                   setTags('');
                 }}
                 className="btn-secondary"
+                disabled={loading}
+                aria-label="Formular schließen"
               >
                 Schließen
               </button>
-              <button type="submit" className="btn-primary">
-                Speichern
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={loading}
+                aria-label="Notiz speichern"
+              >
+                {loading ? 'Speichert...' : 'Speichern'}
               </button>
             </div>
           </div>
@@ -123,6 +147,8 @@ function NoteForm({ onCreateNote }) {
       </form>
     </div>
   );
-}
+});
+
+NoteForm.displayName = 'NoteForm';
 
 export default NoteForm;
