@@ -77,18 +77,17 @@ app.use(limiter); // Rate Limiting anwenden
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);
 
-// CSRF-Schutz (nach cookieParser, vor Routen)
+// CSRF-Schutz (nur für Notizen-Routes, nicht für Auth da JWT verwendet wird)
 const csrfProtection = csrf({ cookie: true });
-app.use(csrfProtection);
 
 // CSRF-Token-Endpunkt
-app.get('/api/csrf-token', (req, res) => {
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
 // Routen
-app.use('/api/auth', authRouter);
-app.use('/api/notes', notesRouter);
+app.use('/api/auth', authRouter); // Keine CSRF für Auth (JWT-basiert)
+app.use('/api/notes', csrfProtection, notesRouter); // CSRF für Notizen
 
 // Root-Route
 app.get('/', (req, res) => {
