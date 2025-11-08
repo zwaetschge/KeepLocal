@@ -1,18 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const Note = require('../models/Note');
+const noteValidation = require('../middleware/validators');
+const { authenticateToken } = require('../middleware/auth');
 
-// GET /api/notes - Alle Notizen abrufen (mit optionaler Suche)
-router.get('/', async (req, res, next) => {
+// Alle Routen erfordern Authentifizierung
+router.use(authenticateToken);
+
+// Escape regex special characters to prevent NoSQL injection
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// GET /api/notes - Alle Notizen abrufen (mit optionaler Suche und Pagination)
+router.get('/', noteValidation.search, async (req, res, next) => {
   try {
-    const { search, tag } = req.query;
-    let query = {};
+    const { search, tag, page = 1, limit = 50 } = req.query;
+
+    // Query nur für Notizen des aktuellen Benutzers
+    let query = { userId: req.user._id };
 
     // Volltextsuche in Titel und Inhalt
     if (search && search.trim() !== '') {
+      const escapedSearch = escapeRegex(search.trim());
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { content: { $regex: search, $options: 'i' } }
+        { title: { $regex: escapedSearch, $options: 'i' } },
+        { content: { $regex: escapedSearch, $options: 'i' } }
       ];
     }
 
@@ -21,19 +34,36 @@ router.get('/', async (req, res, next) => {
       query.tags = tag.toLowerCase();
     }
 
-    const notes = await Note.find(query)
-      .sort({ isPinned: -1, createdAt: -1 }); // Angepinnte Notizen zuerst
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Note.countDocuments(query);
 
-    res.json(notes);
+    const notes = await Note.find(query)
+      .sort({ isPinned: -1, createdAt: -1 }) // Angepinnte Notizen zuerst
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.json({
+      notes,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
     next(error);
   }
 });
 
 // GET /api/notes/:id - Einzelne Notiz abrufen
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', noteValidation.getOne, async (req, res, next) => {
   try {
-    const note = await Note.findById(req.params.id);
+    const note = await Note.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
 
     if (!note) {
       return res.status(404).json({ error: 'Notiz nicht gefunden' });
@@ -49,7 +79,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/notes - Neue Notiz erstellen
-router.post('/', async (req, res, next) => {
+router.post('/', noteValidation.create, async (req, res, next) => {
   try {
     const { title, content, color, isPinned, tags } = req.body;
 
@@ -62,7 +92,8 @@ router.post('/', async (req, res, next) => {
       content: content.trim(),
       color: color || '#ffffff',
       isPinned: isPinned || false,
-      tags: tags || []
+      tags: tags || [],
+      userId: req.user._id // Benutzer-ID hinzufügen
     });
 
     const savedNote = await newNote.save();
@@ -76,7 +107,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // PUT /api/notes/:id - Notiz aktualisieren
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', noteValidation.update, async (req, res, next) => {
   try {
     const { title, content, color, isPinned, tags } = req.body;
 
@@ -84,8 +115,9 @@ router.put('/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'Inhalt ist erforderlich' });
     }
 
-    const updatedNote = await Note.findByIdAndUpdate(
-      req.params.id,
+    // Nur Notizen des eigenen Benutzers aktualisieren
+    const updatedNote = await Note.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id },
       {
         title: title || '',
         content: content.trim(),
@@ -113,9 +145,13 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/notes/:id - Notiz löschen
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', noteValidation.delete, async (req, res, next) => {
   try {
-    const deletedNote = await Note.findByIdAndDelete(req.params.id);
+    // Nur eigene Notizen löschen
+    const deletedNote = await Note.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user._id
+    });
 
     if (!deletedNote) {
       return res.status(404).json({ error: 'Notiz nicht gefunden' });
@@ -131,9 +167,13 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 // POST /api/notes/:id/pin - Notiz anheften/abheften
-router.post('/:id/pin', async (req, res, next) => {
+router.post('/:id/pin', noteValidation.pin, async (req, res, next) => {
   try {
-    const note = await Note.findById(req.params.id);
+    // Nur eigene Notizen anheften
+    const note = await Note.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
 
     if (!note) {
       return res.status(404).json({ error: 'Notiz nicht gefunden' });

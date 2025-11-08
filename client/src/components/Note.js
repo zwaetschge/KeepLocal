@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
+import { sanitize } from '../utils/sanitize';
 
 function Note({ note, onDelete, onUpdate, onTogglePin }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -89,13 +90,13 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
       ) : (
         <>
           {note.isPinned && <div className="pin-indicator">📌</div>}
-          {note.title && <h3 className="note-title">{note.title}</h3>}
-          <p className="note-content">{note.content}</p>
+          {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}
+          <p className="note-content">{sanitize(note.content)}</p>
           {note.tags && note.tags.length > 0 && (
             <div className="note-tags">
               {note.tags.map((tag, index) => (
                 <span key={index} className="note-tag">
-                  {tag}
+                  {sanitize(tag)}
                 </span>
               ))}
             </div>

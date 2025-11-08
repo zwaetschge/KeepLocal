@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>KeepLocal-Client</Name>
+  <Repository>keeplocal-client</Repository>
+  <Registry>https://hub.docker.com/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/zwaetschge/KeepLocal/issues</Support>
+  <Project>https://github.com/zwaetschge/KeepLocal</Project>
+  <Overview>KeepLocal Client - Frontend web interface for the KeepLocal notes application. Requires the KeepLocal Server to be running.</Overview>
+  <Category>Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/client.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/keeplocal-icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>KeepLocal-Server container must be running</Requires>
+  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp" Description="Port to access the web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="API Server URL" Target="REACT_APP_API_URL" Default="http://[UNRAID-IP]:5000" Mode="" Description="URL of the KeepLocal Server API (update with your Unraid server IP)" Type="Variable" Display="always" Required="true" Mask="false">http://[UNRAID-IP]:5000</Config>
+</Container>

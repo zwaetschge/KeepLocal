@@ -35,8 +35,8 @@ const noteSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    // Wird später für Authentication verwendet
-    // required: true
+    required: [true, 'Benutzer-ID ist erforderlich'],
+    index: true
   }
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
@@ -44,6 +44,7 @@ const noteSchema = new mongoose.Schema({
 
 // Index für schnellere Suche
 noteSchema.index({ title: 'text', content: 'text' });
-noteSchema.index({ isPinned: -1, createdAt: -1 });
+noteSchema.index({ userId: 1, isPinned: -1, createdAt: -1 }); // Compound index für Benutzer-Notizen
+noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
 
 module.exports = mongoose.model('Note', noteSchema);

@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<Containers>
+  <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/keeplocal-compose.xml</TemplateURL>
+  <Beta>False</Beta>
+  <Category>Productivity: Tools:</Category>
+  <Name>KeepLocal-Stack</Name>
+  <Description>
+    KeepLocal - A self-hosted notes application inspired by Google Keep.
+
+    This template uses Docker Compose to deploy the complete stack including:
+    - MongoDB database
+    - Node.js backend server
+    - React frontend with Nginx
+
+    INSTALLATION INSTRUCTIONS:
+    1. Install "Docker Compose Manager" plugin from Community Applications
+    2. Go to Docker tab, click "Compose" button
+    3. Create new stack named "keeplocal"
+    4. Copy the docker-compose.yml from: https://github.com/zwaetschge/KeepLocal
+    5. Create .env file with JWT_SECRET (REQUIRED): JWT_SECRET=your-long-random-secret-key-here
+    6. Update ALLOWED_ORIGINS to include your Unraid IP
+    7. Click "Compose Up"
+    8. Access at http://[UNRAID-IP]:3000
+  </Description>
+  <Overview>
+    KeepLocal - A self-hosted notes application inspired by Google Keep.
+
+    Features:
+    - User authentication with JWT (secure multi-user support)
+    - Create, edit, and delete notes with confirmation dialogs
+    - 10 different colors for your notes
+    - Pin/unpin functionality
+    - Tags/categories for better organization
+    - Full-text search in title and content
+    - Dark mode with theme persistence
+    - Keyboard shortcuts (Ctrl+N, Ctrl+F, Ctrl+K)
+    - Pagination for large note collections
+    - Responsive design (works on desktop and mobile)
+    - MongoDB database integration
+    - Advanced security (JWT auth, XSS protection, CSRF, CORS, CSP, Rate Limiting)
+    - Toast notifications for better feedback
+    - ARIA labels for accessibility
+
+    This is a Docker Compose stack. You need the "Docker Compose Manager" plugin.
+  </Overview>
+  <Support>https://github.com/zwaetschge/KeepLocal/issues</Support>
+  <Project>https://github.com/zwaetschge/KeepLocal</Project>
+  <Registry>https://github.com/zwaetschge/KeepLocal</Registry>
+  <GitHub>https://github.com/zwaetschge/KeepLocal</GitHub>
+  <Repository>Docker Compose Stack</Repository>
+  <BindTime>true</BindTime>
+  <Privileged>false</Privileged>
+  <Network>bridge</Network>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.png</Icon>
+</Containers>

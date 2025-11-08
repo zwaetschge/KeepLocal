@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>KeepLocal-Server</Name>
+  <Repository>keeplocal-server</Repository>
+  <Registry>https://hub.docker.com/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/zwaetschge/KeepLocal/issues</Support>
+  <Project>https://github.com/zwaetschge/KeepLocal</Project>
+  <Overview>KeepLocal Server - Backend API for the KeepLocal notes application. Requires MongoDB to be running.</Overview>
+  <Category>Productivity:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/keeplocal-icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>KeepLocal-MongoDB container must be running first</Requires>
+  <Config Name="API Port" Target="5000" Default="5000" Mode="tcp" Description="Port for the API server" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="MongoDB URI" Target="MONGODB_URI" Default="mongodb://[MONGODB-IP]:27017/keeplocal" Mode="" Description="MongoDB connection string (use IP of MongoDB container or Unraid server IP)" Type="Variable" Display="always" Required="true" Mask="false">mongodb://[UNRAID-IP]:27017/keeplocal</Config>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="http://[UNRAID-IP]:3000" Mode="" Description="Comma-separated list of allowed CORS origins (update with your Unraid server IP)" Type="Variable" Display="always" Required="true" Mask="false">http://[UNRAID-IP]:3000</Config>
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="REQUIRED: Secret key for JWT token signing (use a long random string, min 32 characters)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="JWT token expiration time (e.g. 7d, 30d, 1h)" Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Node.js environment mode" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Deprecated: Secret key for session encryption" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+</Container>
