@@ -7,11 +7,12 @@ import ThemeToggle from './components/ThemeToggle';
 import Toast from './components/Toast';
 import Login from './components/Login';
 import Register from './components/Register';
+import Setup from './components/Setup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
 function AppContent() {
-  const { user, isLoggedIn, loading: authLoading, login, register, logout } = useAuth();
+  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup } = useAuth();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -191,6 +192,11 @@ function AppContent() {
     showToast('Erfolgreich registriert', 'success');
   };
 
+  const handleSetup = async (username, email, password) => {
+    await setup(username, email, password);
+    showToast('Administrator-Konto erfolgreich erstellt', 'success');
+  };
+
   const handleLogout = () => {
     logout();
     setNotes([]);
@@ -204,6 +210,23 @@ function AppContent() {
         <div className="loading-spinner"></div>
         <p>Lade...</p>
       </div>
+    );
+  }
+
+  // Show setup if initial setup is needed
+  if (setupNeeded) {
+    return (
+      <>
+        <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+        <Setup onSetup={handleSetup} />
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </>
     );
   }
 

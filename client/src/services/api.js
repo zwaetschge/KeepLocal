@@ -77,6 +77,25 @@ async function fetchWithAuth(url, options = {}) {
 
 // Auth API
 export const authAPI = {
+  checkSetupNeeded: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/setup-needed`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        return { setupNeeded: false };
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Failed to check setup status:', error);
+      return { setupNeeded: false };
+    }
+  },
+
   register: async (username, email, password) => {
     const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',

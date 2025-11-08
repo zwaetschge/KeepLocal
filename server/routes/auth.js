@@ -16,6 +16,20 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+// GET /api/auth/setup-needed - Check if initial setup is required
+router.get('/setup-needed', async (req, res) => {
+  try {
+    const userCount = await User.countDocuments();
+    res.json({
+      setupNeeded: userCount === 0,
+      message: userCount === 0 ? 'Initial setup required' : 'System already configured'
+    });
+  } catch (error) {
+    console.error('Error checking setup status:', error);
+    res.status(500).json({ error: 'Fehler beim Prüfen des Setup-Status' });
+  }
+});
+
 // POST /api/auth/register - Neuen Benutzer registrieren
 router.post('/register', [
   body('username')
