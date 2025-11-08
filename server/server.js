@@ -4,8 +4,12 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
 const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
+const authRouter = require('./routes/auth');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 
@@ -45,16 +49,45 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet()); // Sicherheits-Header setzen
+// Sicherheits-Header mit Content Security Policy
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use(compression()); // Gzip-Komprimierung für Responses
 app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: '10mb' })); // Limit für JSON payload
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 app.use(limiter); // Rate Limiting anwenden
 
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);
 
+// CSRF-Schutz (nach cookieParser, vor Routen)
+const csrfProtection = csrf({ cookie: true });
+app.use(csrfProtection);
+
+// CSRF-Token-Endpunkt
+app.get('/api/csrf-token', (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
 // Routen
+app.use('/api/auth', authRouter);
 app.use('/api/notes', notesRouter);
 
 // Root-Route
