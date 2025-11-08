@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>KeepLocal</Name>
+  <Repository>keeplocal/keeplocal:latest</Repository>
+  <Registry>https://hub.docker.com/</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/zwaetschge/KeepLocal</Support>
+  <Project>https://github.com/zwaetschge/KeepLocal</Project>
+  <Overview>
+    KeepLocal - A self-hosted notes application inspired by Google Keep.
+
+    Features:
+    - Create, edit, and delete notes with confirmation dialogs
+    - 10 different colors for your notes
+    - Pin/unpin functionality
+    - Tags/categories for better organization
+    - Full-text search in title and content
+    - Dark mode with theme persistence
+    - Responsive design (works on desktop and mobile)
+    - MongoDB database integration
+    - Advanced security (XSS protection, CORS, Rate Limiting)
+    - Toast notifications for better feedback
+  </Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/client/public/favicon.ico</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled></DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Docker Compose plugin recommended</Requires>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port for accessing the web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="MongoDB Data" Target="/data/db" Default="/mnt/user/appdata/keeplocal/mongodb" Mode="rw" Description="MongoDB data storage location" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/mongodb</Config>
+  <Config Name="ALLOWED_ORIGINS" Target="ALLOWED_ORIGINS" Default="http://localhost:3000,http://localhost" Mode="" Description="Comma-separated list of allowed CORS origins" Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:3000,http://localhost</Config>
+  <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node environment (production/development)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+</Container>

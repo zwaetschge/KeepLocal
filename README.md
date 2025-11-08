@@ -1,64 +1,150 @@
 # KeepLocal 📝
 
-Eine lokale Notizen-App inspiriert von Google Keep. Erstellen, bearbeiten und organisieren Sie Ihre Notizen mit einer intuitiven Benutzeroberfläche.
+A self-hosted notes application inspired by Google Keep. Create, edit, and organize your notes with an intuitive user interface.
 
 ## Features
 
-- ✅ Notizen erstellen, bearbeiten und löschen mit Bestätigungsdialog
-- 🎨 10 verschiedene Farben für Ihre Notizen
-- 📌 Notizen anheften (Pin-Funktion)
-- 🏷️ Tags/Kategorien für bessere Organisation
-- 🔍 Volltextsuche in Titel und Inhalt
-- 🌙 Dark Mode mit Themen-Persistenz
-- 📱 Responsive Design (funktioniert auf Desktop und Mobile)
-- 🚀 Schnelle und einfache Bedienung
-- 💾 MongoDB Datenbankintegration
-- 🔒 Erweiterte Sicherheit (XSS-Schutz, CORS, Rate Limiting)
-- ⚛️ Moderne React Frontend-Architektur
-- 🎯 Toast-Benachrichtigungen für besseres Feedback
+- ✅ Create, edit, and delete notes with confirmation dialogs
+- 🎨 10 different colors for your notes
+- 📌 Pin/unpin functionality
+- 🏷️ Tags/categories for better organization
+- 🔍 Full-text search in title and content
+- 🌙 Dark mode with theme persistence
+- 📱 Responsive design (works on desktop and mobile)
+- 🚀 Fast and easy to use
+- 💾 MongoDB database integration
+- 🔒 Advanced security (XSS protection, CORS, Rate Limiting)
+- ⚛️ Modern React frontend architecture
+- 🎯 Toast notifications for better feedback
+- 🐳 Docker & Unraid support for easy deployment
 
-## Technologie-Stack
+## Technology Stack
 
 ### Frontend
 - React 18
-- Axios für HTTP-Requests
-- CSS3 mit Grid Layout & CSS Variables für Theming
-- DOMPurify für XSS-Schutz
+- Axios for HTTP requests
+- CSS3 with Grid Layout & CSS Variables for theming
+- DOMPurify for XSS protection
 
 ### Backend
 - Node.js
 - Express.js
 - MongoDB & Mongoose
-- Helmet für Security Headers
+- Helmet for security headers
 - Express Rate Limit
-- XSS-Sanitization
-- CORS mit Origin-Kontrolle
+- XSS sanitization
+- CORS with origin control
 
-## Installation
+## Quick Start with Docker (Recommended)
 
-### Voraussetzungen
+The easiest way to run KeepLocal is using Docker Compose:
 
-- Node.js (Version 14 oder höher)
-- npm oder yarn
-- MongoDB (lokal oder MongoDB Atlas)
+### Prerequisites
+- Docker
+- Docker Compose
 
-### Setup
+### Installation
 
-1. **Repository klonen**
+1. **Clone the repository**
    ```bash
    git clone https://github.com/zwaetschge/KeepLocal.git
    cd KeepLocal
    ```
 
-2. **MongoDB konfigurieren**
+2. **Start with Docker Compose**
+   ```bash
+   docker-compose up -d
+   ```
 
-   Erstellen Sie eine `.env` Datei im `server/` Verzeichnis:
+3. **Access the application**
+
+   Open your browser and navigate to: `http://localhost:3000`
+
+That's it! The application will automatically:
+- Set up MongoDB
+- Configure the backend server
+- Build and serve the frontend
+- Handle all networking between services
+
+### Docker Commands
+
+```bash
+# Start the application
+docker-compose up -d
+
+# Stop the application
+docker-compose down
+
+# View logs
+docker-compose logs -f
+
+# Restart services
+docker-compose restart
+
+# Stop and remove all data (including database)
+docker-compose down -v
+```
+
+## Unraid Installation
+
+### Method 1: Using Docker Compose (Recommended)
+
+1. Install the **Docker Compose Manager** plugin from Community Applications
+2. Create a new stack in Docker Compose Manager
+3. Copy the contents of `docker-compose.yml` from this repository
+4. Click "Compose Up"
+5. Access via `http://[UNRAID-IP]:3000`
+
+### Method 2: Using Unraid Template
+
+1. Go to **Docker** tab in Unraid
+2. Click **Add Container**
+3. Under **Template repositories**, add:
+   ```
+   https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid-template.xml
+   ```
+4. Search for **KeepLocal** and install
+5. Configure the following:
+   - **WebUI Port**: 3000 (or your preferred port)
+   - **MongoDB Data Path**: `/mnt/user/appdata/keeplocal/mongodb`
+   - **ALLOWED_ORIGINS**: Update with your Unraid IP
+6. Click **Apply**
+
+### Unraid Configuration
+
+After installation, you may need to update the CORS settings:
+
+1. Go to Docker tab
+2. Click on KeepLocal container
+3. Edit the **ALLOWED_ORIGINS** variable
+4. Add your Unraid server IP: `http://[UNRAID-IP]:3000`
+5. Click **Apply**
+
+## Manual Installation (Development)
+
+### Prerequisites
+
+- Node.js (Version 14 or higher)
+- npm or yarn
+- MongoDB (local or MongoDB Atlas)
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/zwaetschge/KeepLocal.git
+   cd KeepLocal
+   ```
+
+2. **Configure MongoDB**
+
+   Create a `.env` file in the `server/` directory:
    ```bash
    cd server
    cp .env.example .env
    ```
 
-   Bearbeiten Sie die `.env` Datei und setzen Sie Ihre MongoDB-URI:
+   Edit the `.env` file and set your MongoDB URI:
    ```env
    PORT=5000
    NODE_ENV=development
@@ -66,184 +152,271 @@ Eine lokale Notizen-App inspiriert von Google Keep. Erstellen, bearbeiten und or
    ALLOWED_ORIGINS=http://localhost:3000
    ```
 
-3. **Server installieren und starten**
+3. **Install and start the server**
    ```bash
    npm install
    npm start
    ```
 
-   Der Server läuft auf: `http://localhost:5000`
+   The server runs on: `http://localhost:5000`
 
-4. **Client installieren und starten** (neues Terminal-Fenster)
+4. **Install and start the client** (new terminal window)
    ```bash
    cd ../client
    npm install
    npm start
    ```
 
-   Die App öffnet sich automatisch unter: `http://localhost:3000`
+   The app opens automatically at: `http://localhost:3000`
 
-## Verwendung
+## Usage
 
-### Notiz erstellen
-1. Klicken Sie auf das Eingabefeld "Notiz eingeben..."
-2. Optional: Fügen Sie einen Titel hinzu
-3. Geben Sie den Inhalt Ihrer Notiz ein
-4. Optional: Fügen Sie Tags hinzu (durch Komma getrennt)
-5. Wählen Sie eine Farbe aus der Farbpalette
-6. Klicken Sie auf "Speichern"
+### Creating a Note
+1. Click on the input field "Enter a note..."
+2. Optional: Add a title
+3. Enter your note content
+4. Optional: Add tags (comma-separated)
+5. Select a color from the palette
+6. Click "Save"
 
-### Notiz bearbeiten
-1. Klicken Sie auf das Stift-Symbol (✏️) einer Notiz
-2. Bearbeiten Sie Titel, Inhalt und/oder Tags
-3. Klicken Sie auf "Speichern"
+### Editing a Note
+1. Click the pencil icon (✏️) on a note
+2. Edit the title, content, and/or tags
+3. Click "Save"
 
-### Notiz löschen
-1. Klicken Sie auf das Papierkorb-Symbol (🗑️) einer Notiz
-2. Bestätigen Sie die Löschung im Dialog
+### Deleting a Note
+1. Click the trash icon (🗑️) on a note
+2. Confirm deletion in the dialog
 
-### Notiz anheften
-1. Klicken Sie auf das Pin-Symbol (📍/📌) einer Notiz
-2. Angepinnte Notizen werden oben angezeigt
+### Pinning a Note
+1. Click the pin icon (📍/📌) on a note
+2. Pinned notes appear at the top
 
-### Notizen durchsuchen
-1. Nutzen Sie die Suchleiste am oberen Rand
-2. Die Suche durchsucht Titel und Inhalt in Echtzeit
+### Searching Notes
+1. Use the search bar at the top
+2. Search queries filter title and content in real-time
 
 ### Dark Mode
-1. Klicken Sie auf das Mond/Sonne-Symbol unten rechts
-2. Die Einstellung wird automatisch gespeichert
+1. Click the moon/sun icon in the bottom right
+2. Your preference is automatically saved
 
-## API-Endpunkte
+## API Endpoints
 
 ### GET /api/notes
-Gibt alle Notizen zurück (sortiert nach Pin-Status und Erstelldatum)
+Returns all notes (sorted by pin status and creation date)
 
-**Query Parameter:**
-- `search`: Volltextsuche in Titel und Inhalt
-- `tag`: Filtern nach Tag
+**Query Parameters:**
+- `search`: Full-text search in title and content
+- `tag`: Filter by tag
 
 ### GET /api/notes/:id
-Gibt eine einzelne Notiz zurück
+Returns a single note
 
 ### POST /api/notes
-Erstellt eine neue Notiz
+Creates a new note
 
 **Body:**
 ```json
 {
-  "title": "Titel (optional)",
-  "content": "Inhalt (erforderlich)",
+  "title": "Title (optional)",
+  "content": "Content (required)",
   "color": "#ffffff",
-  "tags": ["arbeit", "wichtig"],
+  "tags": ["work", "important"],
   "isPinned": false
 }
 ```
 
 ### PUT /api/notes/:id
-Aktualisiert eine bestehende Notiz
+Updates an existing note
 
 **Body:**
 ```json
 {
-  "title": "Neuer Titel",
-  "content": "Neuer Inhalt",
+  "title": "New Title",
+  "content": "New Content",
   "color": "#f28b82",
-  "tags": ["privat"],
+  "tags": ["personal"],
   "isPinned": true
 }
 ```
 
 ### DELETE /api/notes/:id
-Löscht eine Notiz
+Deletes a note
 
 ### POST /api/notes/:id/pin
-Heftet eine Notiz an oder ab (Toggle)
+Toggles pin status of a note
 
-## Projektstruktur
+## Project Structure
 
 ```
 KeepLocal/
-├── client/                 # React Frontend
+├── client/                     # React Frontend
 │   ├── public/
-│   │   └── index.html
 │   ├── src/
-│   │   ├── components/    # React Komponenten
+│   │   ├── components/        # React Components
+│   │   │   ├── ConfirmDialog.js
 │   │   │   ├── Note.js
-│   │   │   ├── Note.css
 │   │   │   ├── NoteForm.js
-│   │   │   ├── NoteForm.css
 │   │   │   ├── NoteList.js
-│   │   │   └── NoteList.css
+│   │   │   ├── SearchBar.js
+│   │   │   ├── ThemeToggle.js
+│   │   │   └── Toast.js
+│   │   ├── utils/             # Utility functions
 │   │   ├── App.js
-│   │   ├── App.css
-│   │   ├── index.js
-│   │   └── index.css
+│   │   └── index.js
+│   ├── Dockerfile
+│   ├── nginx.conf
 │   └── package.json
 │
-├── server/                # Express Backend
+├── server/                    # Express Backend
+│   ├── config/
+│   │   └── database.js
 │   ├── middleware/
-│   │   └── errorHandler.js
+│   │   ├── errorHandler.js
+│   │   └── sanitizeInput.js
+│   ├── models/
+│   │   └── Note.js
 │   ├── routes/
 │   │   └── notes.js
+│   ├── utils/
+│   │   └── sanitize.js
+│   ├── Dockerfile
 │   ├── server.js
 │   └── package.json
 │
+├── docker-compose.yml         # Docker Compose configuration
+├── unraid-template.xml        # Unraid template
+├── .env.example              # Environment variables example
 ├── .gitignore
 └── README.md
 ```
 
-## Entwicklung
+## Development
 
-### Server im Development-Modus starten
+### Running Server in Development Mode
 
 ```bash
 cd server
 npm run dev
 ```
 
-Nutzt `nodemon` für automatisches Neuladen bei Änderungen.
+Uses `nodemon` for automatic reloading on changes.
 
-### Production Build erstellen
+### Creating Production Build
 
 ```bash
 cd client
 npm run build
 ```
 
-Erstellt einen optimierten Production-Build im `client/build/` Verzeichnis.
+Creates an optimized production build in the `client/build/` directory.
 
-## Sicherheit
+## Security
 
-KeepLocal implementiert mehrere Sicherheitsebenen:
+KeepLocal implements multiple security layers:
 
-- **XSS-Schutz**: Input-Sanitization auf Server und Client
-- **CORS-Kontrolle**: Nur erlaubte Origins können API-Zugriff erhalten
-- **Rate Limiting**: Schutz vor Brute-Force-Angriffen (100 Requests/15min)
-- **Security Headers**: Helmet.js für zusätzliche HTTP-Header-Sicherheit
-- **Input-Validierung**: Mongoose Schema-Validierung
-- **Payload-Limits**: Beschränkung der Request-Größe
+- **XSS Protection**: Input sanitization on server and client
+- **CORS Control**: Only allowed origins can access the API
+- **Rate Limiting**: Protection against brute-force attacks (100 requests/15min)
+- **Security Headers**: Helmet.js for additional HTTP header security
+- **Input Validation**: Mongoose schema validation
+- **Payload Limits**: Request size restrictions
 
-## Hinweise
+## Environment Variables
 
-- Die Notizen werden persistent in **MongoDB** gespeichert
-- Stellen Sie sicher, dass MongoDB läuft, bevor Sie den Server starten
-- Die `.env` Datei enthält sensible Konfiguration und sollte nicht committet werden
+### Server Configuration
 
-## Erweiterungsmöglichkeiten
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `5000` |
+| `NODE_ENV` | Environment mode | `development` |
+| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/keeplocal` |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3000` |
+| `SESSION_SECRET` | Session encryption key | Random string |
 
-- 🔐 Benutzerauthentifizierung & Multi-User-Support
-- 📋 Checklisten in Notizen
-- 🖼️ Bilder in Notizen einfügen
-- 📄 Paginierung für große Notiz-Sammlungen
-- 🔄 Real-time Synchronisation mit WebSockets
-- 📤 Export/Import Funktionalität
-- 🗂️ Notiz-Archive
+## Notes
 
-## Lizenz
+- Notes are stored persistently in **MongoDB**
+- Ensure MongoDB is running before starting the server
+- The `.env` file contains sensitive configuration and should not be committed
+- For Docker deployments, MongoDB is automatically configured
+- All data is stored in Docker volumes for persistence
+
+## Troubleshooting
+
+### Docker Issues
+
+**Port already in use:**
+```bash
+# Change the port in docker-compose.yml
+ports:
+  - "8080:80"  # Use port 8080 instead of 3000
+```
+
+**Cannot connect to MongoDB:**
+```bash
+# Check if MongoDB container is running
+docker-compose ps
+
+# View MongoDB logs
+docker-compose logs mongodb
+```
+
+**Reset everything:**
+```bash
+# Stop and remove all containers and volumes
+docker-compose down -v
+
+# Start fresh
+docker-compose up -d
+```
+
+### Unraid Issues
+
+**Cannot access WebUI:**
+1. Check if the container is running
+2. Verify port mapping in container settings
+3. Update ALLOWED_ORIGINS with your Unraid IP
+4. Check firewall settings
+
+**Database not persisting:**
+1. Ensure the appdata path is correctly configured
+2. Check permissions on `/mnt/user/appdata/keeplocal/`
+
+## Future Enhancements
+
+- 🔐 User authentication & multi-user support
+- 📋 Checklists in notes
+- 🖼️ Image attachments in notes
+- 📄 Pagination for large note collections
+- 🔄 Real-time synchronization with WebSockets
+- 📤 Export/Import functionality
+- 🗂️ Note archives
+- 📱 Mobile apps (iOS/Android)
+- 🔗 Note sharing & collaboration
+- 🔔 Reminders & notifications
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
 
 MIT License
 
-## Autor
+## Author
 
-Erstellt mit ❤️ und Claude Code
+Created with ❤️ and Claude Code
+
+## Acknowledgments
+
+- Inspired by Google Keep
+- Built with React and Express
+- MongoDB for data persistence
+- Docker for easy deployment
