@@ -15,10 +15,27 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [setupNeeded, setSetupNeeded] = useState(false);
 
-  // Check if user is authenticated on mount
+  // Check if user is authenticated and setup status on mount
   useEffect(() => {
     const checkAuth = async () => {
+      // First check if initial setup is needed
+      try {
+        const setupStatus = await authAPI.checkSetupNeeded();
+        setSetupNeeded(setupStatus.setupNeeded);
+
+        // If setup is needed, skip auth check
+        if (setupStatus.setupNeeded) {
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to check setup status:', error);
+        // Continue with normal auth check if setup check fails
+      }
+
+      // Check if user is authenticated
       if (isAuthenticated()) {
         try {
           const response = await authAPI.getCurrentUser();
@@ -58,13 +75,23 @@ export function AuthProvider({ children }) {
     setIsLoggedIn(false);
   };
 
+  const setup = async (username, email, password) => {
+    const response = await authAPI.register(username, email, password);
+    setUser(response.user);
+    setIsLoggedIn(true);
+    setSetupNeeded(false);
+    return response;
+  };
+
   const value = {
     user,
     isLoggedIn,
     loading,
+    setupNeeded,
     login,
     register,
     logout,
+    setup,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
