@@ -1,4 +1,6 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Use relative URLs in production (Docker) so requests go through nginx proxy
+// Use localhost:5000 in development for direct backend access
+const API_BASE_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000');
 
 // Get CSRF token from cookies
 function getCsrfToken() {
