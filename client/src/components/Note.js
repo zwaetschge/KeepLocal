@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
+import ColorPicker from './ColorPicker';
 import { sanitize } from '../utils/sanitize';
 
 function Note({ note, onDelete, onUpdate, onTogglePin }) {
@@ -9,6 +10,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
   const [editedTitle, setEditedTitle] = useState(note.title);
   const [editedContent, setEditedContent] = useState(note.content);
   const [editedTags, setEditedTags] = useState((note.tags || []).join(', '));
+  const [editedColor, setEditedColor] = useState(note.color);
 
   const handleSave = () => {
     if (editedContent.trim() === '') {
@@ -24,7 +26,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
     onUpdate(note._id, {
       title: editedTitle.trim(),
       content: editedContent.trim(),
-      color: note.color,
+      color: editedColor,
       tags: tagArray
     });
 
@@ -35,6 +37,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
     setEditedTitle(note.title);
     setEditedContent(note.content);
     setEditedTags((note.tags || []).join(', '));
+    setEditedColor(note.color);
     setIsEditing(false);
   };
 
@@ -54,7 +57,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
   return (
     <div
       className="note"
-      style={{ backgroundColor: note.color }}
+      style={{ backgroundColor: isEditing ? editedColor : note.color }}
     >
       {isEditing ? (
         <>
@@ -77,6 +80,10 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
             onChange={(e) => setEditedTags(e.target.value)}
             className="note-edit-tags"
             placeholder="Tags (durch Komma getrennt)"
+          />
+          <ColorPicker
+            selectedColor={editedColor}
+            onColorSelect={setEditedColor}
           />
           <div className="note-actions">
             <button onClick={handleCancel} className="btn-cancel">

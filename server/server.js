@@ -10,6 +10,7 @@ const csrf = require('csurf');
 const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
+const adminRouter = require('./routes/admin');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 
@@ -89,6 +90,7 @@ app.get('/api/csrf-token', (req, res) => {
 // Routen
 app.use('/api/auth', authRouter);
 app.use('/api/notes', notesRouter);
+app.use('/api/admin', adminRouter);
 
 // Root-Route
 app.get('/', (req, res) => {

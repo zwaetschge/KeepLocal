@@ -23,6 +23,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Passwort ist erforderlich'],
     minlength: [8, 'Passwort muss mindestens 8 Zeichen lang sein']
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

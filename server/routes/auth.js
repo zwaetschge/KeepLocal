@@ -70,11 +70,16 @@ router.post('/register', [
       }
     }
 
+    // Check if this is the first user (admin)
+    const userCount = await User.countDocuments();
+    const isFirstUser = userCount === 0;
+
     // Neuen Benutzer erstellen
     const user = new User({
       username,
       email,
-      password
+      password,
+      isAdmin: isFirstUser
     });
 
     await user.save();
@@ -88,7 +93,8 @@ router.post('/register', [
       user: {
         id: user._id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        isAdmin: user.isAdmin
       }
     });
   } catch (error) {
@@ -139,7 +145,8 @@ router.post('/login', [
       user: {
         id: user._id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        isAdmin: user.isAdmin
       }
     });
   } catch (error) {
@@ -154,6 +161,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       id: req.user._id,
       username: req.user.username,
       email: req.user.email,
+      isAdmin: req.user.isAdmin,
       createdAt: req.user.createdAt
     }
   });

@@ -1,0 +1,61 @@
+.color-picker-container {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0;
+}
+
+.color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  max-width: 240px;
+}
+
+.color-picker-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.color-picker-option:hover {
+  transform: scale(1.15);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.color-picker-option.selected {
+  border-color: rgba(0, 0, 0, 0.4);
+  border-width: 3px;
+}
+
+.color-picker-checkmark {
+  font-size: 16px;
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+/* For white background, make checkmark more visible */
+.color-picker-option[style*="#ffffff"] .color-picker-checkmark,
+.color-picker-option[style*="#fff475"] .color-picker-checkmark,
+.color-picker-option[style*="#ccff90"] .color-picker-checkmark,
+.color-picker-option[style*="#a7ffeb"] .color-picker-checkmark {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+@media (max-width: 768px) {
+  .color-picker-grid {
+    gap: 6px;
+  }
+
+  .color-picker-option {
+    width: 28px;
+    height: 28px;
+  }
+}
