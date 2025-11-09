@@ -3,7 +3,7 @@
   border-radius: 8px;
   padding: 12px 16px;
   box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease, box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   position: relative;
   border: 1px solid transparent;
@@ -33,6 +33,7 @@
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
   word-wrap: break-word;
+  transition: color 0.3s ease;
 }
 
 .note-content {
@@ -43,6 +44,7 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  transition: color 0.3s ease;
 }
 
 .note-tags {
@@ -60,6 +62,7 @@
   color: rgba(0, 0, 0, 0.7);
   font-weight: 500;
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  transition: all 0.3s ease;
 }
 
 /* Hover actions */

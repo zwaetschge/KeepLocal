@@ -202,12 +202,18 @@ function AppContent() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [notes]);
 
-  // Filter notes by selected tag
+  // Filter notes by selected tag and sort pinned notes to top
   const filteredNotes = useMemo(() => {
-    if (!selectedTag) return notes;
-    return notes.filter(note =>
-      note.tags && note.tags.includes(selectedTag)
-    );
+    let filtered = selectedTag
+      ? notes.filter(note => note.tags && note.tags.includes(selectedTag))
+      : notes;
+
+    // Sort: pinned notes first, then by creation date (newest first)
+    return filtered.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
   }, [notes, selectedTag]);
 
   // Auth handlers

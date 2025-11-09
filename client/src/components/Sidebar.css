@@ -24,7 +24,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
   border-radius: 0 24px 24px 0;
   margin: 0 12px 0 0;
   text-align: left;

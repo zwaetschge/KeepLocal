@@ -34,11 +34,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
   };
 
   const handleCancel = () => {
-    setEditedTitle(note.title);
-    setEditedContent(note.content);
-    setEditedTags((note.tags || []).join(', '));
-    setEditedColor(note.color);
-    setIsEditing(false);
+    // Auto-save changes when closing
+    handleSave();
   };
 
   const handleDeleteClick = () => {
@@ -56,8 +53,9 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
 
   return (
     <div
-      className="note"
+      className={`note ${isEditing ? 'editing' : ''}`}
       style={{ backgroundColor: isEditing ? editedColor : note.color }}
+      onClick={() => !isEditing && setIsEditing(true)}
     >
       {isEditing ? (
         <>
@@ -67,12 +65,14 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
             onChange={(e) => setEditedTitle(e.target.value)}
             className="note-edit-title"
             placeholder="Titel"
+            onClick={(e) => e.stopPropagation()}
           />
           <textarea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
             className="note-edit-content"
             rows="4"
+            onClick={(e) => e.stopPropagation()}
           />
           <input
             type="text"
@@ -80,23 +80,24 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
             onChange={(e) => setEditedTags(e.target.value)}
             className="note-edit-tags"
             placeholder="Tags (durch Komma getrennt)"
+            onClick={(e) => e.stopPropagation()}
           />
-          <ColorPicker
-            selectedColor={editedColor}
-            onColorSelect={setEditedColor}
-          />
-          <div className="note-actions">
-            <button onClick={handleCancel} className="btn-cancel">
-              Abbrechen
-            </button>
-            <button onClick={handleSave} className="btn-save">
-              Speichern
-            </button>
+          <div className="note-edit-footer">
+            <div className="note-toolbar">
+              <ColorPicker
+                selectedColor={editedColor}
+                onColorSelect={setEditedColor}
+              />
+            </div>
+            <div className="note-edit-actions">
+              <button onClick={handleCancel} className="btn-text">
+                Schließen
+              </button>
+            </div>
           </div>
         </>
       ) : (
-        <>
-          {note.isPinned && <div className="pin-indicator">📌</div>}
+        <div className="note-content-wrapper">
           {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}
           <p className="note-content">{sanitize(note.content)}</p>
           {note.tags && note.tags.length > 0 && (
@@ -108,30 +109,35 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
               ))}
             </div>
           )}
-          <div className="note-actions">
+          <div className="note-hover-actions">
             <button
-              onClick={() => onTogglePin(note._id)}
-              className="btn-pin"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin(note._id);
+              }}
+              className={`action-btn pin-btn ${note.isPinned ? 'pinned' : ''}`}
               title={note.isPinned ? "Abheften" : "Anheften"}
+              aria-label={note.isPinned ? "Abheften" : "Anheften"}
             >
-              {note.isPinned ? '📌' : '📍'}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
+              </svg>
             </button>
             <button
-              onClick={() => setIsEditing(true)}
-              className="btn-edit"
-              title="Bearbeiten"
-            >
-              ✏️
-            </button>
-            <button
-              onClick={handleDeleteClick}
-              className="btn-delete"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteClick();
+              }}
+              className="action-btn delete-btn"
               title="Löschen"
+              aria-label="Löschen"
             >
-              🗑️
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
+              </svg>
             </button>
           </div>
-        </>
+        </div>
       )}
 
       <ConfirmDialog
