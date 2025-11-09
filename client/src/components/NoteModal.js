@@ -64,19 +64,16 @@ function NoteModal({ note, onSave, onClose }) {
         style={{ backgroundColor: getColorVar(color) }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="note-modal-header">
-          <h2>{note ? 'Notiz bearbeiten' : 'Neue Notiz'}</h2>
-          <button
-            className="note-modal-close"
-            onClick={onClose}
-            aria-label="Schließen"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
+        <button
+          className="note-modal-close"
+          onClick={onClose}
+          aria-label="Schließen"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
 
         <div className="note-modal-body">
           <input
@@ -123,10 +120,6 @@ function NoteModal({ note, onSave, onClose }) {
               Speichern
             </button>
           </div>
-        </div>
-
-        <div className="note-modal-hint">
-          <span>💡 Tipps: <kbd>ESC</kbd> zum Schließen, <kbd>Ctrl+Enter</kbd> zum Speichern</span>
         </div>
       </div>
     </div>

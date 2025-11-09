@@ -35,6 +35,7 @@
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transition: all 0.3s ease;
+  position: relative;
 }
 
 @keyframes slideUp {
@@ -53,30 +54,10 @@
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
-.note-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.dark-mode .note-modal-header {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.note-modal-header h2 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.87);
-}
-
-.dark-mode .note-modal-header h2 {
-  color: rgba(255, 255, 255, 0.87);
-}
-
 .note-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
   background: transparent;
   border: none;
   padding: 8px;
@@ -87,6 +68,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10;
 }
 
 .note-modal-close:hover {
@@ -178,7 +160,6 @@
   color: rgba(0, 0, 0, 0.7);
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   padding: 0.75rem 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .note-modal-tags::placeholder {
@@ -187,7 +168,6 @@
 
 .dark-mode .note-modal-tags {
   color: rgba(255, 255, 255, 0.7);
-  border-top-color: rgba(255, 255, 255, 0.1);
 }
 
 .dark-mode .note-modal-tags::placeholder {
@@ -196,14 +176,9 @@
 
 .note-modal-footer {
   padding: 1.5rem 2rem;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.dark-mode .note-modal-footer {
-  border-top-color: rgba(255, 255, 255, 0.1);
 }
 
 .note-modal-actions {
@@ -255,34 +230,6 @@
   cursor: not-allowed;
 }
 
-.note-modal-hint {
-  padding: 0.75rem 2rem;
-  background: rgba(0, 0, 0, 0.03);
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  font-size: 0.813rem;
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.dark-mode .note-modal-hint {
-  background: rgba(255, 255, 255, 0.03);
-  border-top-color: rgba(255, 255, 255, 0.05);
-}
-
-.note-modal-hint kbd {
-  background: rgba(0, 0, 0, 0.08);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-family: monospace;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.dark-mode .note-modal-hint kbd {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
 @media (max-width: 768px) {
   .note-modal {
     max-width: 100%;
@@ -300,7 +247,7 @@
   }
 
   .note-modal-footer,
-  .note-modal-header {
+  .note-modal-close {
     padding: 1rem 1.5rem;
   }
 
