@@ -1,4 +1,5 @@
 import React, { useState, useRef, useImperativeHandle } from 'react';
+import ColorPicker from './ColorPicker';
 import './NoteForm.css';
 
 const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
@@ -17,18 +18,6 @@ const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
     }
   }));
 
-  const colors = [
-    '#ffffff', // Weiß
-    '#f28b82', // Rot
-    '#fbbc04', // Gelb
-    '#fff475', // Hellgelb
-    '#ccff90', // Grün
-    '#a7ffeb', // Türkis
-    '#cbf0f8', // Hellblau
-    '#aecbfa', // Blau
-    '#d7aefb', // Lila
-    '#fdcfe8', // Rosa
-  ];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -104,18 +93,10 @@ const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
 
         {isExpanded && (
           <div className="note-form-actions">
-            <div className="color-picker">
-              {colors.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-option ${c === color ? 'active' : ''}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setColor(c)}
-                  title="Farbe ändern"
-                />
-              ))}
-            </div>
+            <ColorPicker
+              selectedColor={color}
+              onColorSelect={setColor}
+            />
 
             <div className="form-buttons">
               <button

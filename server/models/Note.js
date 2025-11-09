@@ -15,8 +15,21 @@ const noteSchema = new mongoose.Schema({
   },
   color: {
     type: String,
-    default: '#ffffff',
-    match: /^#[0-9A-Fa-f]{6}$/
+    default: '#ffffff', // Google Keep default white
+    enum: [
+      '#ffffff', // White
+      '#f28b82', // Red
+      '#fbbc04', // Orange
+      '#fff475', // Yellow
+      '#ccff90', // Green
+      '#a7ffeb', // Teal
+      '#cbf0f8', // Blue
+      '#aecbfa', // Dark Blue
+      '#d7aefb', // Purple
+      '#fdcfe8', // Pink
+      '#e6c9a8', // Brown
+      '#e8eaed'  // Gray
+    ]
   },
   isPinned: {
     type: Boolean,

@@ -1,14 +1,40 @@
 .note-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-top: 2rem;
+  column-count: 4;
+  column-gap: 16px;
+  margin-top: 24px;
+  padding: 0 16px;
+}
+
+@media (max-width: 1600px) {
+  .note-list {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 1200px) {
+  .note-list {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .note-list {
+    column-count: 1;
+    padding: 0 8px;
+  }
+}
+
+.note-list .note {
+  margin-bottom: 16px;
+  display: inline-block;
+  width: 100%;
 }
 
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
-  color: #999;
+  color: rgba(0, 0, 0, 0.38);
+  grid-column: 1 / -1;
 }
 
 .empty-state p:first-child {
@@ -18,15 +44,13 @@
 
 .empty-state p:last-child {
   font-size: 1.2rem;
+  color: rgba(0, 0, 0, 0.54);
 }
 
-@media (max-width: 768px) {
-  .note-list {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
+.dark-mode .empty-state {
+  color: rgba(255, 255, 255, 0.5);
+}
 
-  .empty-state {
-    padding: 3rem 1rem;
-  }
+.dark-mode .empty-state p:last-child {
+  color: rgba(255, 255, 255, 0.7);
 }
