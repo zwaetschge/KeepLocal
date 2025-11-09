@@ -230,6 +230,45 @@
   cursor: not-allowed;
 }
 
+.note-modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-modal-checkbox {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.71);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-modal-checkbox:hover {
+  background: rgba(95, 99, 104, 0.157);
+}
+
+.btn-modal-checkbox:active {
+  background: rgba(95, 99, 104, 0.22);
+}
+
+.dark-mode .btn-modal-checkbox {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .btn-modal-checkbox:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .btn-modal-checkbox:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 @media (max-width: 768px) {
   .note-modal {
     max-width: 100%;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './NoteModal.css';
 import ColorPicker from './ColorPicker';
 import { sanitize } from '../utils/sanitize';
@@ -9,6 +9,7 @@ function NoteModal({ note, onSave, onClose }) {
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState(note?.tags?.join(', ') || '');
   const [color, setColor] = useState(note?.color || '#ffffff');
+  const contentTextareaRef = useRef(null);
 
   // Update state when note changes
   useEffect(() => {
@@ -39,6 +40,29 @@ function NoteModal({ note, onSave, onClose }) {
 
     onSave(noteData);
     onClose();
+  };
+
+  const handleInsertCheckbox = () => {
+    if (!contentTextareaRef.current) return;
+
+    const textarea = contentTextareaRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    // Insert [ ] at cursor position
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    const newText = before + '[ ] ' + after;
+
+    setContent(newText);
+
+    // Set cursor after the inserted checkbox
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + 4; // After "[ ] "
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
   };
 
   const handleKeyDown = (e) => {
@@ -85,6 +109,7 @@ function NoteModal({ note, onSave, onClose }) {
             autoFocus
           />
           <textarea
+            ref={contentTextareaRef}
             className="note-modal-content"
             placeholder="Notiz eingeben..."
             value={content}
@@ -101,10 +126,24 @@ function NoteModal({ note, onSave, onClose }) {
         </div>
 
         <div className="note-modal-footer">
-          <ColorPicker
-            selectedColor={color}
-            onColorSelect={setColor}
-          />
+          <div className="note-modal-toolbar">
+            <ColorPicker
+              selectedColor={color}
+              onColorSelect={setColor}
+            />
+            <button
+              type="button"
+              className="btn-modal-checkbox"
+              onClick={handleInsertCheckbox}
+              title="Checkbox einfügen"
+              aria-label="Todo-Checkbox einfügen"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <path d="M9 11l3 3 6-6"/>
+              </svg>
+            </button>
+          </div>
           <div className="note-modal-actions">
             <button
               className="btn-modal-cancel"

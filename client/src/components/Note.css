@@ -106,6 +106,40 @@
   pointer-events: none;
 }
 
+/* Image preview for image links */
+.note-link-image:hover::after {
+  content: '';
+  background-image: var(--preview-image);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-color: rgba(0, 0, 0, 0.95);
+  width: 250px;
+  height: 200px;
+  max-width: none;
+  padding: 0.5rem;
+  white-space: normal;
+}
+
+.note-link-image:hover::before {
+  content: attr(data-url);
+  position: absolute;
+  bottom: calc(100% + 210px);
+  left: 0;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 101;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: fadeIn 0.2s ease;
+  pointer-events: none;
+}
+
 .dark-mode .note-link {
   color: var(--accent-color);
 }

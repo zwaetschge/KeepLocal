@@ -17,6 +17,15 @@ export const linkify = (text) => {
   const linkedText = text.replace(urlPattern, (url) => {
     // Extract domain for preview
     const domain = url.match(/https?:\/\/([^/]+)/)?.[1] || url;
+
+    // Check if URL is an image
+    const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i;
+    const isImage = imageExtensions.test(url);
+
+    if (isImage) {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="note-link note-link-image" data-url="${url}" data-image="${url}" title="${domain}">${url}</a>`;
+    }
+
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="note-link" data-url="${url}" title="${domain}">${url}</a>`;
   });
 
@@ -92,7 +101,7 @@ export const sanitizeAndLinkify = (text) => {
   // Sanitize with allowed tags for links, todos, and checkboxes
   return DOMPurify.sanitize(linked, {
     ALLOWED_TAGS: ['a', 'br', 'label', 'input', 'span'],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'type', 'checked', 'data-url', 'title'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'type', 'checked', 'data-url', 'data-image', 'title'],
     KEEP_CONTENT: true
   });
 };

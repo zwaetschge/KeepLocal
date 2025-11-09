@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import ColorPicker from './ColorPicker';
@@ -8,6 +8,20 @@ import { getColorVar } from '../utils/colorMapper';
 function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const contentRef = useRef(null);
+
+  // Set up image preview on image links
+  useEffect(() => {
+    if (contentRef.current) {
+      const imageLinks = contentRef.current.querySelectorAll('.note-link-image');
+      imageLinks.forEach(link => {
+        const imageUrl = link.getAttribute('data-image');
+        if (imageUrl) {
+          link.style.setProperty('--preview-image', `url(${imageUrl})`);
+        }
+      });
+    }
+  }, [note.content]);
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -84,6 +98,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
       <div className="note-content-wrapper">
         {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}
         <p
+          ref={contentRef}
           className="note-content"
           dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content) }}
           onClick={(e) => {
