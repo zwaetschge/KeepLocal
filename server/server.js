@@ -79,18 +79,18 @@ app.use(limiter); // Rate Limiting anwenden
 app.use(sanitizeInputMiddleware);
 
 // CSRF-Schutz (nach cookieParser, vor Routen)
+// Auth-Routen sind ausgenommen, da sie keine CSRF-Token benötigen
 const csrfProtection = csrf({ cookie: true });
-app.use(csrfProtection);
 
 // CSRF-Token-Endpunkt
-app.get('/api/csrf-token', (req, res) => {
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// Routen
+// Routen (Auth ohne CSRF-Schutz)
 app.use('/api/auth', authRouter);
-app.use('/api/notes', notesRouter);
-app.use('/api/admin', adminRouter);
+app.use('/api/notes', csrfProtection, notesRouter);
+app.use('/api/admin', csrfProtection, adminRouter);
 
 // Root-Route
 app.get('/', (req, res) => {
