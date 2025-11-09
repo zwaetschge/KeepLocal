@@ -90,9 +90,11 @@ function Setup({ onSetup }) {
               required
               minLength={3}
               maxLength={50}
-              pattern="[a-zA-Z0-9_-]+"
               title="Nur Buchstaben, Zahlen, Bindestriche und Unterstriche"
             />
+            <small className="form-hint">
+              Nur Buchstaben, Zahlen, Bindestriche und Unterstriche erlaubt
+            </small>
           </div>
 
           <div className="form-group">
