@@ -10,6 +10,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
 import AdminConsole from './components/AdminConsole';
+import Logo from './components/Logo';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
@@ -300,7 +301,7 @@ function AppContent() {
     <div className="App">
       <header className="App-header">
         <div className="header-content">
-          <h1>📝 KeepLocal</h1>
+          <Logo size={36} />
           <div className="user-info">
             <span className="user-name" title={user?.email}>
               {user?.username}

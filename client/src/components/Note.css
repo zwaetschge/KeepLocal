@@ -47,6 +47,24 @@
   transition: color 0.3s ease;
 }
 
+.note-link {
+  color: var(--accent-color);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.note-link:hover {
+  border-bottom-color: var(--accent-color);
+  opacity: 0.8;
+}
+
+.dark-mode .note-link {
+  color: var(--accent-color);
+}
+
 .note-tags {
   display: flex;
   flex-wrap: wrap;

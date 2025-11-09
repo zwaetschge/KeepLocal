@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import ColorPicker from './ColorPicker';
-import { sanitize } from '../utils/sanitize';
+import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
 function Note({ note, onDelete, onUpdate, onTogglePin }) {
@@ -100,7 +100,16 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
       ) : (
         <div className="note-content-wrapper">
           {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}
-          <p className="note-content">{sanitize(note.content)}</p>
+          <p
+            className="note-content"
+            dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content) }}
+            onClick={(e) => {
+              // Allow links to be clicked
+              if (e.target.tagName === 'A') {
+                e.stopPropagation();
+              }
+            }}
+          />
           {note.tags && note.tags.length > 0 && (
             <div className="note-tags">
               {note.tags.map((tag, index) => (
