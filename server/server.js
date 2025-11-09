@@ -82,8 +82,9 @@ app.use(sanitizeInputMiddleware);
 // Auth-Routen sind ausgenommen, da sie keine CSRF-Token benötigen
 const csrfProtection = csrf({ cookie: true });
 
-// CSRF-Token-Endpunkt (OHNE CSRF-Schutz - sonst Henne-Ei-Problem!)
-app.get('/api/csrf-token', (req, res) => {
+// CSRF-Token-Endpunkt
+// GET-Anfragen werden nicht validiert, aber der Middleware ist nötig für req.csrfToken()
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
