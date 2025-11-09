@@ -30,6 +30,55 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// POST /api/admin/users - Create a new user
+router.post('/users', async (req, res) => {
+  try {
+    const { username, email, password, isAdmin } = req.body;
+
+    // Validation
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      if (existingUser.email === email) {
+        return res.status(400).json({ error: 'E-Mail-Adresse bereits vergeben' });
+      }
+      return res.status(400).json({ error: 'Benutzername bereits vergeben' });
+    }
+
+    // Create user
+    const user = new User({
+      username,
+      email,
+      password, // Will be hashed by the User model pre-save hook
+      isAdmin: isAdmin || false
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      message: 'Benutzer erfolgreich erstellt',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Fehler beim Erstellen des Benutzers' });
+  }
+});
+
 // GET /api/admin/stats - Get system statistics
 router.get('/stats', async (req, res) => {
   try {

@@ -11,6 +11,7 @@ import Register from './components/Register';
 import Setup from './components/Setup';
 import AdminConsole from './components/AdminConsole';
 import Logo from './components/Logo';
+import NoteModal from './components/NoteModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
@@ -23,6 +24,7 @@ function AppContent() {
   const [toast, setToast] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
+  const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
   const [operationLoading, setOperationLoading] = useState({});
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -138,6 +140,25 @@ function AppContent() {
       showToast(error.message || 'Fehler beim Anheften der Notiz', 'error');
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  // Modal handlers
+  const openNoteModal = (note = null) => {
+    setNoteModal({ isOpen: true, note });
+  };
+
+  const closeNoteModal = () => {
+    setNoteModal({ isOpen: false, note: null });
+  };
+
+  const handleModalSave = async (noteData) => {
+    if (noteModal.note) {
+      // Update existing note
+      await updateNote(noteModal.note._id, noteData);
+    } else {
+      // Create new note
+      await createNote(noteData);
     }
   };
 
@@ -346,9 +367,8 @@ function AppContent() {
 
         <main className="App-main" role="main">
         <NoteForm
-          onCreateNote={createNote}
+          onOpenModal={() => openNoteModal()}
           ref={noteFormRef}
-          loading={operationLoading.create}
           aria-label="Neue Notiz erstellen"
         />
 
@@ -367,6 +387,7 @@ function AppContent() {
                   onDeleteNote={deleteNote}
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
+                  onOpenModal={openNoteModal}
                   operationLoading={operationLoading}
                 />
               </div>
@@ -379,6 +400,7 @@ function AppContent() {
                   onDeleteNote={deleteNote}
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
+                  onOpenModal={openNoteModal}
                   operationLoading={operationLoading}
                 />
               </div>
@@ -449,6 +471,14 @@ function AppContent() {
 
       {showAdminConsole && user?.isAdmin && (
         <AdminConsole onClose={() => setShowAdminConsole(false)} />
+      )}
+
+      {noteModal.isOpen && (
+        <NoteModal
+          note={noteModal.note}
+          onSave={handleModalSave}
+          onClose={closeNoteModal}
+        />
       )}
     </div>
   );

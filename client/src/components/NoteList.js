@@ -2,7 +2,7 @@ import React from 'react';
 import Note from './Note';
 import './NoteList.css';
 
-function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, operationLoading }) {
+function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onOpenModal, operationLoading }) {
   return (
     <div className="note-list">
       {notes.map((note) => (
@@ -12,6 +12,7 @@ function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, operationLoa
           onDelete={onDeleteNote}
           onUpdate={onUpdateNote}
           onTogglePin={onTogglePin}
+          onOpenModal={onOpenModal}
         />
       ))}
     </div>
