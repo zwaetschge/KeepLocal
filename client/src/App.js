@@ -202,18 +202,21 @@ function AppContent() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [notes]);
 
-  // Filter notes by selected tag and sort pinned notes to top
-  const filteredNotes = useMemo(() => {
+  // Filter notes by selected tag and separate into pinned/other categories
+  const { pinnedNotes, otherNotes } = useMemo(() => {
     let filtered = selectedTag
       ? notes.filter(note => note.tags && note.tags.includes(selectedTag))
       : notes;
 
-    // Sort: pinned notes first, then by creation date (newest first)
-    return filtered.sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
+    const pinned = filtered
+      .filter(note => note.isPinned)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+    const other = filtered
+      .filter(note => !note.isPinned)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+    return { pinnedNotes: pinned, otherNotes: other };
   }, [notes, selectedTag]);
 
   // Auth handlers
@@ -345,14 +348,31 @@ function AppContent() {
           </div>
         ) : (
           <>
-            <NoteList
-              notes={filteredNotes}
-              onDeleteNote={deleteNote}
-              onUpdateNote={updateNote}
-              onTogglePin={togglePinNote}
-              operationLoading={operationLoading}
-            />
-            {filteredNotes.length === 0 && !selectedTag && !searchTerm && (
+            {pinnedNotes.length > 0 && (
+              <div className="notes-section">
+                <h2 className="section-title">ANGEHEFTET</h2>
+                <NoteList
+                  notes={pinnedNotes}
+                  onDeleteNote={deleteNote}
+                  onUpdateNote={updateNote}
+                  onTogglePin={togglePinNote}
+                  operationLoading={operationLoading}
+                />
+              </div>
+            )}
+            {otherNotes.length > 0 && (
+              <div className="notes-section">
+                {pinnedNotes.length > 0 && <h2 className="section-title">ANDERE</h2>}
+                <NoteList
+                  notes={otherNotes}
+                  onDeleteNote={deleteNote}
+                  onUpdateNote={updateNote}
+                  onTogglePin={togglePinNote}
+                  operationLoading={operationLoading}
+                />
+              </div>
+            )}
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && !selectedTag && !searchTerm && (
               <div className="empty-state" role="status">
                 <p>📝 Keine Notizen vorhanden</p>
                 <p className="empty-hint">

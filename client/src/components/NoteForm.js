@@ -1,6 +1,7 @@
 import React, { useState, useRef, useImperativeHandle } from 'react';
 import ColorPicker from './ColorPicker';
 import './NoteForm.css';
+import { getColorVar } from '../utils/colorMapper';
 
 const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
   const [title, setTitle] = useState('');
@@ -52,7 +53,7 @@ const NoteForm = React.forwardRef(({ onCreateNote, loading }, ref) => {
       <form
         className="note-form"
         onSubmit={handleSubmit}
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: getColorVar(color) }}
       >
         {isExpanded && (
           <input

@@ -3,6 +3,7 @@ import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import ColorPicker from './ColorPicker';
 import { sanitize } from '../utils/sanitize';
+import { getColorVar } from '../utils/colorMapper';
 
 function Note({ note, onDelete, onUpdate, onTogglePin }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -54,7 +55,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin }) {
   return (
     <div
       className={`note ${isEditing ? 'editing' : ''}`}
-      style={{ backgroundColor: isEditing ? editedColor : note.color }}
+      style={{ backgroundColor: isEditing ? getColorVar(editedColor) : getColorVar(note.color) }}
       onClick={() => !isEditing && setIsEditing(true)}
     >
       {isEditing ? (

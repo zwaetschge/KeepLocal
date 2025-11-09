@@ -1,13 +1,62 @@
-.color-picker-container {
-  margin: 0.75rem 0;
-  padding: 0.5rem 0;
+.color-picker-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.color-picker-toggle {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.71);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-picker-toggle:hover {
+  background: rgba(95, 99, 104, 0.157);
+}
+
+.dark-mode .color-picker-toggle {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .color-picker-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.color-picker-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 1000;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.12);
+  animation: slideUpFade 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .color-picker-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
-  max-width: 240px;
+  min-width: 240px;
 }
 
 .color-picker-option {
@@ -16,42 +65,43 @@
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .color-picker-option:hover {
-  transform: scale(1.15);
-  border-color: rgba(0, 0, 0, 0.2);
+  transform: scale(1.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 
 .color-picker-option.selected {
-  border-color: rgba(0, 0, 0, 0.4);
-  border-width: 3px;
+  border-color: rgba(0, 0, 0, 0.5);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
-.color-picker-checkmark {
-  font-size: 16px;
-  font-weight: bold;
-  color: rgba(0, 0, 0, 0.6);
-  text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+.dark-mode .color-picker-option.selected {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px rgba(255, 255, 255, 0.4);
 }
 
-/* For white background, make checkmark more visible */
-.color-picker-option[style*="#ffffff"] .color-picker-checkmark,
-.color-picker-option[style*="#fff475"] .color-picker-checkmark,
-.color-picker-option[style*="#ccff90"] .color-picker-checkmark,
-.color-picker-option[style*="#a7ffeb"] .color-picker-checkmark {
-  color: rgba(0, 0, 0, 0.7);
+.color-picker-option svg {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
 }
 
 @media (max-width: 768px) {
+  .color-picker-popup {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   .color-picker-grid {
     gap: 6px;
+    min-width: 200px;
   }
 
   .color-picker-option {
