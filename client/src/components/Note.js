@@ -51,6 +51,25 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
     return false;
   };
 
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation(); // Prevent note from opening
+
+    // Get the checkbox element
+    const checkbox = e.target;
+    const isChecked = checkbox.checked;
+
+    // Update note content by toggling the checkbox state
+    const updatedContent = note.content.replace(/\[[ xX]\]/, (match) => {
+      // Find the checkbox that was clicked and toggle it
+      return isChecked ? '[x]' : '[ ]';
+    });
+
+    // Save the updated content
+    if (onUpdate && updatedContent !== note.content) {
+      onUpdate(note._id, { content: updatedContent });
+    }
+  };
+
   return (
     <div
       className={`note ${isDragging ? 'dragging' : ''}`}
@@ -71,6 +90,10 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
             // Allow links to be clicked
             if (e.target.tagName === 'A') {
               e.stopPropagation();
+            }
+            // Handle checkbox clicks
+            if (e.target.type === 'checkbox' && e.target.classList.contains('todo-checkbox')) {
+              handleCheckboxClick(e);
             }
           }}
         />

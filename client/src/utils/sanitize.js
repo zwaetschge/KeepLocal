@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify';
 
 /**
- * Converts URLs in text to clickable links
+ * Converts URLs in text to clickable links with preview
  * @param {string} text - The text containing URLs
  * @returns {string} - HTML with clickable links
  */
@@ -13,12 +13,36 @@ export const linkify = (text) => {
   // URL regex pattern
   const urlPattern = /(https?:\/\/[^\s]+)/g;
 
-  // Replace URLs with anchor tags
+  // Replace URLs with anchor tags with preview data
   const linkedText = text.replace(urlPattern, (url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="note-link">${url}</a>`;
+    // Extract domain for preview
+    const domain = url.match(/https?:\/\/([^/]+)/)?.[1] || url;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="note-link" data-url="${url}" title="${domain}">${url}</a>`;
   });
 
   return linkedText;
+};
+
+/**
+ * Converts todo checkboxes to interactive HTML checkboxes
+ * @param {string} text - The text containing todo items
+ * @returns {string} - HTML with interactive checkboxes
+ */
+export const parseTodos = (text) => {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  // Match todo items: [ ] or [x] or [X]
+  // Support both at start of line and after line break
+  const todoPattern = /(\[[ xX]\])/g;
+
+  const withTodos = text.replace(todoPattern, (match) => {
+    const isChecked = match.toLowerCase().includes('x');
+    return `<label class="todo-item"><input type="checkbox" class="todo-checkbox" ${isChecked ? 'checked' : ''} /><span class="todo-label"></span></label>`;
+  });
+
+  return withTodos;
 };
 
 /**
@@ -39,9 +63,9 @@ export const sanitize = (dirty) => {
 };
 
 /**
- * Sanitizes and linkifies text content
+ * Sanitizes and linkifies text content with todo support
  * @param {string} text - The text to process
- * @returns {string} - Sanitized HTML with clickable links
+ * @returns {string} - Sanitized HTML with clickable links and todos
  */
 export const sanitizeAndLinkify = (text) => {
   if (typeof text !== 'string') {
@@ -59,13 +83,16 @@ export const sanitizeAndLinkify = (text) => {
   // Convert newlines to <br> tags
   const withBreaks = escaped.replace(/\n/g, '<br>');
 
-  // Linkify URLs
-  const linked = linkify(withBreaks);
+  // Parse todo checkboxes
+  const withTodos = parseTodos(withBreaks);
 
-  // Sanitize with allowed tags for links
+  // Linkify URLs
+  const linked = linkify(withTodos);
+
+  // Sanitize with allowed tags for links, todos, and checkboxes
   return DOMPurify.sanitize(linked, {
-    ALLOWED_TAGS: ['a', 'br'],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    ALLOWED_TAGS: ['a', 'br', 'label', 'input', 'span'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'type', 'checked', 'data-url', 'title'],
     KEEP_CONTENT: true
   });
 };
@@ -85,5 +112,6 @@ export default {
   sanitize,
   sanitizeHTML,
   linkify,
-  sanitizeAndLinkify
+  sanitizeAndLinkify,
+  parseTodos
 };
