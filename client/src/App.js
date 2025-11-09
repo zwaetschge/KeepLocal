@@ -302,10 +302,26 @@ function AppContent() {
       <header className="App-header">
         <div className="header-content">
           <Logo size={36} />
+          <SearchBar
+            onSearch={handleSearch}
+            ref={searchBarRef}
+            aria-label="Notizen durchsuchen"
+          />
           <div className="user-info">
-            <span className="user-name" title={user?.email}>
-              {user?.username}
-            </span>
+            {user?.isAdmin ? (
+              <button
+                className="user-name clickable"
+                onClick={() => setShowAdminConsole(true)}
+                title={`${user?.email} (Admin - Klicken für Admin-Panel)`}
+                aria-label="Admin-Panel öffnen"
+              >
+                👤 {user?.username}
+              </button>
+            ) : (
+              <span className="user-name" title={user?.email}>
+                👤 {user?.username}
+              </span>
+            )}
             <button
               onClick={handleLogout}
               className="btn-logout"
@@ -334,12 +350,6 @@ function AppContent() {
           ref={noteFormRef}
           loading={operationLoading.create}
           aria-label="Neue Notiz erstellen"
-        />
-
-        <SearchBar
-          onSearch={handleSearch}
-          ref={searchBarRef}
-          aria-label="Notizen durchsuchen"
         />
 
         {loading ? (

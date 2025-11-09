@@ -107,8 +107,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 24px;
+  flex-wrap: nowrap;
 }
 
 .App-header h1 {
@@ -140,10 +140,29 @@ body {
   background: rgba(0, 0, 0, 0.08);
   border-radius: 24px;
   cursor: default;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.user-name.clickable {
+  cursor: pointer;
+}
+
+.user-name.clickable:hover {
+  background: rgba(102, 126, 234, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .dark-mode .user-name {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.dark-mode .user-name.clickable:hover {
+  background: rgba(138, 180, 248, 0.3);
+  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.3);
 }
 
 .btn-logout {
