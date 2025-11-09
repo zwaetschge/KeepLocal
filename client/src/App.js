@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
 import NoteForm from './components/NoteForm';
 import NoteList from './components/NoteList';
 import SearchBar from './components/SearchBar';
+import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
 import Toast from './components/Toast';
 import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
+import AdminConsole from './components/AdminConsole';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
@@ -16,8 +18,10 @@ function AppContent() {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTag, setSelectedTag] = useState(null);
   const [toast, setToast] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
   const [operationLoading, setOperationLoading] = useState({});
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -181,6 +185,31 @@ function AppContent() {
     }
   }, [isLoggedIn, isDarkMode]);
 
+  // Extract all unique tags from notes with counts
+  const allTags = useMemo(() => {
+    const tagMap = {};
+    notes.forEach(note => {
+      if (note.tags && Array.isArray(note.tags)) {
+        note.tags.forEach(tag => {
+          if (tag) {
+            tagMap[tag] = (tagMap[tag] || 0) + 1;
+          }
+        });
+      }
+    });
+    return Object.entries(tagMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [notes]);
+
+  // Filter notes by selected tag
+  const filteredNotes = useMemo(() => {
+    if (!selectedTag) return notes;
+    return notes.filter(note =>
+      note.tags && note.tags.includes(selectedTag)
+    );
+  }, [notes, selectedTag]);
+
   // Auth handlers
   const handleLogin = async (email, password) => {
     await login(email, password);
@@ -262,10 +291,7 @@ function AppContent() {
     <div className="App">
       <header className="App-header">
         <div className="header-content">
-          <div>
-            <h1>📝 KeepLocal</h1>
-            <p>Ihre lokale Notizen-App</p>
-          </div>
+          <h1>📝 KeepLocal</h1>
           <div className="user-info">
             <span className="user-name" title={user?.email}>
               {user?.username}
@@ -273,7 +299,7 @@ function AppContent() {
             <button
               onClick={handleLogout}
               className="btn-logout"
-              title="Abmelden (Strg+Shift+L)"
+              title="Abmelden"
               aria-label="Abmelden"
             >
               Abmelden
@@ -282,7 +308,17 @@ function AppContent() {
         </div>
       </header>
 
-      <main className="App-main" role="main">
+      <div className="App-container">
+        <Sidebar
+          allTags={allTags}
+          selectedTag={selectedTag}
+          onTagSelect={setSelectedTag}
+          noteCount={notes.length}
+          isAdmin={user?.isAdmin}
+          onAdminClick={() => setShowAdminConsole(true)}
+        />
+
+        <main className="App-main" role="main">
         <NoteForm
           onCreateNote={createNote}
           ref={noteFormRef}
@@ -304,13 +340,13 @@ function AppContent() {
         ) : (
           <>
             <NoteList
-              notes={notes}
+              notes={filteredNotes}
               onDeleteNote={deleteNote}
               onUpdateNote={updateNote}
               onTogglePin={togglePinNote}
               operationLoading={operationLoading}
             />
-            {notes.length === 0 && !searchTerm && (
+            {filteredNotes.length === 0 && !selectedTag && !searchTerm && (
               <div className="empty-state" role="status">
                 <p>📝 Keine Notizen vorhanden</p>
                 <p className="empty-hint">
@@ -318,7 +354,15 @@ function AppContent() {
                 </p>
               </div>
             )}
-            {notes.length === 0 && searchTerm && (
+            {filteredNotes.length === 0 && selectedTag && (
+              <div className="empty-state" role="status">
+                <p>🏷️ Keine Notizen mit diesem Label</p>
+                <p className="empty-hint">
+                  Wählen Sie ein anderes Label oder erstellen Sie eine neue Notiz
+                </p>
+              </div>
+            )}
+            {filteredNotes.length === 0 && searchTerm && !selectedTag && (
               <div className="empty-state" role="status">
                 <p>🔍 Keine Notizen gefunden</p>
                 <p className="empty-hint">
@@ -349,20 +393,8 @@ function AppContent() {
             )}
           </>
         )}
-
-        <div className="keyboard-shortcuts-hint" role="complementary">
-          <details>
-            <summary>Tastaturkürzel</summary>
-            <ul>
-              <li><kbd>Strg+N</kbd> - Neue Notiz erstellen</li>
-              <li><kbd>Strg+F</kbd> - Suche fokussieren</li>
-              <li><kbd>Strg+K</kbd> - Dunkelmodus umschalten</li>
-              <li><kbd>Strg+Shift+L</kbd> - Abmelden</li>
-              <li><kbd>Esc</kbd> - Dialoge schließen</li>
-            </ul>
-          </details>
-        </div>
       </main>
+      </div>
 
       <ThemeToggle
         isDarkMode={isDarkMode}
@@ -376,6 +408,10 @@ function AppContent() {
           type={toast.type}
           onClose={() => setToast(null)}
         />
+      )}
+
+      {showAdminConsole && user?.isAdmin && (
+        <AdminConsole onClose={() => setShowAdminConsole(false)} />
       )}
     </div>
   );

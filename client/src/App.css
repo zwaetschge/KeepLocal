@@ -138,10 +138,17 @@ body {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+.App-container {
+  display: flex;
+  min-height: calc(100vh - 60px);
+}
+
 .App-main {
+  flex: 1;
   max-width: 1600px;
   margin: 0 auto;
   padding: 24px 16px;
+  width: 100%;
 }
 
 .loading {
