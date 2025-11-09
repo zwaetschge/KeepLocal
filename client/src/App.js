@@ -380,7 +380,7 @@ function AppContent() {
                 </p>
               </div>
             )}
-            {filteredNotes.length === 0 && selectedTag && (
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && selectedTag && (
               <div className="empty-state" role="status">
                 <p>🏷️ Keine Notizen mit diesem Label</p>
                 <p className="empty-hint">
@@ -388,7 +388,7 @@ function AppContent() {
                 </p>
               </div>
             )}
-            {filteredNotes.length === 0 && searchTerm && !selectedTag && (
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && searchTerm && !selectedTag && (
               <div className="empty-state" role="status">
                 <p>🔍 Keine Notizen gefunden</p>
                 <p className="empty-hint">
