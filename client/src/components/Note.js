@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import ColorPicker from './ColorPicker';
+import LinkPreview from './LinkPreview';
 import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
@@ -9,19 +10,6 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const contentRef = useRef(null);
-
-  // Set up image preview on image links
-  useEffect(() => {
-    if (contentRef.current) {
-      const imageLinks = contentRef.current.querySelectorAll('.note-link-image');
-      imageLinks.forEach(link => {
-        const imageUrl = link.getAttribute('data-image');
-        if (imageUrl) {
-          link.style.setProperty('--preview-image', `url(${imageUrl})`);
-        }
-      });
-    }
-  }, [note.content]);
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -65,23 +53,17 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
     return false;
   };
 
-  const handleCheckboxClick = (e) => {
-    e.stopPropagation(); // Prevent note from opening
+  const handleTodoItemToggle = (itemIndex) => {
+    if (!note.todoItems || !onUpdate) return;
 
-    // Get the checkbox element
-    const checkbox = e.target;
-    const isChecked = checkbox.checked;
-
-    // Update note content by toggling the checkbox state
-    const updatedContent = note.content.replace(/\[[ xX]\]/, (match) => {
-      // Find the checkbox that was clicked and toggle it
-      return isChecked ? '[x]' : '[ ]';
+    const updatedTodoItems = note.todoItems.map((item, index) => {
+      if (index === itemIndex) {
+        return { ...item, completed: !item.completed };
+      }
+      return item;
     });
 
-    // Save the updated content
-    if (onUpdate && updatedContent !== note.content) {
-      onUpdate(note._id, { content: updatedContent });
-    }
+    onUpdate(note._id, { todoItems: updatedTodoItems });
   };
 
   return (
@@ -97,21 +79,52 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
     >
       <div className="note-content-wrapper">
         {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}
-        <p
-          ref={contentRef}
-          className="note-content"
-          dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content) }}
-          onClick={(e) => {
-            // Allow links to be clicked
-            if (e.target.tagName === 'A') {
-              e.stopPropagation();
-            }
-            // Handle checkbox clicks
-            if (e.target.type === 'checkbox' && e.target.classList.contains('todo-checkbox')) {
-              handleCheckboxClick(e);
-            }
-          }}
-        />
+
+        {note.isTodoList && note.todoItems && note.todoItems.length > 0 ? (
+          <div className="note-todo-list">
+            {note.todoItems.map((item, index) => (
+              <div key={index} className="note-todo-item">
+                <input
+                  type="checkbox"
+                  className="note-todo-checkbox"
+                  checked={item.completed}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleTodoItemToggle(index);
+                  }}
+                />
+                <span className={`note-todo-text ${item.completed ? 'completed' : ''}`}>
+                  {sanitize(item.text)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <p
+              ref={contentRef}
+              className="note-content"
+              dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content) }}
+              onClick={(e) => {
+                // Allow links to be clicked
+                if (e.target.tagName === 'A') {
+                  e.stopPropagation();
+                }
+              }}
+            />
+            {note.linkPreviews && note.linkPreviews.length > 0 && (
+              <div className="note-link-previews">
+                {note.linkPreviews.map((preview, index) => (
+                  <LinkPreview
+                    key={index}
+                    preview={preview}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         {note.tags && note.tags.length > 0 && (
           <div className="note-tags">
             {note.tags.map((tag, index) => (

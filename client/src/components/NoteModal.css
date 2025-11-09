@@ -257,6 +257,11 @@
   background: rgba(95, 99, 104, 0.22);
 }
 
+.btn-modal-checkbox.active {
+  background: rgba(26, 115, 232, 0.1);
+  color: var(--accent-color);
+}
+
 .dark-mode .btn-modal-checkbox {
   color: rgba(255, 255, 255, 0.87);
 }
@@ -267,6 +272,144 @@
 
 .dark-mode .btn-modal-checkbox:active {
   background: rgba(255, 255, 255, 0.16);
+}
+
+.dark-mode .btn-modal-checkbox.active {
+  background: rgba(26, 115, 232, 0.2);
+}
+
+.todo-list-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  min-height: 300px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.todo-item:hover {
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark-mode .todo-item:hover {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.todo-item-checkbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.todo-item-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 1rem;
+  line-height: 1.5;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  padding: 0.25rem 0;
+  transition: all 0.2s ease;
+}
+
+.todo-item-input.completed {
+  text-decoration: line-through;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.todo-item-input::placeholder {
+  color: rgba(0, 0, 0, 0.38);
+}
+
+.dark-mode .todo-item-input {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .todo-item-input.completed {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-mode .todo-item-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.todo-item-delete {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.todo-item:hover .todo-item-delete {
+  opacity: 1;
+}
+
+.todo-item-delete:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.dark-mode .todo-item-delete {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-mode .todo-item-delete:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.todo-add-item {
+  background: transparent;
+  border: none;
+  padding: 0.75rem 0;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.938rem;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.todo-add-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.dark-mode .todo-add-item {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dark-mode .todo-add-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.note-modal-link-previews {
+  margin-top: 0.75rem;
 }
 
 @media (max-width: 768px) {
