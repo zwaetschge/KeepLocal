@@ -6,11 +6,14 @@ import ConfirmDialog from './ConfirmDialog';
 function AdminConsole({ onClose }) {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('stats');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [operationLoading, setOperationLoading] = useState({});
   const [error, setError] = useState(null);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', isAdmin: false });
 
   useEffect(() => {
     loadData();
@@ -27,6 +30,9 @@ function AdminConsole({ onClose }) {
       } else if (activeTab === 'users') {
         const data = await adminAPI.getUsers();
         setUsers(data.users);
+      } else if (activeTab === 'settings') {
+        const data = await adminAPI.getSettings();
+        setSettings(data.settings);
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -65,14 +71,56 @@ function AdminConsole({ onClose }) {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+
+    if (!newUser.username || !newUser.email || !newUser.password) {
+      setError('Bitte alle Felder ausfüllen');
+      return;
+    }
+
+    setOperationLoading(prev => ({ ...prev, create: true }));
+    try {
+      const response = await adminAPI.createUser(newUser);
+      setUsers([...users, response.user]);
+      setNewUser({ username: '', email: '', password: '', isAdmin: false });
+      setShowCreateUser(false);
+      setError(null);
+    } catch (error) {
+      console.error('Error creating user:', error);
+      setError(error.message || 'Fehler beim Erstellen des Benutzers');
+    } finally {
+      setOperationLoading(prev => ({ ...prev, create: false }));
+    }
+  };
+
+  const handleToggleRegistration = async () => {
+    setOperationLoading(prev => ({ ...prev, settings: true }));
+    try {
+      const response = await adminAPI.updateSettings({
+        registrationEnabled: !settings.registrationEnabled
+      });
+      setSettings(response.settings);
+      setError(null);
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      setError(error.message || 'Fehler beim Aktualisieren der Einstellungen');
+    } finally {
+      setOperationLoading(prev => ({ ...prev, settings: false }));
+    }
+  };
+
   return (
     <div className="admin-console-overlay" onClick={onClose}>
       <div className="admin-console" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="admin-close-btn" title="Schließen" aria-label="Schließen">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
         <div className="admin-console-header">
           <h2>🔧 Admin-Konsole</h2>
-          <button onClick={onClose} className="admin-close-btn" title="Schließen">
-            ✕
-          </button>
         </div>
 
         <div className="admin-tabs">
@@ -87,6 +135,12 @@ function AdminConsole({ onClose }) {
             onClick={() => setActiveTab('users')}
           >
             👥 Benutzer
+          </button>
+          <button
+            className={`admin-tab ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            ⚙️ Einstellungen
           </button>
         </div>
 
@@ -175,6 +229,75 @@ function AdminConsole({ onClose }) {
 
               {activeTab === 'users' && (
                 <div className="admin-users">
+                  <div className="admin-users-header">
+                    <h3>Benutzerverwaltung</h3>
+                    <button
+                      onClick={() => setShowCreateUser(!showCreateUser)}
+                      className="btn-create-user"
+                    >
+                      {showCreateUser ? '✕ Abbrechen' : '➕ Neuer Benutzer'}
+                    </button>
+                  </div>
+
+                  {showCreateUser && (
+                    <form onSubmit={handleCreateUser} className="create-user-form">
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label htmlFor="username">Benutzername</label>
+                          <input
+                            id="username"
+                            type="text"
+                            value={newUser.username}
+                            onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                            placeholder="Benutzername"
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor="email">E-Mail</label>
+                          <input
+                            id="email"
+                            type="email"
+                            value={newUser.email}
+                            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                            placeholder="email@example.com"
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor="password">Passwort</label>
+                          <input
+                            id="password"
+                            type="password"
+                            value={newUser.password}
+                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                            placeholder="Passwort"
+                            required
+                            minLength="6"
+                          />
+                        </div>
+                        <div className="form-group checkbox-group">
+                          <label htmlFor="isAdmin">
+                            <input
+                              id="isAdmin"
+                              type="checkbox"
+                              checked={newUser.isAdmin}
+                              onChange={(e) => setNewUser({ ...newUser, isAdmin: e.target.checked })}
+                            />
+                            <span>Als Administrator anlegen</span>
+                          </label>
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="btn-submit-user"
+                        disabled={operationLoading.create}
+                      >
+                        {operationLoading.create ? 'Erstelle...' : '✓ Benutzer erstellen'}
+                      </button>
+                    </form>
+                  )}
+
                   <table className="admin-table">
                     <thead>
                       <tr>
@@ -216,6 +339,42 @@ function AdminConsole({ onClose }) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {activeTab === 'settings' && settings && (
+                <div className="admin-settings">
+                  <div className="settings-section">
+                    <h3>Registrierung</h3>
+                    <p className="settings-description">
+                      Kontrolliere ob neue Benutzer sich registrieren können oder ob nur Admins Accounts erstellen dürfen.
+                    </p>
+                    <div className="setting-item">
+                      <label className="toggle-label">
+                        <input
+                          type="checkbox"
+                          checked={settings.registrationEnabled}
+                          onChange={handleToggleRegistration}
+                          disabled={operationLoading.settings}
+                          className="toggle-checkbox"
+                        />
+                        <span className="toggle-switch"></span>
+                        <span className="toggle-text">
+                          {settings.registrationEnabled
+                            ? 'Registrierung ist aktiviert'
+                            : 'Registrierung ist deaktiviert'}
+                        </span>
+                      </label>
+                      {operationLoading.settings && (
+                        <span className="loading-indicator">Speichert...</span>
+                      )}
+                    </div>
+                    <p className="settings-note">
+                      {settings.registrationEnabled
+                        ? '✅ Neue Benutzer können sich selbst registrieren.'
+                        : '🔒 Nur Administratoren können neue Benutzer erstellen.'}
+                    </p>
+                  </div>
                 </div>
               )}
             </>

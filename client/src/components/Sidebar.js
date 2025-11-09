@@ -1,9 +1,25 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './Sidebar.css';
 
 function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdminClick }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <button
+        className="sidebar-toggle"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        aria-label={isCollapsed ? "Sidebar erweitern" : "Sidebar minimieren"}
+        title={isCollapsed ? "Erweitern" : "Minimieren"}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          {isCollapsed ? (
+            <path d="M9 18l6-6-6-6"/>
+          ) : (
+            <path d="M15 18l-6-6 6-6"/>
+          )}
+        </svg>
+      </button>
       <nav className="sidebar-nav">
         <button
           className={`sidebar-item ${!selectedTag ? 'active' : ''}`}

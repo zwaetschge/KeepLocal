@@ -10,6 +10,8 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
 import AdminConsole from './components/AdminConsole';
+import Logo from './components/Logo';
+import NoteModal from './components/NoteModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
@@ -22,12 +24,14 @@ function AppContent() {
   const [toast, setToast] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
+  const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
   const [operationLoading, setOperationLoading] = useState({});
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
   });
+  const [draggedNoteId, setDraggedNoteId] = useState(null);
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
@@ -140,6 +144,74 @@ function AppContent() {
     }
   };
 
+  // Modal handlers
+  const openNoteModal = (note = null) => {
+    setNoteModal({ isOpen: true, note });
+  };
+
+  const closeNoteModal = () => {
+    setNoteModal({ isOpen: false, note: null });
+  };
+
+  const handleModalSave = async (noteData) => {
+    if (noteModal.note) {
+      // Update existing note
+      await updateNote(noteModal.note._id, noteData);
+    } else {
+      // Create new note
+      await createNote(noteData);
+    }
+  };
+
+  // Drag & Drop Handlers
+  const handleDragStart = (noteId, e) => {
+    setDraggedNoteId(noteId);
+  };
+
+  const handleDragEnd = (e) => {
+    setDraggedNoteId(null);
+  };
+
+  const handleDragOver = (noteId, e) => {
+    // Allow drop
+  };
+
+  const handleDrop = async (targetNoteId, e) => {
+    if (!draggedNoteId || draggedNoteId === targetNoteId) {
+      return;
+    }
+
+    // Find the dragged note and target note
+    const draggedNote = notes.find(n => n._id === draggedNoteId);
+    const targetNote = notes.find(n => n._id === targetNoteId);
+
+    if (!draggedNote || !targetNote) {
+      return;
+    }
+
+    // If dropped in different section, toggle pin status
+    if (draggedNote.isPinned !== targetNote.isPinned) {
+      await togglePinNote(draggedNoteId);
+      showToast(
+        targetNote.isPinned ? 'Notiz wurde angeheftet' : 'Notiz wurde abgeheftet',
+        'success'
+      );
+      return;
+    }
+
+    // Reorder notes array within same section
+    const newNotes = [...notes];
+    const draggedIndex = newNotes.findIndex(n => n._id === draggedNoteId);
+    const targetIndex = newNotes.findIndex(n => n._id === targetNoteId);
+
+    // Remove dragged note and insert at target position
+    const [removed] = newNotes.splice(draggedIndex, 1);
+    newNotes.splice(targetIndex, 0, removed);
+
+    setNotes(newNotes);
+    setDraggedNoteId(null);
+  };
+
   // Suche durchführen
   const handleSearch = (search) => {
     setSearchTerm(search);
@@ -202,12 +274,21 @@ function AppContent() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [notes]);
 
-  // Filter notes by selected tag
-  const filteredNotes = useMemo(() => {
-    if (!selectedTag) return notes;
-    return notes.filter(note =>
-      note.tags && note.tags.includes(selectedTag)
-    );
+  // Filter notes by selected tag and separate into pinned/other categories
+  const { pinnedNotes, otherNotes } = useMemo(() => {
+    let filtered = selectedTag
+      ? notes.filter(note => note.tags && note.tags.includes(selectedTag))
+      : notes;
+
+    const pinned = filtered
+      .filter(note => note.isPinned)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+    const other = filtered
+      .filter(note => !note.isPinned)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+
+    return { pinnedNotes: pinned, otherNotes: other };
   }, [notes, selectedTag]);
 
   // Auth handlers
@@ -291,11 +372,27 @@ function AppContent() {
     <div className="App">
       <header className="App-header">
         <div className="header-content">
-          <h1>📝 KeepLocal</h1>
+          <Logo size={36} />
+          <SearchBar
+            onSearch={handleSearch}
+            ref={searchBarRef}
+            aria-label="Notizen durchsuchen"
+          />
           <div className="user-info">
-            <span className="user-name" title={user?.email}>
-              {user?.username}
-            </span>
+            {user?.isAdmin ? (
+              <button
+                className="user-name clickable"
+                onClick={() => setShowAdminConsole(true)}
+                title={`${user?.email} (Admin - Klicken für Admin-Panel)`}
+                aria-label="Admin-Panel öffnen"
+              >
+                👤 {user?.username}
+              </button>
+            ) : (
+              <span className="user-name" title={user?.email}>
+                👤 {user?.username}
+              </span>
+            )}
             <button
               onClick={handleLogout}
               className="btn-logout"
@@ -320,16 +417,9 @@ function AppContent() {
 
         <main className="App-main" role="main">
         <NoteForm
-          onCreateNote={createNote}
+          onOpenModal={() => openNoteModal()}
           ref={noteFormRef}
-          loading={operationLoading.create}
           aria-label="Neue Notiz erstellen"
-        />
-
-        <SearchBar
-          onSearch={handleSearch}
-          ref={searchBarRef}
-          aria-label="Notizen durchsuchen"
         />
 
         {loading ? (
@@ -339,14 +429,41 @@ function AppContent() {
           </div>
         ) : (
           <>
-            <NoteList
-              notes={filteredNotes}
-              onDeleteNote={deleteNote}
-              onUpdateNote={updateNote}
-              onTogglePin={togglePinNote}
-              operationLoading={operationLoading}
-            />
-            {filteredNotes.length === 0 && !selectedTag && !searchTerm && (
+            {pinnedNotes.length > 0 && (
+              <div className="notes-section">
+                <h2 className="section-title">ANGEHEFTET</h2>
+                <NoteList
+                  notes={pinnedNotes}
+                  onDeleteNote={deleteNote}
+                  onUpdateNote={updateNote}
+                  onTogglePin={togglePinNote}
+                  onOpenModal={openNoteModal}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  operationLoading={operationLoading}
+                />
+              </div>
+            )}
+            {otherNotes.length > 0 && (
+              <div className="notes-section">
+                {pinnedNotes.length > 0 && <h2 className="section-title">ANDERE</h2>}
+                <NoteList
+                  notes={otherNotes}
+                  onDeleteNote={deleteNote}
+                  onUpdateNote={updateNote}
+                  onTogglePin={togglePinNote}
+                  onOpenModal={openNoteModal}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  operationLoading={operationLoading}
+                />
+              </div>
+            )}
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && !selectedTag && !searchTerm && (
               <div className="empty-state" role="status">
                 <p>📝 Keine Notizen vorhanden</p>
                 <p className="empty-hint">
@@ -354,7 +471,7 @@ function AppContent() {
                 </p>
               </div>
             )}
-            {filteredNotes.length === 0 && selectedTag && (
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && selectedTag && (
               <div className="empty-state" role="status">
                 <p>🏷️ Keine Notizen mit diesem Label</p>
                 <p className="empty-hint">
@@ -362,7 +479,7 @@ function AppContent() {
                 </p>
               </div>
             )}
-            {filteredNotes.length === 0 && searchTerm && !selectedTag && (
+            {pinnedNotes.length === 0 && otherNotes.length === 0 && searchTerm && !selectedTag && (
               <div className="empty-state" role="status">
                 <p>🔍 Keine Notizen gefunden</p>
                 <p className="empty-hint">
@@ -412,6 +529,14 @@ function AppContent() {
 
       {showAdminConsole && user?.isAdmin && (
         <AdminConsole onClose={() => setShowAdminConsole(false)} />
+      )}
+
+      {noteModal.isOpen && (
+        <NoteModal
+          note={noteModal.note}
+          onSave={handleModalSave}
+          onClose={closeNoteModal}
+        />
       )}
     </div>
   );

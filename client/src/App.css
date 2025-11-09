@@ -1,11 +1,12 @@
 :root {
-  --google-yellow: #ffc107;
-  --google-red: #f44336;
-  --google-blue: #1a73e8;
+  --google-yellow: #fbbc04;
+  --google-red: #ea4335;
+  --google-blue: #4285f4;
   --google-green: #34a853;
 
+  /* Google Keep uses a light gray background, not pure white */
   --bg-primary: #ffffff;
-  --bg-secondary: #ffffff;
+  --bg-secondary: #f1f3f4;
   --text-primary: rgba(0, 0, 0, 0.87);
   --text-secondary: rgba(0, 0, 0, 0.6);
   --text-muted: rgba(0, 0, 0, 0.38);
@@ -15,6 +16,20 @@
   --accent-color: #1a73e8;
   --accent-hover: #1557b0;
   --accent-active: #1557b0;
+
+  /* Note Colors - Light Mode */
+  --note-white: #ffffff;
+  --note-red: #f28b82;
+  --note-orange: #fbbc04;
+  --note-yellow: #fff475;
+  --note-green: #ccff90;
+  --note-teal: #a7ffeb;
+  --note-cyan: #cbf0f8;
+  --note-blue: #aecbfa;
+  --note-purple: #d7aefb;
+  --note-pink: #fdcfe8;
+  --note-brown: #e6c9a8;
+  --note-gray: #e8eaed;
 }
 
 .dark-mode {
@@ -28,6 +43,20 @@
   --shadow-md: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
   --accent-color: #8ab4f8;
   --accent-hover: #aecbfa;
+
+  /* Note Colors - Dark Mode (darker variants) */
+  --note-white: #202124;
+  --note-red: #5c2b29;
+  --note-orange: #614a19;
+  --note-yellow: #635d19;
+  --note-green: #345920;
+  --note-teal: #16504b;
+  --note-cyan: #2d555e;
+  --note-blue: #1e3a5f;
+  --note-purple: #42275e;
+  --note-pink: #5b2245;
+  --note-brown: #442f19;
+  --note-gray: #3c3f43;
 }
 
 * {
@@ -50,29 +79,37 @@ body {
 }
 
 .App-header {
-  background: var(--google-yellow);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   color: rgba(0, 0, 0, 0.87);
-  padding: 16px 24px;
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  padding: 12px 24px;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.08), 0 8px 32px -8px rgba(0, 0, 0, 0.08);
   position: sticky;
   top: 0;
   z-index: 1000;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark-mode .App-header {
-  background: #292a2d;
+  background: rgba(41, 42, 45, 0.95);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   color: rgba(255, 255, 255, 0.87);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 32px -8px rgba(0, 0, 0, 0.3);
 }
 
 .header-content {
-  max-width: 1600px;
+  max-width: 100%;
+  width: 100%;
+  padding: 0 16px;
   margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 24px;
 }
 
 .App-header h1 {
@@ -104,10 +141,29 @@ body {
   background: rgba(0, 0, 0, 0.08);
   border-radius: 24px;
   cursor: default;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.user-name.clickable {
+  cursor: pointer;
+}
+
+.user-name.clickable:hover {
+  background: rgba(102, 126, 234, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .dark-mode .user-name {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.dark-mode .user-name.clickable:hover {
+  background: rgba(138, 180, 248, 0.3);
+  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.3);
 }
 
 .btn-logout {
@@ -118,14 +174,41 @@ body {
   font-weight: 500;
   border-radius: 24px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 0.875rem;
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-logout::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.btn-logout:hover::before {
+  width: 300px;
+  height: 300px;
 }
 
 .btn-logout:hover {
   background: rgba(0, 0, 0, 0.08);
   border-color: rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-logout:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .dark-mode .btn-logout {
@@ -133,9 +216,14 @@ body {
   color: rgba(255, 255, 255, 0.87);
 }
 
+.dark-mode .btn-logout::before {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .dark-mode .btn-logout:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .App-container {
@@ -353,5 +441,25 @@ body {
 
   .keyboard-shortcuts-hint kbd {
     min-width: auto;
+  }
+}
+
+/* Notes sections for pinned/other categories */
+.notes-section {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  margin: 0 0 12px 16px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .section-title {
+    margin-left: 8px;
   }
 }

@@ -1,0 +1,64 @@
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: logoFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logo-svg {
+  filter: drop-shadow(0 2px 8px rgba(102, 126, 234, 0.3));
+  animation: logoFloat 3s ease-in-out infinite;
+}
+
+.logo-text {
+  font-size: 1.5rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.dark-mode .logo-text {
+  background: linear-gradient(135deg, #8ab4f8 0%, #a88beb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes logoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes logoFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.logo-svg:hover {
+  animation: logoFloat 1s ease-in-out infinite, logoPulse 0.6s ease-in-out;
+}
+
+@keyframes logoPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

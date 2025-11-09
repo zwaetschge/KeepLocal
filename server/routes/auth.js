@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const Settings = require('../models/Settings');
 const { generateToken, authenticateToken } = require('../middleware/auth');
 
 // Validation error handler
@@ -56,6 +57,27 @@ router.post('/register', [
   try {
     const { username, email, password } = req.body;
 
+    // Check if this is the first user (admin)
+    const userCount = await User.countDocuments();
+    const isFirstUser = userCount === 0;
+
+    // If not first user, check if registration is enabled
+    if (!isFirstUser) {
+      let settings = await Settings.findById('1');
+
+      // Create default settings if they don't exist
+      if (!settings) {
+        settings = new Settings({ _id: '1', registrationEnabled: false });
+        await settings.save();
+      }
+
+      if (!settings.registrationEnabled) {
+        return res.status(403).json({
+          error: 'Registrierung ist derzeit deaktiviert. Bitte kontaktieren Sie einen Administrator.'
+        });
+      }
+    }
+
     // Prüfen ob Benutzer bereits existiert
     const existingUser = await User.findOne({
       $or: [{ email }, { username }]
@@ -69,10 +91,6 @@ router.post('/register', [
         return res.status(409).json({ error: 'Benutzername bereits vergeben' });
       }
     }
-
-    // Check if this is the first user (admin)
-    const userCount = await User.countDocuments();
-    const isFirstUser = userCount === 0;
 
     // Neuen Benutzer erstellen
     const user = new User({
