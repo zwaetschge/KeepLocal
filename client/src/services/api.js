@@ -171,6 +171,23 @@ export const notesAPI = {
     }),
 };
 
+// Admin API
+export const adminAPI = {
+  getUsers: () => fetchWithAuth('/api/admin/users'),
+
+  getStats: () => fetchWithAuth('/api/admin/stats'),
+
+  deleteUser: (userId) =>
+    fetchWithAuth(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+    }),
+
+  toggleUserAdmin: (userId) =>
+    fetchWithAuth(`/api/admin/users/${userId}/admin`, {
+      method: 'PATCH',
+    }),
+};
+
 // Fetch CSRF token on app start
 export async function initializeCSRF() {
   try {
@@ -185,6 +202,7 @@ export async function initializeCSRF() {
 export default {
   authAPI,
   notesAPI,
+  adminAPI,
   initializeCSRF,
   isAuthenticated,
   setAuthToken,

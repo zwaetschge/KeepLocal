@@ -10,6 +10,7 @@ const csrf = require('csurf');
 const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
+const adminRouter = require('./routes/admin');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 
@@ -77,7 +78,8 @@ app.use(limiter); // Rate Limiting anwenden
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);
 
-// CSRF-Schutz (nur für Notizen-Routes, nicht für Auth da JWT verwendet wird)
+// CSRF-Schutz (nach cookieParser, vor Routen)
+// Auth-Routen sind ausgenommen, da sie keine CSRF-Token benötigen
 const csrfProtection = csrf({ cookie: true });
 
 // CSRF-Token-Endpunkt
@@ -85,9 +87,10 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// Routen
-app.use('/api/auth', authRouter); // Keine CSRF für Auth (JWT-basiert)
-app.use('/api/notes', csrfProtection, notesRouter); // CSRF für Notizen
+// Routen (Auth ohne CSRF-Schutz)
+app.use('/api/auth', authRouter);
+app.use('/api/notes', csrfProtection, notesRouter);
+app.use('/api/admin', csrfProtection, adminRouter);
 
 // Root-Route
 app.get('/', (req, res) => {
