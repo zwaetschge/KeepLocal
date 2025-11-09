@@ -2,21 +2,17 @@
 // Use localhost:5000 in development for direct backend access
 const API_BASE_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000');
 
-// Get CSRF token from cookies
+// Store CSRF token in memory (not in cookie!)
+let csrfToken = null;
+
+// Get CSRF token from memory
 function getCsrfToken() {
-  const name = '_csrf=';
-  const decodedCookie = decodeURIComponent(document.cookie);
-  const ca = decodedCookie.split(';');
-  for (let i = 0; i < ca.length; i++) {
-    let c = ca[i];
-    while (c.charAt(0) === ' ') {
-      c = c.substring(1);
-    }
-    if (c.indexOf(name) === 0) {
-      return c.substring(name.length, c.length);
-    }
-  }
-  return null;
+  return csrfToken;
+}
+
+// Set CSRF token
+function setCsrfToken(token) {
+  csrfToken = token;
 }
 
 // Get JWT token from localStorage
@@ -103,6 +99,7 @@ export const authAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password }),
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -112,6 +109,7 @@ export const authAPI = {
 
     const data = await response.json();
     setAuthToken(data.token);
+    await initializeCSRF(); // Refresh CSRF token after registration
     return data;
   },
 
@@ -120,6 +118,7 @@ export const authAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -129,6 +128,7 @@ export const authAPI = {
 
     const data = await response.json();
     setAuthToken(data.token);
+    await initializeCSRF(); // Refresh CSRF token after login
     return data;
   },
 
@@ -191,9 +191,15 @@ export const adminAPI = {
 // Fetch CSRF token on app start
 export async function initializeCSRF() {
   try {
-    await fetch(`${API_BASE_URL}/api/csrf-token`, {
+    const response = await fetch(`${API_BASE_URL}/api/csrf-token`, {
       credentials: 'include',
     });
+
+    if (response.ok) {
+      const data = await response.json();
+      setCsrfToken(data.csrfToken);
+      console.log('CSRF token initialized successfully');
+    }
   } catch (error) {
     console.error('Failed to fetch CSRF token:', error);
   }
