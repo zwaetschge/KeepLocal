@@ -5,8 +5,9 @@ import ColorPicker from './ColorPicker';
 import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal }) {
+function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -21,11 +22,45 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal }) {
     setShowDeleteConfirm(false);
   };
 
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget);
+    if (onDragStart) onDragStart(note._id, e);
+  };
+
+  const handleDragEnd = (e) => {
+    setIsDragging(false);
+    if (onDragEnd) onDragEnd(e);
+  };
+
+  const handleDragOver = (e) => {
+    if (e.preventDefault) {
+      e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+    if (onDragOver) onDragOver(note._id, e);
+    return false;
+  };
+
+  const handleDrop = (e) => {
+    if (e.stopPropagation) {
+      e.stopPropagation();
+    }
+    if (onDrop) onDrop(note._id, e);
+    return false;
+  };
+
   return (
     <div
-      className="note"
+      className={`note ${isDragging ? 'dragging' : ''}`}
       style={{ backgroundColor: getColorVar(note.color) }}
       onClick={() => onOpenModal(note)}
+      draggable="true"
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <div className="note-content-wrapper">
         {note.title && <h3 className="note-title">{sanitize(note.title)}</h3>}

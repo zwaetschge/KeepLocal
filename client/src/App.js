@@ -31,6 +31,7 @@ function AppContent() {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
   });
+  const [draggedNoteId, setDraggedNoteId] = useState(null);
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
@@ -160,6 +161,51 @@ function AppContent() {
       // Create new note
       await createNote(noteData);
     }
+  };
+
+  // Drag & Drop Handlers
+  const handleDragStart = (noteId, e) => {
+    setDraggedNoteId(noteId);
+  };
+
+  const handleDragEnd = (e) => {
+    setDraggedNoteId(null);
+  };
+
+  const handleDragOver = (noteId, e) => {
+    // Allow drop
+  };
+
+  const handleDrop = async (targetNoteId, e) => {
+    if (!draggedNoteId || draggedNoteId === targetNoteId) {
+      return;
+    }
+
+    // Find the dragged note and target note
+    const draggedNote = notes.find(n => n._id === draggedNoteId);
+    const targetNote = notes.find(n => n._id === targetNoteId);
+
+    if (!draggedNote || !targetNote) {
+      return;
+    }
+
+    // Only allow reordering within same section (both pinned or both unpinned)
+    if (draggedNote.isPinned !== targetNote.isPinned) {
+      showToast('Notizen können nur innerhalb derselben Sektion verschoben werden', 'warning');
+      return;
+    }
+
+    // Reorder notes array
+    const newNotes = [...notes];
+    const draggedIndex = newNotes.findIndex(n => n._id === draggedNoteId);
+    const targetIndex = newNotes.findIndex(n => n._id === targetNoteId);
+
+    // Remove dragged note and insert at target position
+    const [removed] = newNotes.splice(draggedIndex, 1);
+    newNotes.splice(targetIndex, 0, removed);
+
+    setNotes(newNotes);
+    setDraggedNoteId(null);
   };
 
   // Suche durchführen
@@ -388,6 +434,10 @@ function AppContent() {
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
                   onOpenModal={openNoteModal}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
                   operationLoading={operationLoading}
                 />
               </div>
@@ -401,6 +451,10 @@ function AppContent() {
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
                   onOpenModal={openNoteModal}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
                   operationLoading={operationLoading}
                 />
               </div>

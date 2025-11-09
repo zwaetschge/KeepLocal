@@ -5,30 +5,54 @@
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 1rem;
+  padding: 2rem;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .admin-console {
   background: var(--bg-primary);
-  border-radius: 12px;
+  border-radius: 16px;
   width: 100%;
   max-width: 900px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .admin-console-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
-  border-bottom: 2px solid var(--border-color);
+  padding: 2rem;
 }
 
 .admin-console-header h2 {
@@ -38,23 +62,37 @@
 }
 
 .admin-close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
   background: transparent;
   border: none;
   font-size: 1.5rem;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: color 0.2s ease;
-  padding: 0.25rem 0.5rem;
+  transition: all 0.2s ease;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
 .admin-close-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
   color: var(--text-primary);
+}
+
+.dark-mode .admin-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .admin-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
+  padding: 0 2rem;
 }
 
 .admin-tab {
