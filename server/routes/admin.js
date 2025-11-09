@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Note = require('../models/Note');
+const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
 
 // Middleware to check if user is admin
@@ -204,6 +205,61 @@ router.patch('/users/:id/admin', async (req, res) => {
   } catch (error) {
     console.error('Error updating user admin status:', error);
     res.status(500).json({ error: 'Fehler beim Aktualisieren des Admin-Status' });
+  }
+});
+
+// GET /api/admin/settings - Get system settings
+router.get('/settings', async (req, res) => {
+  try {
+    let settings = await Settings.findById('1');
+
+    // Create default settings if they don't exist
+    if (!settings) {
+      settings = new Settings({ _id: '1', registrationEnabled: false });
+      await settings.save();
+    }
+
+    res.json({
+      settings: {
+        registrationEnabled: settings.registrationEnabled,
+        updatedAt: settings.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'Fehler beim Laden der Einstellungen' });
+  }
+});
+
+// PATCH /api/admin/settings - Update system settings
+router.patch('/settings', async (req, res) => {
+  try {
+    const { registrationEnabled } = req.body;
+
+    let settings = await Settings.findById('1');
+
+    // Create default settings if they don't exist
+    if (!settings) {
+      settings = new Settings({ _id: '1' });
+    }
+
+    // Update settings
+    if (typeof registrationEnabled === 'boolean') {
+      settings.registrationEnabled = registrationEnabled;
+    }
+
+    await settings.save();
+
+    res.json({
+      message: 'Einstellungen erfolgreich aktualisiert',
+      settings: {
+        registrationEnabled: settings.registrationEnabled,
+        updatedAt: settings.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ error: 'Fehler beim Aktualisieren der Einstellungen' });
   }
 });
 

@@ -6,6 +6,7 @@ import ConfirmDialog from './ConfirmDialog';
 function AdminConsole({ onClose }) {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('stats');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -29,6 +30,9 @@ function AdminConsole({ onClose }) {
       } else if (activeTab === 'users') {
         const data = await adminAPI.getUsers();
         setUsers(data.users);
+      } else if (activeTab === 'settings') {
+        const data = await adminAPI.getSettings();
+        setSettings(data.settings);
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -90,6 +94,22 @@ function AdminConsole({ onClose }) {
     }
   };
 
+  const handleToggleRegistration = async () => {
+    setOperationLoading(prev => ({ ...prev, settings: true }));
+    try {
+      const response = await adminAPI.updateSettings({
+        registrationEnabled: !settings.registrationEnabled
+      });
+      setSettings(response.settings);
+      setError(null);
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      setError(error.message || 'Fehler beim Aktualisieren der Einstellungen');
+    } finally {
+      setOperationLoading(prev => ({ ...prev, settings: false }));
+    }
+  };
+
   return (
     <div className="admin-console-overlay" onClick={onClose}>
       <div className="admin-console" onClick={(e) => e.stopPropagation()}>
@@ -115,6 +135,12 @@ function AdminConsole({ onClose }) {
             onClick={() => setActiveTab('users')}
           >
             👥 Benutzer
+          </button>
+          <button
+            className={`admin-tab ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            ⚙️ Einstellungen
           </button>
         </div>
 
@@ -313,6 +339,42 @@ function AdminConsole({ onClose }) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {activeTab === 'settings' && settings && (
+                <div className="admin-settings">
+                  <div className="settings-section">
+                    <h3>Registrierung</h3>
+                    <p className="settings-description">
+                      Kontrolliere ob neue Benutzer sich registrieren können oder ob nur Admins Accounts erstellen dürfen.
+                    </p>
+                    <div className="setting-item">
+                      <label className="toggle-label">
+                        <input
+                          type="checkbox"
+                          checked={settings.registrationEnabled}
+                          onChange={handleToggleRegistration}
+                          disabled={operationLoading.settings}
+                          className="toggle-checkbox"
+                        />
+                        <span className="toggle-switch"></span>
+                        <span className="toggle-text">
+                          {settings.registrationEnabled
+                            ? 'Registrierung ist aktiviert'
+                            : 'Registrierung ist deaktiviert'}
+                        </span>
+                      </label>
+                      {operationLoading.settings && (
+                        <span className="loading-indicator">Speichert...</span>
+                      )}
+                    </div>
+                    <p className="settings-note">
+                      {settings.registrationEnabled
+                        ? '✅ Neue Benutzer können sich selbst registrieren.'
+                        : '🔒 Nur Administratoren können neue Benutzer erstellen.'}
+                    </p>
+                  </div>
                 </div>
               )}
             </>

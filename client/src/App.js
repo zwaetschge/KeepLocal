@@ -189,13 +189,17 @@ function AppContent() {
       return;
     }
 
-    // Only allow reordering within same section (both pinned or both unpinned)
+    // If dropped in different section, toggle pin status
     if (draggedNote.isPinned !== targetNote.isPinned) {
-      showToast('Notizen können nur innerhalb derselben Sektion verschoben werden', 'warning');
+      await togglePinNote(draggedNoteId);
+      showToast(
+        targetNote.isPinned ? 'Notiz wurde angeheftet' : 'Notiz wurde abgeheftet',
+        'success'
+      );
       return;
     }
 
-    // Reorder notes array
+    // Reorder notes array within same section
     const newNotes = [...notes];
     const draggedIndex = newNotes.findIndex(n => n._id === draggedNoteId);
     const targetIndex = newNotes.findIndex(n => n._id === targetNoteId);

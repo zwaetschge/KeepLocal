@@ -271,6 +271,111 @@
   cursor: not-allowed;
 }
 
+/* Settings Section */
+.admin-settings {
+  padding: 1.5rem;
+}
+
+.settings-section {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-primary);
+  font-size: 1.25rem;
+}
+
+.settings-description {
+  color: var(--text-secondary);
+  margin: 0 0 1.5rem 0;
+  font-size: 0.938rem;
+  line-height: 1.5;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-checkbox {
+  display: none;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background: #ccc;
+  border-radius: 24px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-checkbox:checked + .toggle-switch {
+  background: var(--accent-color);
+}
+
+.toggle-checkbox:checked + .toggle-switch::after {
+  left: 26px;
+}
+
+.toggle-checkbox:disabled + .toggle-switch {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-text {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.loading-indicator {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.settings-note {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0.75rem 0 0 0;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-color);
+}
+
+.dark-mode .settings-note {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .dark-mode .admin-console {
   background: var(--bg-primary);
 }

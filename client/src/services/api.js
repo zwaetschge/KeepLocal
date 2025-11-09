@@ -192,6 +192,14 @@ export const adminAPI = {
     fetchWithAuth(`/api/admin/users/${userId}/admin`, {
       method: 'PATCH',
     }),
+
+  getSettings: () => fetchWithAuth('/api/admin/settings'),
+
+  updateSettings: (settings) =>
+    fetchWithAuth('/api/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    }),
 };
 
 // Fetch CSRF token on app start
