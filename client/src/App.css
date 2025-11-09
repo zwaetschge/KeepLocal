@@ -102,13 +102,14 @@ body {
 }
 
 .header-content {
-  max-width: 1600px;
+  max-width: 100%;
+  width: 100%;
+  padding: 0 16px;
   margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 24px;
-  flex-wrap: nowrap;
 }
 
 .App-header h1 {

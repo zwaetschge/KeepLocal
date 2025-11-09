@@ -177,6 +177,12 @@ export const adminAPI = {
 
   getStats: () => fetchWithAuth('/api/admin/stats'),
 
+  createUser: (userData) =>
+    fetchWithAuth('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    }),
+
   deleteUser: (userId) =>
     fetchWithAuth(`/api/admin/users/${userId}`, {
       method: 'DELETE',
