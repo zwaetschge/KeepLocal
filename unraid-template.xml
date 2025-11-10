@@ -40,8 +40,9 @@
   <DonateText/>
   <DonateLink/>
   <Requires>Docker Compose plugin recommended</Requires>
-  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port for accessing the web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp" Description="Port for accessing the web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
   <Config Name="MongoDB Data" Target="/data/db" Default="/mnt/user/appdata/keeplocal/mongodb" Mode="rw" Description="MongoDB data storage location" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/mongodb</Config>
+  <Config Name="JWT_SECRET" Target="JWT_SECRET" Default="changeme-generate-secure-secret" Mode="" Description="Secret key for JWT token generation - MUST be changed! Generate with: openssl rand -base64 32" Type="Variable" Display="always" Required="true" Mask="true">changeme-generate-secure-secret</Config>
   <Config Name="ALLOWED_ORIGINS" Target="ALLOWED_ORIGINS" Default="http://localhost:3000,http://localhost" Mode="" Description="Comma-separated list of allowed CORS origins" Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:3000,http://localhost</Config>
   <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node environment (production/development)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
 </Container>
