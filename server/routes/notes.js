@@ -89,17 +89,6 @@ router.post('/', noteValidation.create, async (req, res, next) => {
 
     const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
 
-    // Validate content or todo items
-    if (isTodoList) {
-      if (!todoItems || todoItems.length === 0 || todoItems.every(item => !item.text || !item.text.trim())) {
-        return res.status(400).json({ error: 'Todo-Liste muss mindestens ein Element enthalten' });
-      }
-    } else {
-      if (!content || content.trim() === '') {
-        return res.status(400).json({ error: 'Inhalt ist erforderlich' });
-      }
-    }
-
     const newNote = new Note({
       title: title || '',
       content: isTodoList ? '' : (content?.trim() || ''),
@@ -126,17 +115,6 @@ router.post('/', noteValidation.create, async (req, res, next) => {
 router.put('/:id', noteValidation.update, async (req, res, next) => {
   try {
     const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
-
-    // Validate content or todo items
-    if (isTodoList) {
-      if (!todoItems || todoItems.length === 0 || todoItems.every(item => !item.text || !item.text.trim())) {
-        return res.status(400).json({ error: 'Todo-Liste muss mindestens ein Element enthalten' });
-      }
-    } else {
-      if (!content || content.trim() === '') {
-        return res.status(400).json({ error: 'Inhalt ist erforderlich' });
-      }
-    }
 
     // Build update object
     const updateData = {
