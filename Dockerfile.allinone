@@ -1,0 +1,96 @@
+# KeepLocal All-in-One Dockerfile for Unraid
+# This Dockerfile combines MongoDB, Node.js Backend, and React Frontend
+# into a single container for easy deployment on Unraid.
+
+# Stage 1: Build React Frontend
+FROM node:18-alpine AS client-builder
+
+WORKDIR /app/client
+
+# Copy client package files
+COPY client/package*.json ./
+RUN npm install
+
+# Copy client source
+COPY client/ ./
+
+# Build React app with production settings
+ARG REACT_APP_API_URL=/api
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+RUN npm run build
+
+# Stage 2: Build Node.js Backend
+FROM node:18-alpine AS server-builder
+
+WORKDIR /app/server
+
+# Copy server package files
+COPY server/package*.json ./
+RUN npm install --production
+
+# Copy server source
+COPY server/ ./
+
+# Stage 3: Final All-in-One Image
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install MongoDB, Node.js, Nginx, and Supervisor
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    curl \
+    nginx \
+    supervisor \
+    && wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | apt-key add - \
+    && echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list \
+    && apt-get update \
+    && apt-get install -y mongodb-org \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application directory structure
+WORKDIR /app
+
+# Create MongoDB data directory
+RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db
+
+# Copy server from builder
+COPY --from=server-builder /app/server /app/server
+
+# Copy built client from builder
+COPY --from=client-builder /app/client/build /app/client/build
+
+# Copy and configure Nginx
+COPY nginx-allinone.conf /etc/nginx/sites-available/default
+RUN rm -f /etc/nginx/sites-enabled/default \
+    && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create log directories
+RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal
+
+# Expose ports
+# 80: Nginx (Web UI + API proxy)
+# 27017: MongoDB (for debugging/backup purposes)
+EXPOSE 80 27017
+
+# Environment variables with defaults
+ENV NODE_ENV=production \
+    PORT=5000 \
+    MONGODB_URI=mongodb://localhost:27017/keeplocal \
+    JWT_SECRET=changeme-generate-secure-secret \
+    ALLOWED_ORIGINS=http://localhost
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost/api/health || exit 1
+
+# Start supervisor which manages all services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
