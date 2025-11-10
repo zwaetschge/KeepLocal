@@ -41,7 +41,7 @@ The all-in-one image combines MongoDB, Node.js backend, and React frontend into 
 # Make the script executable
 chmod +x build-allinone.sh
 
-# Build with default settings (zwaetschge/keeplocal:latest)
+# Build with default settings (valentin2177/keeplocal:latest)
 ./build-allinone.sh
 
 # Build with custom settings
@@ -53,7 +53,7 @@ DOCKER_USERNAME=yourusername VERSION=v1.0.0 ./build-allinone.sh
 ```bash
 docker build \
   -f Dockerfile.allinone \
-  -t zwaetschge/keeplocal:latest \
+  -t valentin2177/keeplocal:latest \
   --build-arg REACT_APP_API_URL=/api \
   .
 ```
@@ -113,7 +113,7 @@ docker build -t keeplocal-client:latest -f client/Dockerfile ./client
      -e ALLOWED_ORIGINS="http://localhost:3000" \
      -e NODE_ENV="production" \
      -v keeplocal-test-data:/data/db \
-     zwaetschge/keeplocal:latest
+     valentin2177/keeplocal:latest
    ```
 
 3. **Wait for services to start (~30 seconds):**
@@ -196,28 +196,28 @@ docker build -t keeplocal-client:latest -f client/Dockerfile ./client
 
 ```bash
 # Tag the image (if not already tagged correctly)
-docker tag keeplocal:latest zwaetschge/keeplocal:latest
+docker tag keeplocal:latest valentin2177/keeplocal:latest
 
 # Optional: Create version tag
-docker tag zwaetschge/keeplocal:latest zwaetschge/keeplocal:v1.0.0
+docker tag valentin2177/keeplocal:latest valentin2177/keeplocal:v1.0.0
 
 # Push to Docker Hub
-docker push zwaetschge/keeplocal:latest
+docker push valentin2177/keeplocal:latest
 
 # Optional: Push version tag
-docker push zwaetschge/keeplocal:v1.0.0
+docker push valentin2177/keeplocal:v1.0.0
 ```
 
 ### Publishing Separate Images
 
 ```bash
 # Tag images
-docker tag keeplocal-server:latest zwaetschge/keeplocal-server:latest
-docker tag keeplocal-client:latest zwaetschge/keeplocal-client:latest
+docker tag keeplocal-server:latest valentin2177/keeplocal-server:latest
+docker tag keeplocal-client:latest valentin2177/keeplocal-client:latest
 
 # Push to Docker Hub
-docker push zwaetschge/keeplocal-server:latest
-docker push zwaetschge/keeplocal-client:latest
+docker push valentin2177/keeplocal-server:latest
+docker push valentin2177/keeplocal-client:latest
 ```
 
 ### Multi-Architecture Builds (Advanced)
@@ -233,7 +233,7 @@ docker buildx inspect --bootstrap
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -f Dockerfile.allinone \
-  -t zwaetschge/keeplocal:latest \
+  -t valentin2177/keeplocal:latest \
   --build-arg REACT_APP_API_URL=/api \
   --push \
   .
@@ -274,7 +274,7 @@ The workflow automatically builds and publishes:
 ### Monitoring Builds
 
 - View progress in the **Actions** tab
-- Check Docker Hub for published images: https://hub.docker.com/r/zwaetschge/keeplocal
+- Check Docker Hub for published images: https://hub.docker.com/r/valentin2177/keeplocal
 
 ## Troubleshooting
 
@@ -370,14 +370,14 @@ docker restart keeplocal-test
 
 ```bash
 # Build with multiple tags
-docker build -f Dockerfile.allinone -t zwaetschge/keeplocal:latest .
-docker tag zwaetschge/keeplocal:latest zwaetschge/keeplocal:v1.0.0
-docker tag zwaetschge/keeplocal:latest zwaetschge/keeplocal:2025-01-10-abc123
+docker build -f Dockerfile.allinone -t valentin2177/keeplocal:latest .
+docker tag valentin2177/keeplocal:latest valentin2177/keeplocal:v1.0.0
+docker tag valentin2177/keeplocal:latest valentin2177/keeplocal:2025-01-10-abc123
 
 # Push all tags
-docker push zwaetschge/keeplocal:latest
-docker push zwaetschge/keeplocal:v1.0.0
-docker push zwaetschge/keeplocal:2025-01-10-abc123
+docker push valentin2177/keeplocal:latest
+docker push valentin2177/keeplocal:v1.0.0
+docker push valentin2177/keeplocal:2025-01-10-abc123
 ```
 
 ## Best Practices
@@ -390,7 +390,7 @@ docker push zwaetschge/keeplocal:2025-01-10-abc123
 6. ✅ **Use .dockerignore** to reduce build context size
 7. ✅ **Scan images for vulnerabilities**:
    ```bash
-   docker scan zwaetschge/keeplocal:latest
+   docker scan valentin2177/keeplocal:latest
    ```
 
 ## Additional Resources
