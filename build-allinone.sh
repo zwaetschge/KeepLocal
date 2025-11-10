@@ -11,7 +11,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # Configuration
-DOCKER_USERNAME="${DOCKER_USERNAME:-zwaetschge}"
+DOCKER_USERNAME="${DOCKER_USERNAME:-valentin2177}"
 IMAGE_NAME="${IMAGE_NAME:-keeplocal}"
 VERSION="${VERSION:-latest}"
 FULL_IMAGE="${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}"

@@ -69,7 +69,7 @@ If you prefer to use the command line or create a custom setup:
      -e NODE_ENV="production" \
      -v /mnt/user/appdata/keeplocal/mongodb:/data/db \
      --restart unless-stopped \
-     zwaetschge/keeplocal:latest
+     valentin2177/keeplocal:latest
    ```
 
    Replace:
