@@ -104,6 +104,15 @@ app.get('/', (req, res) => {
   });
 });
 
+// Health check endpoint (for Docker/Kubernetes)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Error Handler (muss am Ende sein)
 app.use(errorHandler);
 
