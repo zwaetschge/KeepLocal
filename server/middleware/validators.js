@@ -22,7 +22,7 @@ const noteValidationRules = {
       .withMessage('Titel darf maximal 200 Zeichen lang sein'),
 
     body('content')
-      .optional()
+      .optional({ checkFalsy: true })
       .trim()
       .isLength({ max: 10000 })
       .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
@@ -126,7 +126,7 @@ const noteValidationRules = {
       .withMessage('Titel darf maximal 200 Zeichen lang sein'),
 
     body('content')
-      .optional()
+      .optional({ checkFalsy: true })
       .trim()
       .isLength({ max: 10000 })
       .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
