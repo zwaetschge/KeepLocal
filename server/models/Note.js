@@ -9,7 +9,7 @@ const noteSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: [true, 'Inhalt ist erforderlich'],
+    default: '',
     trim: true,
     maxlength: 10000
   },
@@ -45,6 +45,37 @@ const noteSchema = new mongoose.Schema({
     filename: String,
     uploadedAt: Date
   }],
+  isTodoList: {
+    type: Boolean,
+    default: false
+  },
+  todoItems: [{
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 500
+    },
+    completed: {
+      type: Boolean,
+      default: false
+    },
+    order: {
+      type: Number,
+      default: 0
+    }
+  }],
+  linkPreviews: [{
+    url: {
+      type: String,
+      required: true
+    },
+    title: String,
+    description: String,
+    image: String,
+    siteName: String,
+    fetchedAt: Date
+  }],
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -59,5 +90,25 @@ const noteSchema = new mongoose.Schema({
 noteSchema.index({ title: 'text', content: 'text' });
 noteSchema.index({ userId: 1, isPinned: -1, createdAt: -1 }); // Compound index für Benutzer-Notizen
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
+
+// Validation: Ensure either content or todo items exist
+noteSchema.pre('save', function(next) {
+  if (this.isTodoList) {
+    // For todo lists, ensure at least one non-empty todo item exists
+    const hasValidTodoItems = this.todoItems &&
+      this.todoItems.length > 0 &&
+      this.todoItems.some(item => item.text && item.text.trim());
+
+    if (!hasValidTodoItems) {
+      return next(new Error('Todo-Liste muss mindestens ein Element enthalten'));
+    }
+  } else {
+    // For regular notes, ensure content is not empty
+    if (!this.content || this.content.trim() === '') {
+      return next(new Error('Inhalt ist erforderlich'));
+    }
+  }
+  next();
+});
 
 module.exports = mongoose.model('Note', noteSchema);

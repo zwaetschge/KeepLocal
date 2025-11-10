@@ -70,6 +70,55 @@
   transition: color 0.3s ease;
 }
 
+.note-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.note-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.note-todo-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.125rem;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.note-todo-text {
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.87);
+  word-break: break-word;
+}
+
+.note-todo-text.completed {
+  text-decoration: line-through;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .note-todo-text {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .note-todo-text.completed {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.note-link-previews {
+  margin-top: 0.75rem;
+}
+
 .note-link {
   color: var(--accent-color);
   text-decoration: none;
@@ -102,40 +151,6 @@
   text-overflow: ellipsis;
   margin-bottom: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  animation: fadeIn 0.2s ease;
-  pointer-events: none;
-}
-
-/* Image preview for image links */
-.note-link-image:hover::after {
-  content: '';
-  background-image: var(--preview-image);
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-color: rgba(0, 0, 0, 0.95);
-  width: 250px;
-  height: 200px;
-  max-width: none;
-  padding: 0.5rem;
-  white-space: normal;
-}
-
-.note-link-image:hover::before {
-  content: attr(data-url);
-  position: absolute;
-  bottom: calc(100% + 210px);
-  left: 0;
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  z-index: 101;
-  max-width: 250px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   animation: fadeIn 0.2s ease;
   pointer-events: none;
 }

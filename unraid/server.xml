@@ -13,7 +13,7 @@
   <Category>Productivity:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/server.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/keeplocal-icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.svg</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>

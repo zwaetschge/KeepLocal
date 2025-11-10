@@ -33,3 +33,8 @@ uploads/
 # Cache
 .cache/
 *.cache
+
+# Git patches and bundles
+patches/
+*.patch
+*.bundle

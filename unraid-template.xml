@@ -13,21 +13,26 @@
     KeepLocal - A self-hosted notes application inspired by Google Keep.
 
     Features:
+    - User authentication with JWT (secure multi-user support)
     - Create, edit, and delete notes with confirmation dialogs
+    - Google Keep-style todo lists with checkboxes
+    - Link preview cards with Open Graph metadata
     - 10 different colors for your notes
     - Pin/unpin functionality
     - Tags/categories for better organization
     - Full-text search in title and content
     - Dark mode with theme persistence
+    - Keyboard shortcuts (Ctrl+N, Ctrl+F, Ctrl+K)
     - Responsive design (works on desktop and mobile)
     - MongoDB database integration
-    - Advanced security (XSS protection, CORS, Rate Limiting)
+    - Advanced security (JWT auth, XSS protection, CSRF, CORS, CSP, Rate Limiting)
     - Toast notifications for better feedback
+    - ARIA labels for accessibility
   </Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/client/public/favicon.ico</Icon>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.svg</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
