@@ -83,6 +83,10 @@ router.get('/:id', noteValidation.getOne, async (req, res, next) => {
 // POST /api/notes - Neue Notiz erstellen
 router.post('/', noteValidation.create, async (req, res, next) => {
   try {
+    console.log('=== POST /api/notes REQUEST BODY ===');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('===================================');
+
     const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
 
     // Validate content or todo items
