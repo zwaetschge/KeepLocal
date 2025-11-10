@@ -23,7 +23,7 @@
   <Category>Productivity: Tools:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid/mongodb.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/mongodb-icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.svg</Icon>
   <ExtraParams>--health-cmd="echo 'db.runCommand(&quot;ping&quot;).ok' | mongosh localhost:27017/keeplocal --quiet" --health-interval=10s --health-timeout=5s --health-retries=5</ExtraParams>
   <PostArgs/>
   <CPUset/>

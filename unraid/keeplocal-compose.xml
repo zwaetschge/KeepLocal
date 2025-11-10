@@ -28,6 +28,8 @@
     Features:
     - User authentication with JWT (secure multi-user support)
     - Create, edit, and delete notes with confirmation dialogs
+    - Google Keep-style todo lists with checkboxes
+    - Link preview cards with Open Graph metadata
     - 10 different colors for your notes
     - Pin/unpin functionality
     - Tags/categories for better organization
@@ -52,5 +54,5 @@
   <Privileged>false</Privileged>
   <Network>bridge</Network>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
-  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.svg</Icon>
 </Containers>
