@@ -3,6 +3,7 @@ const router = express.Router();
 const Note = require('../models/Note');
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
+const { fetchLinkPreview } = require('../utils/linkPreview');
 
 // Alle Routen erfordern Authentifizierung
 router.use(authenticateToken);
@@ -20,12 +21,13 @@ router.get('/', noteValidation.search, async (req, res, next) => {
     // Query nur für Notizen des aktuellen Benutzers
     let query = { userId: req.user._id };
 
-    // Volltextsuche in Titel und Inhalt
+    // Volltextsuche in Titel, Inhalt und Todo-Items
     if (search && search.trim() !== '') {
       const escapedSearch = escapeRegex(search.trim());
       query.$or = [
         { title: { $regex: escapedSearch, $options: 'i' } },
-        { content: { $regex: escapedSearch, $options: 'i' } }
+        { content: { $regex: escapedSearch, $options: 'i' } },
+        { 'todoItems.text': { $regex: escapedSearch, $options: 'i' } }
       ];
     }
 
@@ -81,18 +83,28 @@ router.get('/:id', noteValidation.getOne, async (req, res, next) => {
 // POST /api/notes - Neue Notiz erstellen
 router.post('/', noteValidation.create, async (req, res, next) => {
   try {
-    const { title, content, color, isPinned, tags } = req.body;
+    const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
 
-    if (!content || content.trim() === '') {
-      return res.status(400).json({ error: 'Inhalt ist erforderlich' });
+    // Validate content or todo items
+    if (isTodoList) {
+      if (!todoItems || todoItems.length === 0 || todoItems.every(item => !item.text || !item.text.trim())) {
+        return res.status(400).json({ error: 'Todo-Liste muss mindestens ein Element enthalten' });
+      }
+    } else {
+      if (!content || content.trim() === '') {
+        return res.status(400).json({ error: 'Inhalt ist erforderlich' });
+      }
     }
 
     const newNote = new Note({
       title: title || '',
-      content: content.trim(),
+      content: isTodoList ? '' : (content?.trim() || ''),
       color: color || '#ffffff',
       isPinned: isPinned || false,
       tags: tags || [],
+      isTodoList: isTodoList || false,
+      todoItems: isTodoList ? (todoItems || []) : [],
+      linkPreviews: linkPreviews || [],
       userId: req.user._id // Benutzer-ID hinzufügen
     });
 
@@ -109,22 +121,35 @@ router.post('/', noteValidation.create, async (req, res, next) => {
 // PUT /api/notes/:id - Notiz aktualisieren
 router.put('/:id', noteValidation.update, async (req, res, next) => {
   try {
-    const { title, content, color, isPinned, tags } = req.body;
+    const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
 
-    if (!content || content.trim() === '') {
-      return res.status(400).json({ error: 'Inhalt ist erforderlich' });
+    // Validate content or todo items
+    if (isTodoList) {
+      if (!todoItems || todoItems.length === 0 || todoItems.every(item => !item.text || !item.text.trim())) {
+        return res.status(400).json({ error: 'Todo-Liste muss mindestens ein Element enthalten' });
+      }
+    } else {
+      if (!content || content.trim() === '') {
+        return res.status(400).json({ error: 'Inhalt ist erforderlich' });
+      }
     }
+
+    // Build update object
+    const updateData = {
+      title: title || '',
+      content: isTodoList ? '' : (content?.trim() || ''),
+      color: color,
+      isPinned: isPinned,
+      tags: tags,
+      isTodoList: isTodoList || false,
+      todoItems: isTodoList ? (todoItems || []) : [],
+      linkPreviews: linkPreviews || []
+    };
 
     // Nur Notizen des eigenen Benutzers aktualisieren
     const updatedNote = await Note.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
-      {
-        title: title || '',
-        content: content.trim(),
-        color: color,
-        isPinned: isPinned,
-        tags: tags
-      },
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -188,6 +213,36 @@ router.post('/:id/pin', noteValidation.pin, async (req, res, next) => {
       return res.status(404).json({ error: 'Notiz nicht gefunden' });
     }
     next(error);
+  }
+});
+
+// POST /api/notes/link-preview - Fetch link preview metadata
+router.post('/link-preview', async (req, res, next) => {
+  try {
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL ist erforderlich' });
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch (e) {
+      return res.status(400).json({ error: 'Ungültige URL' });
+    }
+
+    // Fetch link preview
+    const preview = await fetchLinkPreview(url);
+    preview.fetchedAt = new Date();
+
+    res.json(preview);
+  } catch (error) {
+    console.error('Link preview error:', error);
+    res.status(500).json({
+      error: 'Link-Vorschau konnte nicht abgerufen werden',
+      message: error.message
+    });
   }
 });
 

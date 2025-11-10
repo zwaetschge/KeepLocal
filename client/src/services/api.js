@@ -171,6 +171,14 @@ export const notesAPI = {
     }),
 };
 
+// Link Preview API
+export async function fetchLinkPreviewAPI(url) {
+  return fetchWithAuth('/api/notes/link-preview', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
+
 // Admin API
 export const adminAPI = {
   getUsers: () => fetchWithAuth('/api/admin/users'),

@@ -45,6 +45,37 @@ const noteSchema = new mongoose.Schema({
     filename: String,
     uploadedAt: Date
   }],
+  isTodoList: {
+    type: Boolean,
+    default: false
+  },
+  todoItems: [{
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 500
+    },
+    completed: {
+      type: Boolean,
+      default: false
+    },
+    order: {
+      type: Number,
+      default: 0
+    }
+  }],
+  linkPreviews: [{
+    url: {
+      type: String,
+      required: true
+    },
+    title: String,
+    description: String,
+    image: String,
+    siteName: String,
+    fetchedAt: Date
+  }],
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
