@@ -1,12 +1,20 @@
 .sidebar {
   width: 240px;
-  background: var(--bg-primary);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   height: calc(100vh - 60px);
   position: sticky;
   top: 60px;
   overflow-y: auto;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dark-mode .sidebar {
+  background: rgba(26, 26, 26, 0.8);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar.collapsed {
@@ -63,17 +71,21 @@
 }
 
 .sidebar-item:hover {
-  background: rgba(95, 99, 104, 0.08);
+  background: rgba(135, 206, 235, 0.15);
 }
 
 .sidebar-item.active {
-  background: #feefc3;
+  background: rgba(135, 206, 235, 0.3);
   color: rgba(0, 0, 0, 0.87);
 }
 
+.dark-mode .sidebar-item:hover {
+  background: rgba(135, 206, 235, 0.12);
+}
+
 .dark-mode .sidebar-item.active {
-  background: rgba(138, 180, 248, 0.24);
-  color: var(--accent-color);
+  background: rgba(135, 206, 235, 0.25);
+  color: #87CEEB;
 }
 
 .sidebar-admin {
@@ -157,9 +169,17 @@
     position: fixed;
     left: 0;
     z-index: 1000;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
     transform: translateX(-100%);
     transition: transform 0.3s ease;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .dark-mode .sidebar {
+    background: rgba(26, 26, 26, 0.95);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
   }
 
   .sidebar.mobile-open {
@@ -179,8 +199,14 @@
     gap: 12px;
     margin-bottom: 16px;
     padding: 12px;
-    background: var(--bg-secondary);
+    background: rgba(135, 206, 235, 0.2);
     border-radius: 12px;
+    border: 1px solid rgba(135, 206, 235, 0.3);
+  }
+
+  .dark-mode .sidebar-mobile-user {
+    background: rgba(135, 206, 235, 0.15);
+    border: 1px solid rgba(135, 206, 235, 0.2);
   }
 
   .mobile-user-icon {
@@ -208,18 +234,29 @@
     justify-content: center;
     gap: 8px;
     padding: 12px;
-    background: var(--accent-color);
-    color: white;
-    border: none;
+    background: rgba(135, 206, 235, 0.8);
+    color: #000000;
+    border: 1px solid rgba(135, 206, 235, 1);
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.2s ease;
   }
 
   .sidebar-mobile-logout:hover {
-    background: var(--accent-hover);
+    background: rgba(135, 206, 235, 1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(135, 206, 235, 0.4);
+  }
+
+  .dark-mode .sidebar-mobile-logout {
+    background: rgba(135, 206, 235, 0.8);
+    color: #000000;
+  }
+
+  .dark-mode .sidebar-mobile-logout:hover {
+    background: rgba(135, 206, 235, 1);
   }
 
   .sidebar-mobile-logout svg {

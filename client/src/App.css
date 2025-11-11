@@ -71,11 +71,11 @@ body {
   background: linear-gradient(to bottom, #87CEEB 0%, #ffffff 100%);
   background-attachment: fixed;
   color: var(--text-primary);
-  transition: background-color 0.2s, color 0.2s;
+  transition: background 0.3s ease, color 0.2s;
 }
 
-.dark-mode body {
-  background: linear-gradient(to bottom, #87CEEB 0%, #000000 100%);
+body.dark-mode {
+  background: linear-gradient(to bottom, #87CEEB 0%, #1a1a1a 100%);
   background-attachment: fixed;
 }
 
