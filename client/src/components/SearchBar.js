@@ -1,7 +1,9 @@
 import React, { useState, useRef, useImperativeHandle } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './SearchBar.css';
 
 const SearchBar = React.forwardRef(({ onSearch }, ref) => {
+  const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const inputRef = useRef(null);
 
@@ -29,18 +31,18 @@ const SearchBar = React.forwardRef(({ onSearch }, ref) => {
       <input
         ref={inputRef}
         type="search"
-        placeholder="Notizen durchsuchen..."
+        placeholder={t('searchPlaceholder')}
         value={searchTerm}
         onChange={handleSearch}
         className="search-input"
-        aria-label="Notizen durchsuchen"
+        aria-label={t('searchNotes')}
       />
       {searchTerm && (
         <button
           onClick={handleClear}
           className="search-clear"
-          title="Suche löschen"
-          aria-label="Suche löschen"
+          title={t('clearSearch')}
+          aria-label={t('clearSearch')}
         >
           ✕
         </button>

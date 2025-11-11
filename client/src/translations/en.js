@@ -71,6 +71,8 @@ export const en = {
   // Confirm
   confirmDelete: 'Do you really want to delete this note?',
   confirmDeleteTitle: 'Delete Note',
+  confirmDeleteMessage: 'Do you really want to delete this note? This action cannot be undone.',
+  confirmDeleteNoteTitle: 'Delete note?',
   yes: 'Yes',
   no: 'No',
 
@@ -124,4 +126,51 @@ export const en = {
   selectOtherTagOrCreate: 'Select another label or create a new note',
   noNotesFound: 'No notes found',
   tryDifferentSearch: 'Try a different search term',
+
+  // Sections
+  pinnedSection: 'PINNED',
+  otherSection: 'OTHER',
+  notePinned: 'Note pinned',
+  noteUnpinned: 'Note unpinned',
+  noteWasPinned: 'Note was pinned',
+  noteWasUnpinned: 'Note was unpinned',
+
+  // Placeholders
+  enterNote: 'Enter note...',
+  todoItem: 'List item',
+  deleteItem: 'Delete item',
+  tagsPlaceholder: 'Tags (comma separated)',
+
+  // Theme switching
+  switchToLightMode: 'Switch to light mode',
+  switchToDarkMode: 'Switch to dark mode',
+  switchToOledMode: 'Switch to OLED mode',
+  switchToNote: 'Switch to note',
+  switchToList: 'Switch to list',
+
+  // Admin
+  newUser: 'New user',
+  deleteUser: 'Delete user',
+  deleteUserConfirm: 'Delete user?',
+  deleteUserMessage: 'Do you really want to delete the user "{username}"? All notes of this user will also be deleted. This action cannot be undone.',
+
+  // Color picker
+  changeColor: 'Change color',
+  openColorPicker: 'Open color picker',
+  selectColor: 'Select color',
+  colorWhite: 'White',
+  colorRed: 'Red',
+  colorOrange: 'Orange',
+  colorYellow: 'Yellow',
+  colorGreen: 'Green',
+  colorTeal: 'Teal',
+  colorLightBlue: 'Light Blue',
+  colorBlue: 'Blue',
+  colorPurple: 'Purple',
+  colorPink: 'Pink',
+  colorBrown: 'Brown',
+  colorGray: 'Gray',
+
+  // Search
+  clearSearch: 'Clear search',
 };

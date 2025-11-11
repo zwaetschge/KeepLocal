@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './AdminConsole.css';
 import { adminAPI } from '../services/api';
 import ConfirmDialog from './ConfirmDialog';
 
 function AdminConsole({ onClose }) {
+  const { t } = useLanguage();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -113,7 +115,7 @@ function AdminConsole({ onClose }) {
   return (
     <div className="admin-console-overlay" onClick={onClose}>
       <div className="admin-console" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="admin-close-btn" title="Schließen" aria-label="Schließen">
+        <button onClick={onClose} className="admin-close-btn" title={t('close')} aria-label={t('close')}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -148,7 +150,7 @@ function AdminConsole({ onClose }) {
           {error && (
             <div className="admin-error">
               <p>{error}</p>
-              <button onClick={() => setError(null)}>Schließen</button>
+              <button onClick={() => setError(null)}>{t('close')}</button>
             </div>
           )}
 
@@ -235,7 +237,7 @@ function AdminConsole({ onClose }) {
                       onClick={() => setShowCreateUser(!showCreateUser)}
                       className="btn-create-user"
                     >
-                      {showCreateUser ? '✕ Abbrechen' : '➕ Neuer Benutzer'}
+                      {showCreateUser ? `✕ ${t('cancel')}` : `➕ ${t('newUser')}`}
                     </button>
                   </div>
 
@@ -329,9 +331,9 @@ function AdminConsole({ onClose }) {
                                 onClick={() => setDeleteConfirm(user)}
                                 disabled={operationLoading[user._id]}
                                 className="btn-user-delete"
-                                title="Benutzer löschen"
+                                title={t('deleteUser')}
                               >
-                                🗑️ Löschen
+                                🗑️ {t('delete')}
                               </button>
                             </div>
                           </td>
@@ -385,8 +387,8 @@ function AdminConsole({ onClose }) {
       {deleteConfirm && (
         <ConfirmDialog
           isOpen={true}
-          title="Benutzer löschen?"
-          message={`Möchten Sie den Benutzer "${deleteConfirm.username}" wirklich löschen? Alle Notizen dieses Benutzers werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`}
+          title={t('deleteUserConfirm')}
+          message={t('deleteUserMessage').replace('{username}', deleteConfirm.username)}
           onConfirm={() => handleDeleteUser(deleteConfirm._id)}
           onCancel={() => setDeleteConfirm(null)}
         />

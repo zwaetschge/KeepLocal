@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import ColorPicker from './ColorPicker';
@@ -7,6 +8,7 @@ import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
 function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
+  const { t } = useLanguage();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const contentRef = useRef(null);
@@ -154,8 +156,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
               handleDeleteClick();
             }}
             className="action-btn delete-btn"
-            title="Löschen"
-            aria-label="Löschen"
+            title={t('delete')}
+            aria-label={t('delete')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
@@ -166,8 +168,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title="Notiz löschen?"
-        message="Möchten Sie diese Notiz wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+        title={t('confirmDeleteNoteTitle')}
+        message={t('confirmDeleteMessage')}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />

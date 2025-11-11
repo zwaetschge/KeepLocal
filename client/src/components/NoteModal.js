@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './NoteModal.css';
 import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
@@ -7,6 +8,7 @@ import { getColorVar } from '../utils/colorMapper';
 import { fetchLinkPreviewAPI } from '../services/api';
 
 function NoteModal({ note, onSave, onClose }) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState(note?.tags?.join(', ') || '');
@@ -197,7 +199,7 @@ function NoteModal({ note, onSave, onClose }) {
         <button
           className="note-modal-close"
           onClick={onClose}
-          aria-label="Schließen"
+          aria-label={t('close')}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -209,7 +211,7 @@ function NoteModal({ note, onSave, onClose }) {
           <input
             type="text"
             className="note-modal-title"
-            placeholder="Titel"
+            placeholder={t('title')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus={!isTodoList}
@@ -228,7 +230,7 @@ function NoteModal({ note, onSave, onClose }) {
                   <input
                     type="text"
                     className={`todo-item-input ${item.completed ? 'completed' : ''}`}
-                    placeholder="Listenelement"
+                    placeholder={t('todoItem')}
                     value={item.text}
                     onChange={(e) => handleTodoItemChange(index, e.target.value)}
                     onKeyDown={(e) => handleTodoItemKeyDown(e, index)}
@@ -238,7 +240,7 @@ function NoteModal({ note, onSave, onClose }) {
                     type="button"
                     className="todo-item-delete"
                     onClick={() => handleTodoItemDelete(index)}
-                    aria-label="Element löschen"
+                    aria-label={t('deleteItem')}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18"/>
@@ -256,14 +258,14 @@ function NoteModal({ note, onSave, onClose }) {
                   <line x1="12" y1="5" x2="12" y2="19"/>
                   <line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
-                Listenelement
+                {t('todoItem')}
               </button>
             </div>
           ) : (
             <textarea
               ref={contentTextareaRef}
               className="note-modal-content"
-              placeholder="Notiz eingeben..."
+              placeholder={t('enterNote')}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={12}
@@ -287,7 +289,7 @@ function NoteModal({ note, onSave, onClose }) {
           <input
             type="text"
             className="note-modal-tags"
-            placeholder="Tags (durch Komma getrennt)"
+            placeholder={t('tagsPlaceholder')}
             value={tags}
             onChange={(e) => setTags(e.target.value)}
           />
@@ -303,8 +305,8 @@ function NoteModal({ note, onSave, onClose }) {
               type="button"
               className={`btn-modal-checkbox ${isTodoList ? 'active' : ''}`}
               onClick={handleToggleTodoMode}
-              title={isTodoList ? "Zu Notiz wechseln" : "Zu Liste wechseln"}
-              aria-label={isTodoList ? "Zu Notiz wechseln" : "Zu Liste wechseln"}
+              title={isTodoList ? t('switchToNote') : t('switchToList')}
+              aria-label={isTodoList ? t('switchToNote') : t('switchToList')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -317,14 +319,14 @@ function NoteModal({ note, onSave, onClose }) {
               className="btn-modal-cancel"
               onClick={onClose}
             >
-              Abbrechen
+              {t('cancel')}
             </button>
             <button
               className="btn-modal-save"
               onClick={handleSave}
               disabled={isTodoList ? (todoItems.length === 0 || todoItems.every(item => !item.text.trim())) : !content.trim()}
             >
-              Speichern
+              {t('save')}
             </button>
           </div>
         </div>

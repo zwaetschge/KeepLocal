@@ -14,7 +14,7 @@ function Sidebar({
   onAdminClick,
   user,
   onLogout,
-  isDarkMode,
+  theme,
   onThemeToggle,
   isMobileOpen,
   onMobileClose
@@ -58,7 +58,7 @@ function Sidebar({
 
         <div className="sidebar-mobile-actions">
           <LanguageSelector />
-          <ThemeToggle isDarkMode={isDarkMode} onToggle={onThemeToggle} />
+          <ThemeToggle theme={theme} onToggle={onThemeToggle} />
         </div>
 
         <button

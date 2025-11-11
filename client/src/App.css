@@ -59,6 +59,33 @@
   --note-gray: #3c3f43;
 }
 
+.oled-mode {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --border-color: rgba(255, 255, 255, 0.15);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+  --accent-color: #8ab4f8;
+  --accent-hover: #aecbfa;
+
+  /* Note Colors - OLED Mode (very dark variants) */
+  --note-white: #0a0a0a;
+  --note-red: #3d1a18;
+  --note-orange: #3d2f0f;
+  --note-yellow: #3d3a0f;
+  --note-green: #1f3510;
+  --note-teal: #0a2f2b;
+  --note-cyan: #1a3238;
+  --note-blue: #0f1f35;
+  --note-purple: #241535;
+  --note-pink: #35142a;
+  --note-brown: #291e0f;
+  --note-gray: #1a1a1a;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -76,6 +103,11 @@ body {
 
 body.dark-mode {
   background: linear-gradient(to bottom, #1e3a5f 0%, #1a1a1a 100%);
+  background-attachment: fixed;
+}
+
+body.oled-mode {
+  background: #000000;
   background-attachment: fixed;
 }
 
@@ -98,6 +130,10 @@ body.dark-mode {
 
 .dark-mode .App-header {
   background: #1e3a5f;
+}
+
+.oled-mode .App-header {
+  background: #000000;
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
