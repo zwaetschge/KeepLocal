@@ -13,6 +13,8 @@ import Setup from './components/Setup';
 import AdminConsole from './components/AdminConsole';
 import Logo from './components/Logo';
 import NoteModal from './components/NoteModal';
+import FriendsModal from './components/FriendsModal';
+import CollaborateModal from './components/CollaborateModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { notesAPI, initializeCSRF } from './services/api';
@@ -36,6 +38,10 @@ function AppContent() {
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [showCollaborateModal, setShowCollaborateModal] = useState(false);
+  const [collaborateNote, setCollaborateNote] = useState(null);
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
@@ -71,7 +77,11 @@ function AppContent() {
 
     try {
       setLoading(true);
-      const params = { page, limit: 50 };
+      const params = {
+        page,
+        limit: 50,
+        archived: showArchived ? 'true' : 'false'
+      };
       if (search) params.search = search;
 
       const response = await notesAPI.getAll(params);
@@ -83,14 +93,14 @@ function AppContent() {
     } finally {
       setLoading(false);
     }
-  }, [isLoggedIn, showToast]);
+  }, [isLoggedIn, showToast, showArchived]);
 
-  // Notizen laden wenn eingeloggt
+  // Notizen laden wenn eingeloggt oder showArchived ändert
   useEffect(() => {
     if (isLoggedIn && !authLoading) {
       fetchNotes();
     }
-  }, [isLoggedIn, authLoading, fetchNotes]);
+  }, [isLoggedIn, authLoading, showArchived, fetchNotes]);
 
   // Neue Notiz erstellen
   const createNote = async (noteData) => {
@@ -151,6 +161,42 @@ function AppContent() {
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
+  };
+
+  // Notiz archivieren/dearchivieren
+  const toggleArchiveNote = async (id) => {
+    setOperationLoading(prev => ({ ...prev, [id]: 'archive' }));
+    try {
+      const response = await notesAPI.toggleArchive(id);
+      const message = response.isArchived ? 'Notiz archiviert' : 'Notiz dearchiviert';
+      showToast(message, 'success');
+
+      // Notiz aus der Liste entfernen wenn sie archiviert/dearchiviert wird
+      // und wir nicht in der entsprechenden Ansicht sind
+      if (response.isArchived && !showArchived) {
+        setNotes(notes.filter(note => note._id !== id));
+      } else if (!response.isArchived && showArchived) {
+        setNotes(notes.filter(note => note._id !== id));
+      } else {
+        setNotes(notes.map(note => note._id === id ? response : note));
+      }
+    } catch (error) {
+      console.error('Fehler beim Archivieren der Notiz:', error);
+      showToast(error.message || 'Fehler beim Archivieren der Notiz', 'error');
+    } finally {
+      setOperationLoading(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  // Collaborate Modal öffnen
+  const openCollaborateModal = (note) => {
+    setCollaborateNote(note);
+    setShowCollaborateModal(true);
+  };
+
+  // Wenn eine Notiz geteilt wurde, aktualisieren
+  const handleNoteShared = (updatedNote) => {
+    setNotes(notes.map(note => note._id === updatedNote._id ? updatedNote : note));
   };
 
   // Modal handlers
@@ -287,6 +333,9 @@ function AppContent() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [notes]);
+
+  // Count archived notes (shows count when in normal view, 0 when in archived view)
+  const archivedCount = showArchived ? 0 : pagination.total;
 
   // Filter notes by selected tag and separate into pinned/other categories
   const { pinnedNotes, otherNotes } = useMemo(() => {
@@ -450,6 +499,10 @@ function AppContent() {
           onThemeToggle={toggleTheme}
           isMobileOpen={isMobileMenuOpen}
           onMobileClose={() => setIsMobileMenuOpen(false)}
+          archivedCount={archivedCount}
+          showArchived={showArchived}
+          onShowArchivedToggle={() => setShowArchived(!showArchived)}
+          onOpenFriends={() => setShowFriendsModal(true)}
         />
 
         <main className="App-main" role="main">
@@ -474,6 +527,8 @@ function AppContent() {
                   onDeleteNote={deleteNote}
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
+                  onToggleArchive={toggleArchiveNote}
+                  onOpenCollaborate={openCollaborateModal}
                   onOpenModal={openNoteModal}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
@@ -491,6 +546,8 @@ function AppContent() {
                   onDeleteNote={deleteNote}
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
+                  onToggleArchive={toggleArchiveNote}
+                  onOpenCollaborate={openCollaborateModal}
                   onOpenModal={openNoteModal}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
@@ -575,6 +632,19 @@ function AppContent() {
           onClose={closeNoteModal}
         />
       )}
+
+      <FriendsModal
+        isOpen={showFriendsModal}
+        onClose={() => setShowFriendsModal(false)}
+        isAdmin={user?.isAdmin}
+      />
+
+      <CollaborateModal
+        isOpen={showCollaborateModal}
+        onClose={() => setShowCollaborateModal(false)}
+        note={collaborateNote}
+        onNoteUpdate={handleNoteShared}
+      />
     </div>
   );
 }
