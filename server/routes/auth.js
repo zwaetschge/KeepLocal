@@ -31,6 +31,31 @@ router.get('/setup-needed', async (req, res) => {
   }
 });
 
+// GET /api/auth/registration-status - Check if registration is enabled
+router.get('/registration-status', async (req, res) => {
+  try {
+    const userCount = await User.countDocuments();
+
+    // If no users exist, registration is always allowed (first admin)
+    if (userCount === 0) {
+      return res.json({ registrationEnabled: true });
+    }
+
+    // Otherwise, check settings
+    let settings = await Settings.findById('1');
+
+    if (!settings) {
+      settings = new Settings({ _id: '1', registrationEnabled: false });
+      await settings.save();
+    }
+
+    res.json({ registrationEnabled: settings.registrationEnabled });
+  } catch (error) {
+    console.error('Error checking registration status:', error);
+    res.status(500).json({ error: 'Fehler beim Prüfen des Registrierungsstatus' });
+  }
+});
+
 // POST /api/auth/register - Neuen Benutzer registrieren
 router.post('/register', [
   body('username')
