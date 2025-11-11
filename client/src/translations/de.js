@@ -9,6 +9,13 @@ export const de = {
   username: 'Benutzername',
   email: 'E-Mail',
   password: 'Passwort',
+  loginSubtitle: 'Melden Sie sich an, um Ihre Notizen zu sehen',
+  emailPlaceholder: 'ihre@email.de',
+  loggingIn: 'Anmeldung läuft...',
+  noAccount: 'Noch kein Konto?',
+  registerNow: 'Jetzt registrieren',
+  fillAllFields: 'Bitte füllen Sie alle Felder aus',
+  loginFailed: 'Anmeldung fehlgeschlagen',
 
   // Setup
   setupTitle: 'KeepLocal Ersteinrichtung',

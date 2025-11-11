@@ -9,6 +9,13 @@ export const en = {
   username: 'Username',
   email: 'Email',
   password: 'Password',
+  loginSubtitle: 'Sign in to view your notes',
+  emailPlaceholder: 'your@email.com',
+  loggingIn: 'Logging in...',
+  noAccount: "Don't have an account?",
+  registerNow: 'Register now',
+  fillAllFields: 'Please fill in all fields',
+  loginFailed: 'Login failed',
 
   // Setup
   setupTitle: 'KeepLocal Initial Setup',

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './Auth.css';
 
 function Login({ onLogin, onSwitchToRegister }) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,7 +32,7 @@ function Login({ onLogin, onSwitchToRegister }) {
     setError('');
 
     if (!email || !password) {
-      setError('Bitte füllen Sie alle Felder aus');
+      setError(t('fillAllFields'));
       return;
     }
 
@@ -39,7 +41,7 @@ function Login({ onLogin, onSwitchToRegister }) {
     try {
       await onLogin(email, password);
     } catch (err) {
-      setError(err.message || 'Anmeldung fehlgeschlagen');
+      setError(err.message || t('loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,7 @@ function Login({ onLogin, onSwitchToRegister }) {
       <div className="auth-box">
         <div className="auth-header">
           <h1>📝 KeepLocal</h1>
-          <p>Melden Sie sich an, um Ihre Notizen zu sehen</p>
+          <p>{t('loginSubtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -61,13 +63,13 @@ function Login({ onLogin, onSwitchToRegister }) {
           )}
 
           <div className="form-group">
-            <label htmlFor="email">E-Mail</label>
+            <label htmlFor="email">{t('email')}</label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ihre@email.de"
+              placeholder={t('emailPlaceholder')}
               disabled={loading}
               autoComplete="email"
               autoFocus
@@ -76,7 +78,7 @@ function Login({ onLogin, onSwitchToRegister }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Passwort</label>
+            <label htmlFor="password">{t('password')}</label>
             <input
               id="password"
               type="password"
@@ -94,21 +96,21 @@ function Login({ onLogin, onSwitchToRegister }) {
             className="auth-button"
             disabled={loading}
           >
-            {loading ? 'Anmeldung läuft...' : 'Anmelden'}
+            {loading ? t('loggingIn') : t('login')}
           </button>
         </form>
 
         {registrationEnabled && (
           <div className="auth-footer">
             <p>
-              Noch kein Konto?{' '}
+              {t('noAccount')}{' '}
               <button
                 type="button"
                 className="auth-link"
                 onClick={onSwitchToRegister}
                 disabled={loading}
               >
-                Jetzt registrieren
+                {t('registerNow')}
               </button>
             </p>
           </div>
