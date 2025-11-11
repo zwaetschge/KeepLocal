@@ -130,6 +130,7 @@ body.oled-mode {
 
 .dark-mode .App-header {
   background: #1e3a5f;
+  color: #ffffff;
 }
 
 .oled-mode .App-header {
@@ -234,6 +235,16 @@ body.oled-mode {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.oled-mode .user-name {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.oled-mode .user-name.clickable:hover {
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 .btn-logout {
   padding: 8px 24px;
   background: transparent;
@@ -292,6 +303,21 @@ body.oled-mode {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.5);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.oled-mode .btn-logout {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+.oled-mode .btn-logout::before {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .btn-logout:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .App-container {
@@ -581,6 +607,14 @@ body.oled-mode {
 
 .dark-mode .mobile-menu-toggle:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .mobile-menu-toggle {
+  color: #ffffff;
+}
+
+.oled-mode .mobile-menu-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 @media (max-width: 768px) {
