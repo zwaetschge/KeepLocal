@@ -1,0 +1,28 @@
+{
+  "short_name": "KeepLocal",
+  "name": "KeepLocal - Lokale Notizen App",
+  "description": "Lokale Notizen-App inspiriert von Google Keep",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#87CEEB",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities"],
+  "scope": "/",
+  "lang": "de",
+  "dir": "ltr"
+}

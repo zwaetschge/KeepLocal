@@ -2,13 +2,37 @@
 <html lang="de">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="KeepLocal - Ihre lokale Notizen-App"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#87CEEB" />
+    <meta name="description" content="KeepLocal - Ihre lokale Notizen-App" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KeepLocal" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
     <title>KeepLocal - Notizen App</title>
+
+    <script>
+      // Register Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('Service Worker registriert:', registration);
+            })
+            .catch(error => {
+              console.log('Service Worker Registrierung fehlgeschlagen:', error);
+            });
+        });
+      }
+    </script>
   </head>
   <body>
     <noscript>Sie müssen JavaScript aktivieren, um diese App zu verwenden.</noscript>

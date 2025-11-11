@@ -68,37 +68,39 @@ body {
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--bg-primary);
+  background: linear-gradient(to bottom, #87CEEB 0%, #ffffff 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
   transition: background-color 0.2s, color 0.2s;
 }
 
+.dark-mode body {
+  background: linear-gradient(to bottom, #87CEEB 0%, #000000 100%);
+  background-attachment: fixed;
+}
+
 .App {
   min-height: 100vh;
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 .App-header {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  color: rgba(0, 0, 0, 0.87);
+  background: #87CEEB;
+  color: #000000;
   padding: 12px 24px;
-  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.08), 0 8px 32px -8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   position: sticky;
   top: 0;
   z-index: 1000;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark-mode .App-header {
-  background: rgba(41, 42, 45, 0.95);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  color: rgba(255, 255, 255, 0.87);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 32px -8px rgba(0, 0, 0, 0.3);
+  background: #87CEEB;
+  color: #000000;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .header-content {
@@ -134,15 +136,44 @@ body {
   gap: 12px;
 }
 
+/* Override ThemeToggle position when inside user-info (header) */
+.user-info .theme-toggle {
+  position: static;
+  width: auto;
+  height: auto;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-size: 24px;
+  padding: 8px;
+  margin: 0;
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+
+.user-info .theme-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+  transform: none;
+  box-shadow: none;
+}
+
+.user-info .theme-toggle:active {
+  transform: none;
+}
+
+.dark-mode .user-info .theme-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
 .user-name {
   font-weight: 500;
   font-size: 0.875rem;
   padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 24px;
   cursor: default;
   border: none;
-  color: inherit;
+  color: #000000;
   font-family: inherit;
   transition: all 0.2s ease;
 }
@@ -152,25 +183,26 @@ body {
 }
 
 .user-name.clickable:hover {
-  background: rgba(102, 126, 234, 0.2);
+  background: rgba(0, 0, 0, 0.15);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .dark-mode .user-name {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.1);
+  color: #000000;
 }
 
 .dark-mode .user-name.clickable:hover {
-  background: rgba(138, 180, 248, 0.3);
-  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.3);
+  background: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .btn-logout {
   padding: 8px 24px;
   background: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  color: rgba(0, 0, 0, 0.87);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  color: #000000;
   font-weight: 500;
   border-radius: 24px;
   cursor: pointer;
@@ -200,10 +232,10 @@ body {
 }
 
 .btn-logout:hover {
-  background: rgba(0, 0, 0, 0.08);
-  border-color: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.4);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn-logout:active {
@@ -212,18 +244,18 @@ body {
 }
 
 .dark-mode .btn-logout {
-  border-color: rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(0, 0, 0, 0.3);
+  color: #000000;
 }
 
 .dark-mode .btn-logout::before {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .dark-mode .btn-logout:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .App-container {
@@ -498,18 +530,22 @@ body {
   border: none;
   padding: 8px;
   cursor: pointer;
-  color: var(--text-primary);
+  color: #000000;
   margin-right: 8px;
   border-radius: 50%;
   transition: background 0.2s ease;
 }
 
 .mobile-menu-toggle:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.dark-mode .mobile-menu-toggle {
+  color: #000000;
 }
 
 .dark-mode .mobile-menu-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 @media (min-width: 769px) {
