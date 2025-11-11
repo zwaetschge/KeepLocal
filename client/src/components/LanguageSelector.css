@@ -1,0 +1,130 @@
+.language-selector {
+  position: relative;
+  display: inline-block;
+}
+
+.language-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+  font-size: 24px;
+}
+
+.language-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark-mode .language-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.language-emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.language-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+  min-width: 150px;
+  z-index: 1000;
+  animation: slideDown 0.2s ease-out;
+}
+
+.dark-mode .language-popup {
+  background: #2d2d2d;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.language-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.language-option {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  color: #333;
+  font-size: 14px;
+}
+
+.dark-mode .language-option {
+  color: #e0e0e0;
+}
+
+.language-option:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark-mode .language-option:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.language-option.active {
+  background-color: rgba(66, 133, 244, 0.15);
+}
+
+.dark-mode .language-option.active {
+  background-color: rgba(66, 133, 244, 0.25);
+}
+
+.language-emoji-large {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.language-name {
+  flex: 1;
+  text-align: left;
+  font-weight: 500;
+}
+
+.language-option.active .language-name {
+  font-weight: 600;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .language-popup {
+    right: -8px;
+  }
+
+  .language-toggle {
+    font-size: 20px;
+    padding: 6px;
+  }
+
+  .language-emoji {
+    font-size: 20px;
+  }
+}
