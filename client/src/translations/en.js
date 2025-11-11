@@ -109,4 +109,12 @@ export const en = {
   collapse: 'Collapse',
   expandSidebar: 'Expand sidebar',
   collapseSidebar: 'Collapse sidebar',
+
+  // Empty states
+  noNotesAvailable: 'No notes available',
+  createFirstNote: 'Create your first note with',
+  noNotesWithTag: 'No notes with this label',
+  selectOtherTagOrCreate: 'Select another label or create a new note',
+  noNotesFound: 'No notes found',
+  tryDifferentSearch: 'Try a different search term',
 };

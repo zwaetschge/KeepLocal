@@ -386,7 +386,6 @@ function AppContent() {
             className="mobile-menu-toggle"
             onClick={() => setIsMobileMenuOpen(true)}
             aria-label="Menu"
-            style={{ display: 'none' }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 12h18M3 6h18M3 18h18"/>
@@ -493,25 +492,25 @@ function AppContent() {
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && !selectedTag && !searchTerm && (
               <div className="empty-state" role="status">
-                <p>📝 Keine Notizen vorhanden</p>
+                <p>📝 {t('noNotesAvailable')}</p>
                 <p className="empty-hint">
-                  Erstellen Sie Ihre erste Notiz mit <kbd>Strg+N</kbd>
+                  {t('createFirstNote')} <kbd>Strg+N</kbd>
                 </p>
               </div>
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && selectedTag && (
               <div className="empty-state" role="status">
-                <p>🏷️ Keine Notizen mit diesem Label</p>
+                <p>🏷️ {t('noNotesWithTag')}</p>
                 <p className="empty-hint">
-                  Wählen Sie ein anderes Label oder erstellen Sie eine neue Notiz
+                  {t('selectOtherTagOrCreate')}
                 </p>
               </div>
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && searchTerm && !selectedTag && (
               <div className="empty-state" role="status">
-                <p>🔍 Keine Notizen gefunden</p>
+                <p>🔍 {t('noNotesFound')}</p>
                 <p className="empty-hint">
-                  Versuchen Sie es mit einem anderen Suchbegriff
+                  {t('tryDifferentSearch')}
                 </p>
               </div>
             )}

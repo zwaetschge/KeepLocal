@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
+import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Sidebar.css';
 
@@ -46,6 +47,10 @@ function Sidebar({
 
       {/* Mobile controls - only visible on mobile */}
       <div className="sidebar-mobile-controls">
+        <div className="sidebar-mobile-logo">
+          <Logo size={28} />
+        </div>
+
         <div className="sidebar-mobile-user">
           <span className="mobile-user-icon">👤</span>
           <span className="mobile-user-name">{user?.username}</span>

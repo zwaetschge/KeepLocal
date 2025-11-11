@@ -5,26 +5,20 @@
   animation: logoFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.logo-svg {
-  filter: drop-shadow(0 2px 8px rgba(102, 126, 234, 0.3));
+.logo-img {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
   animation: logoFloat 3s ease-in-out infinite;
 }
 
 .logo-text {
   font-size: 1.5rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #000000;
   letter-spacing: -0.02em;
 }
 
 .dark-mode .logo-text {
-  background: linear-gradient(135deg, #8ab4f8 0%, #a88beb 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #000000;
 }
 
 @keyframes logoFadeIn {
@@ -47,7 +41,7 @@
   }
 }
 
-.logo-svg:hover {
+.logo-img:hover {
   animation: logoFloat 1s ease-in-out infinite, logoPulse 0.6s ease-in-out;
 }
 

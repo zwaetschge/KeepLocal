@@ -71,11 +71,11 @@ body {
   background: linear-gradient(to bottom, #87CEEB 0%, #ffffff 100%);
   background-attachment: fixed;
   color: var(--text-primary);
-  transition: background-color 0.2s, color 0.2s;
+  transition: background 0.3s ease, color 0.2s;
 }
 
-.dark-mode body {
-  background: linear-gradient(to bottom, #87CEEB 0%, #000000 100%);
+body.dark-mode {
+  background: linear-gradient(to bottom, #87CEEB 0%, #1a1a1a 100%);
   background-attachment: fixed;
 }
 
@@ -534,6 +534,7 @@ body {
   margin-right: 8px;
   border-radius: 50%;
   transition: background 0.2s ease;
+  display: none;
 }
 
 .mobile-menu-toggle:hover {
@@ -548,8 +549,13 @@ body {
   background: rgba(0, 0, 0, 0.1);
 }
 
-@media (min-width: 769px) {
+@media (max-width: 768px) {
   .mobile-menu-toggle {
-    display: none !important;
+    display: flex !important;
+  }
+
+  /* Hide logo in topbar on mobile - it will be in sidebar instead */
+  .App-header .logo-container {
+    display: none;
   }
 }

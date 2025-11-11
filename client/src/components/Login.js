@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Auth.css';
 
 function Login({ onLogin, onSwitchToRegister }) {
@@ -6,6 +6,24 @@ function Login({ onLogin, onSwitchToRegister }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+
+  useEffect(() => {
+    // Check if registration is enabled
+    const checkRegistrationStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/registration-status');
+        if (response.ok) {
+          const data = await response.json();
+          setRegistrationEnabled(data.registrationEnabled);
+        }
+      } catch (error) {
+        console.error('Error checking registration status:', error);
+      }
+    };
+
+    checkRegistrationStatus();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -80,19 +98,21 @@ function Login({ onLogin, onSwitchToRegister }) {
           </button>
         </form>
 
-        <div className="auth-footer">
-          <p>
-            Noch kein Konto?{' '}
-            <button
-              type="button"
-              className="auth-link"
-              onClick={onSwitchToRegister}
-              disabled={loading}
-            >
-              Jetzt registrieren
-            </button>
-          </p>
-        </div>
+        {registrationEnabled && (
+          <div className="auth-footer">
+            <p>
+              Noch kein Konto?{' '}
+              <button
+                type="button"
+                className="auth-link"
+                onClick={onSwitchToRegister}
+                disabled={loading}
+              >
+                Jetzt registrieren
+              </button>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
