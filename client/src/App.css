@@ -123,11 +123,11 @@ body.oled-mode {
 }
 
 .App {
-  height: 100vh;
+  height: 100vh !important;
   background: transparent;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden !important;
 }
 
 .App-header {
@@ -336,7 +336,7 @@ body.oled-mode {
 .App-container {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow: hidden !important;
   min-height: 0;
 }
 
@@ -346,8 +346,8 @@ body.oled-mode {
   margin: 0 auto;
   padding: 24px 16px;
   width: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 .loading {
