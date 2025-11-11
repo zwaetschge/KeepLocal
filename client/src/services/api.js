@@ -169,6 +169,22 @@ export const notesAPI = {
     fetchWithAuth(`/api/notes/${id}/pin`, {
       method: 'POST',
     }),
+
+  toggleArchive: (id) =>
+    fetchWithAuth(`/api/notes/${id}/archive`, {
+      method: 'POST',
+    }),
+
+  shareNote: (id, userId) =>
+    fetchWithAuth(`/api/notes/${id}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+
+  unshareNote: (id, userId) =>
+    fetchWithAuth(`/api/notes/${id}/share/${userId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Link Preview API
@@ -178,6 +194,39 @@ export async function fetchLinkPreviewAPI(url) {
     body: JSON.stringify({ url }),
   });
 }
+
+// Friends API
+export const friendsAPI = {
+  getFriends: () => fetchWithAuth('/api/friends'),
+
+  getFriendRequests: () => fetchWithAuth('/api/friends/requests'),
+
+  sendFriendRequest: (username) =>
+    fetchWithAuth('/api/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    }),
+
+  acceptFriendRequest: (requestId) =>
+    fetchWithAuth(`/api/friends/accept/${requestId}`, {
+      method: 'POST',
+    }),
+
+  rejectFriendRequest: (requestId) =>
+    fetchWithAuth(`/api/friends/reject/${requestId}`, {
+      method: 'POST',
+    }),
+
+  removeFriend: (friendId) =>
+    fetchWithAuth(`/api/friends/${friendId}`, {
+      method: 'DELETE',
+    }),
+
+  searchUsers: (query) => {
+    const params = new URLSearchParams({ query }).toString();
+    return fetchWithAuth(`/api/friends/search?${params}`);
+  },
+};
 
 // Admin API
 export const adminAPI = {
@@ -230,6 +279,7 @@ export async function initializeCSRF() {
 export default {
   authAPI,
   notesAPI,
+  friendsAPI,
   adminAPI,
   initializeCSRF,
   isAuthenticated,

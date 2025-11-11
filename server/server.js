@@ -11,6 +11,7 @@ const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
 const adminRouter = require('./routes/admin');
+const friendsRouter = require('./routes/friends');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 
@@ -108,6 +109,7 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/notes', csrfProtection, notesRouter);
 app.use('/api/admin', csrfProtection, adminRouter);
+app.use('/api/friends', csrfProtection, friendsRouter);
 
 // Root-Route
 app.get('/', (req, res) => {

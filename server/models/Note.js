@@ -35,6 +35,10 @@ const noteSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isArchived: {
+    type: Boolean,
+    default: false
+  },
   tags: [{
     type: String,
     trim: true,
@@ -81,15 +85,20 @@ const noteSchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Benutzer-ID ist erforderlich'],
     index: true
-  }
+  },
+  sharedWith: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
 });
 
 // Index für schnellere Suche
 noteSchema.index({ title: 'text', content: 'text' });
-noteSchema.index({ userId: 1, isPinned: -1, createdAt: -1 }); // Compound index für Benutzer-Notizen
+noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // Compound index für Benutzer-Notizen
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
+noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
 
 // Validation: Ensure either content or todo items exist
 noteSchema.pre('save', function(next) {

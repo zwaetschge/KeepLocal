@@ -16,19 +16,32 @@ function escapeRegex(string) {
 // GET /api/notes - Alle Notizen abrufen (mit optionaler Suche und Pagination)
 router.get('/', noteValidation.search, async (req, res, next) => {
   try {
-    const { search, tag, page = 1, limit = 50 } = req.query;
+    const { search, tag, page = 1, limit = 50, archived = 'false' } = req.query;
 
-    // Query nur für Notizen des aktuellen Benutzers
-    let query = { userId: req.user._id };
+    // Query für eigene und geteilte Notizen
+    const isArchived = archived === 'true';
+    let query = {
+      $or: [
+        { userId: req.user._id }, // Eigene Notizen
+        { sharedWith: req.user._id } // Geteilte Notizen
+      ],
+      isArchived: isArchived
+    };
 
     // Volltextsuche in Titel, Inhalt und Todo-Items
     if (search && search.trim() !== '') {
       const escapedSearch = escapeRegex(search.trim());
-      query.$or = [
-        { title: { $regex: escapedSearch, $options: 'i' } },
-        { content: { $regex: escapedSearch, $options: 'i' } },
-        { 'todoItems.text': { $regex: escapedSearch, $options: 'i' } }
+      query.$and = [
+        { $or: query.$or },
+        {
+          $or: [
+            { title: { $regex: escapedSearch, $options: 'i' } },
+            { content: { $regex: escapedSearch, $options: 'i' } },
+            { 'todoItems.text': { $regex: escapedSearch, $options: 'i' } }
+          ]
+        }
       ];
+      delete query.$or;
     }
 
     // Nach Tag filtern
@@ -41,6 +54,8 @@ router.get('/', noteValidation.search, async (req, res, next) => {
     const total = await Note.countDocuments(query);
 
     const notes = await Note.find(query)
+      .populate('userId', 'username email')
+      .populate('sharedWith', 'username email')
       .sort({ isPinned: -1, createdAt: -1 }) // Angepinnte Notizen zuerst
       .skip(skip)
       .limit(parseInt(limit));
@@ -225,6 +240,105 @@ router.post('/link-preview', async (req, res, next) => {
       error: 'Link-Vorschau konnte nicht abgerufen werden',
       message: error.message
     });
+  }
+});
+
+// POST /api/notes/:id/archive - Notiz archivieren/dearchivieren
+router.post('/:id/archive', async (req, res, next) => {
+  try {
+    // Nur eigene Notizen archivieren
+    const note = await Note.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Notiz nicht gefunden' });
+    }
+
+    note.isArchived = !note.isArchived;
+    await note.save();
+
+    res.json(note);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ error: 'Notiz nicht gefunden' });
+    }
+    next(error);
+  }
+});
+
+// POST /api/notes/:id/share - Notiz mit Benutzer teilen
+router.post('/:id/share', async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Benutzer-ID ist erforderlich' });
+    }
+
+    // Notiz finden (nur eigene Notizen können geteilt werden)
+    const note = await Note.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Notiz nicht gefunden' });
+    }
+
+    // Prüfen ob bereits geteilt
+    if (note.sharedWith.includes(userId)) {
+      return res.status(400).json({ error: 'Notiz ist bereits mit diesem Benutzer geteilt' });
+    }
+
+    // Notiz teilen
+    note.sharedWith.push(userId);
+    await note.save();
+
+    const populatedNote = await Note.findById(note._id)
+      .populate('userId', 'username email')
+      .populate('sharedWith', 'username email');
+
+    res.json(populatedNote);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ error: 'Notiz oder Benutzer nicht gefunden' });
+    }
+    next(error);
+  }
+});
+
+// DELETE /api/notes/:id/share/:userId - Notiz-Teilung aufheben
+router.delete('/:id/share/:userId', async (req, res, next) => {
+  try {
+    // Notiz finden (nur eigene Notizen)
+    const note = await Note.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Notiz nicht gefunden' });
+    }
+
+    // Benutzer aus sharedWith entfernen
+    note.sharedWith = note.sharedWith.filter(
+      id => id.toString() !== req.params.userId
+    );
+
+    await note.save();
+
+    const populatedNote = await Note.findById(note._id)
+      .populate('userId', 'username email')
+      .populate('sharedWith', 'username email');
+
+    res.json(populatedNote);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ error: 'Notiz nicht gefunden' });
+    }
+    next(error);
   }
 });
 
