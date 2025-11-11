@@ -390,6 +390,28 @@
   color: #ff8888;
 }
 
+.oled-mode .admin-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .settings-note {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.oled-mode .admin-console {
+  background: #0a0a0a;
+}
+
+.oled-mode .stat-card {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.oled-mode .admin-error {
+  background: rgba(255, 100, 100, 0.25);
+  border-color: rgba(255, 100, 100, 0.5);
+  color: #ff9999;
+}
+
 @media (max-width: 768px) {
   .admin-console {
     max-width: 100%;
