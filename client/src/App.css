@@ -75,7 +75,7 @@ body {
 }
 
 body.dark-mode {
-  background: linear-gradient(to bottom, #87CEEB 0%, #1a1a1a 100%);
+  background: linear-gradient(to bottom, #1e3a5f 0%, #1a1a1a 100%);
   background-attachment: fixed;
 }
 
@@ -97,10 +97,10 @@ body.dark-mode {
 }
 
 .dark-mode .App-header {
-  background: #87CEEB;
-  color: #000000;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: #1e3a5f;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .header-content {
@@ -162,7 +162,7 @@ body.dark-mode {
 }
 
 .dark-mode .user-info .theme-toggle:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .user-name {
@@ -189,13 +189,13 @@ body.dark-mode {
 }
 
 .dark-mode .user-name {
-  background: rgba(0, 0, 0, 0.1);
-  color: #000000;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
 }
 
 .dark-mode .user-name.clickable:hover {
-  background: rgba(0, 0, 0, 0.15);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .btn-logout {
@@ -244,18 +244,18 @@ body.dark-mode {
 }
 
 .dark-mode .btn-logout {
-  border-color: rgba(0, 0, 0, 0.3);
-  color: #000000;
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
 }
 
 .dark-mode .btn-logout::before {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .dark-mode .btn-logout:hover {
-  background: rgba(0, 0, 0, 0.1);
-  border-color: rgba(0, 0, 0, 0.4);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .App-container {
@@ -542,11 +542,11 @@ body.dark-mode {
 }
 
 .dark-mode .mobile-menu-toggle {
-  color: #000000;
+  color: #ffffff;
 }
 
 .dark-mode .mobile-menu-toggle:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 768px) {
