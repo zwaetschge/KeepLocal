@@ -103,4 +103,10 @@ export const en = {
   // Link Preview
   linkPreview: 'Link Preview',
   visitLink: 'Visit link',
+
+  // Sidebar
+  expand: 'Expand',
+  collapse: 'Collapse',
+  expandSidebar: 'Expand sidebar',
+  collapseSidebar: 'Collapse sidebar',
 };

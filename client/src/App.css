@@ -491,3 +491,29 @@ body {
     gap: 8px;
   }
 }
+
+/* Mobile menu toggle (hamburger) */
+.mobile-menu-toggle {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  margin-right: 8px;
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+
+.mobile-menu-toggle:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.dark-mode .mobile-menu-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (min-width: 769px) {
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+}

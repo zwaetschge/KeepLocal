@@ -143,9 +143,115 @@
   margin: 0;
 }
 
-/* Mobile: Hide sidebar by default */
+/* Mobile controls - hidden on desktop */
+.sidebar-mobile-controls {
+  display: none;
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
   .sidebar {
-    display: none;
+    width: 280px;
+    height: 100vh;
+    top: 0;
+    position: fixed;
+    left: 0;
+    z-index: 1000;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Show mobile controls */
+  .sidebar-mobile-controls {
+    display: block;
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .sidebar-mobile-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+  }
+
+  .mobile-user-icon {
+    font-size: 32px;
+  }
+
+  .mobile-user-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .sidebar-mobile-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .sidebar-mobile-logout {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .sidebar-mobile-logout:hover {
+    background: var(--accent-hover);
+  }
+
+  .sidebar-mobile-logout svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* Hide desktop user info on mobile */
+  .user-info {
+    display: none !important;
+  }
+
+  /* Show hamburger menu button */
+  .mobile-menu-toggle {
+    display: flex !important;
+  }
+}
+
+/* Mobile overlay */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-overlay {
+    display: block;
   }
 }

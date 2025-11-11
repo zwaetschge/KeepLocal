@@ -35,6 +35,7 @@ function AppContent() {
     return savedTheme === 'dark';
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
@@ -381,6 +382,16 @@ function AppContent() {
     <div className="App">
       <header className="App-header">
         <div className="header-content">
+          <button
+            className="mobile-menu-toggle"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Menu"
+            style={{ display: 'none' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 12h18M3 6h18M3 18h18"/>
+            </svg>
+          </button>
           <Logo size={36} />
           <SearchBar
             onSearch={handleSearch}
@@ -424,6 +435,12 @@ function AppContent() {
           noteCount={notes.length}
           isAdmin={user?.isAdmin}
           onAdminClick={() => setShowAdminConsole(true)}
+          user={user}
+          onLogout={handleLogout}
+          isDarkMode={isDarkMode}
+          onThemeToggle={toggleTheme}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
 
         <main className="App-main" role="main">
