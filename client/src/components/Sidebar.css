@@ -1,8 +1,6 @@
 .sidebar {
   width: 240px;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: transparent;
   height: calc(100vh - 60px);
   position: sticky;
   top: 60px;
@@ -13,7 +11,7 @@
 }
 
 .dark-mode .sidebar {
-  background: rgba(26, 26, 26, 0.8);
+  background: transparent;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
