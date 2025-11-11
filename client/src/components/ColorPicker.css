@@ -28,6 +28,14 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+.oled-mode .color-picker-toggle {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .color-picker-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .color-picker-popup {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -87,6 +95,11 @@
 .dark-mode .color-picker-option.selected {
   border-color: rgba(255, 255, 255, 0.6);
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px rgba(255, 255, 255, 0.4);
+}
+
+.oled-mode .color-picker-option.selected {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
 .color-picker-option svg {

@@ -116,17 +116,17 @@ router.put('/:id', noteValidation.update, async (req, res, next) => {
   try {
     const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = req.body;
 
-    // Build update object
-    const updateData = {
-      title: title || '',
-      content: isTodoList ? '' : (content?.trim() || ''),
-      color: color,
-      isPinned: isPinned,
-      tags: tags,
-      isTodoList: isTodoList || false,
-      todoItems: isTodoList ? (todoItems || []) : [],
-      linkPreviews: linkPreviews || []
-    };
+    // Build update object with only the provided fields
+    const updateData = {};
+
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = isTodoList ? '' : (content?.trim() || '');
+    if (color !== undefined) updateData.color = color;
+    if (isPinned !== undefined) updateData.isPinned = isPinned;
+    if (tags !== undefined) updateData.tags = tags;
+    if (isTodoList !== undefined) updateData.isTodoList = isTodoList;
+    if (todoItems !== undefined) updateData.todoItems = todoItems;
+    if (linkPreviews !== undefined) updateData.linkPreviews = linkPreviews;
 
     // Nur Notizen des eigenen Benutzers aktualisieren
     const updatedNote = await Note.findOneAndUpdate(
