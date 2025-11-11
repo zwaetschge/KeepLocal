@@ -193,6 +193,26 @@
     border-bottom: 1px solid var(--border-color);
   }
 
+  .sidebar-mobile-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  .dark-mode .sidebar-mobile-logo {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .sidebar-mobile-logo .logo-container {
+    gap: 8px;
+  }
+
+  .sidebar-mobile-logo .logo-text {
+    font-size: 1.1rem;
+  }
+
   .sidebar-mobile-user {
     display: flex;
     align-items: center;
