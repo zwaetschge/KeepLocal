@@ -493,25 +493,25 @@ function AppContent() {
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && !selectedTag && !searchTerm && (
               <div className="empty-state" role="status">
-                <p>📝 Keine Notizen vorhanden</p>
+                <p>📝 {t('noNotesAvailable')}</p>
                 <p className="empty-hint">
-                  Erstellen Sie Ihre erste Notiz mit <kbd>Strg+N</kbd>
+                  {t('createFirstNote')} <kbd>Strg+N</kbd>
                 </p>
               </div>
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && selectedTag && (
               <div className="empty-state" role="status">
-                <p>🏷️ Keine Notizen mit diesem Label</p>
+                <p>🏷️ {t('noNotesWithTag')}</p>
                 <p className="empty-hint">
-                  Wählen Sie ein anderes Label oder erstellen Sie eine neue Notiz
+                  {t('selectOtherTagOrCreate')}
                 </p>
               </div>
             )}
             {pinnedNotes.length === 0 && otherNotes.length === 0 && searchTerm && !selectedTag && (
               <div className="empty-state" role="status">
-                <p>🔍 Keine Notizen gefunden</p>
+                <p>🔍 {t('noNotesFound')}</p>
                 <p className="empty-hint">
-                  Versuchen Sie es mit einem anderen Suchbegriff
+                  {t('tryDifferentSearch')}
                 </p>
               </div>
             )}

@@ -109,4 +109,12 @@ export const de = {
   collapse: 'Minimieren',
   expandSidebar: 'Sidebar erweitern',
   collapseSidebar: 'Sidebar minimieren',
+
+  // Empty states
+  noNotesAvailable: 'Keine Notizen vorhanden',
+  createFirstNote: 'Erstellen Sie Ihre erste Notiz mit',
+  noNotesWithTag: 'Keine Notizen mit diesem Label',
+  selectOtherTagOrCreate: 'Wählen Sie ein anderes Label oder erstellen Sie eine neue Notiz',
+  noNotesFound: 'Keine Notizen gefunden',
+  tryDifferentSearch: 'Versuchen Sie es mit einem anderen Suchbegriff',
 };
