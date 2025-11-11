@@ -5,6 +5,7 @@ import NoteList from './components/NoteList';
 import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
+import LanguageSelector from './components/LanguageSelector';
 import Toast from './components/Toast';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -13,10 +14,12 @@ import AdminConsole from './components/AdminConsole';
 import Logo from './components/Logo';
 import NoteModal from './components/NoteModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { notesAPI, initializeCSRF } from './services/api';
 
 function AppContent() {
   const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup } = useAuth();
+  const { t } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -327,7 +330,10 @@ function AppContent() {
   if (setupNeeded) {
     return (
       <>
-        <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+        <div className="floating-controls">
+          <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+          <LanguageSelector />
+        </div>
         <Setup onSetup={handleSetup} />
         {toast && (
           <Toast
@@ -344,7 +350,10 @@ function AppContent() {
   if (!isLoggedIn) {
     return (
       <>
-        <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+        <div className="floating-controls">
+          <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+          <LanguageSelector />
+        </div>
         {showRegister ? (
           <Register
             onRegister={handleRegister}
@@ -376,15 +385,17 @@ function AppContent() {
           <SearchBar
             onSearch={handleSearch}
             ref={searchBarRef}
-            aria-label="Notizen durchsuchen"
+            aria-label={t('searchNotes')}
           />
           <div className="user-info">
+            <LanguageSelector />
+            <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
             {user?.isAdmin ? (
               <button
                 className="user-name clickable"
                 onClick={() => setShowAdminConsole(true)}
-                title={`${user?.email} (Admin - Klicken für Admin-Panel)`}
-                aria-label="Admin-Panel öffnen"
+                title={`${user?.email} (${t('admin')} - ${t('openAdminPanel')})`}
+                aria-label={t('openAdminPanel')}
               >
                 👤 {user?.username}
               </button>
@@ -396,10 +407,10 @@ function AppContent() {
             <button
               onClick={handleLogout}
               className="btn-logout"
-              title="Abmelden"
-              aria-label="Abmelden"
+              title={t('logout')}
+              aria-label={t('logout')}
             >
-              Abmelden
+              {t('logout')}
             </button>
           </div>
         </div>
@@ -542,12 +553,14 @@ function AppContent() {
   );
 }
 
-// Wrap with AuthProvider
+// Wrap with providers
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 
