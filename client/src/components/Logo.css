@@ -10,6 +10,10 @@
   animation: logoFloat 3s ease-in-out infinite;
 }
 
+.dark-mode .logo-img {
+  filter: invert(1) drop-shadow(0 2px 4px rgba(255, 255, 255, 0.3));
+}
+
 .logo-text {
   font-size: 1.5rem;
   font-weight: 600;
