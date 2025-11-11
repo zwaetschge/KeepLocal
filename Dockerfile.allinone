@@ -15,7 +15,8 @@ RUN npm install
 COPY client/ ./
 
 # Build React app with production settings
-ARG REACT_APP_API_URL=/api
+# IMPORTANT: REACT_APP_API_URL must be empty because the client code already adds /api prefix
+ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build
 

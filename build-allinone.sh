@@ -16,15 +16,11 @@ IMAGE_NAME="${IMAGE_NAME:-keeplocal}"
 VERSION="${VERSION:-latest}"
 FULL_IMAGE="${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}"
 
-# Optional: Build argument for API URL
-REACT_APP_API_URL="${REACT_APP_API_URL:-/api}"
-
 echo "Build Configuration:"
 echo "  Docker Username: ${DOCKER_USERNAME}"
 echo "  Image Name:      ${IMAGE_NAME}"
 echo "  Version Tag:     ${VERSION}"
 echo "  Full Image:      ${FULL_IMAGE}"
-echo "  API URL:         ${REACT_APP_API_URL}"
 echo ""
 
 # Check if Docker is installed
@@ -47,7 +43,6 @@ echo ""
 docker build \
     -f Dockerfile.allinone \
     -t "${FULL_IMAGE}" \
-    --build-arg REACT_APP_API_URL="${REACT_APP_API_URL}" \
     .
 
 if [ $? -eq 0 ]; then

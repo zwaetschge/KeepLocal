@@ -54,12 +54,7 @@ DOCKER_USERNAME=yourusername VERSION=v1.0.0 ./build-allinone.sh
 docker build \
   -f Dockerfile.allinone \
   -t valentin2177/keeplocal:latest \
-  --build-arg REACT_APP_API_URL=/api \
   .
-```
-
-**Build Arguments:**
-- `REACT_APP_API_URL`: API endpoint for the React frontend (default: `/api`)
 
 **Size Optimization:**
 The all-in-one image uses multi-stage builds to minimize size:
@@ -234,7 +229,6 @@ docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -f Dockerfile.allinone \
   -t valentin2177/keeplocal:latest \
-  --build-arg REACT_APP_API_URL=/api \
   --push \
   .
 ```
