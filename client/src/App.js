@@ -30,9 +30,9 @@ function AppContent() {
   const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
   const [operationLoading, setOperationLoading] = useState({});
-  const [isDarkMode, setIsDarkMode] = useState(() => {
+  const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'dark';
+    return savedTheme || 'light'; // 'light', 'dark', or 'oled'
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -50,15 +50,20 @@ function AppContent() {
     setToast({ message, type });
   }, []);
 
-  // Dark Mode anwenden
+  // Theme anwenden
   useEffect(() => {
-    if (isDarkMode) {
+    // Remove all theme classes
+    document.body.classList.remove('dark-mode', 'oled-mode');
+
+    // Add appropriate theme class
+    if (theme === 'dark') {
       document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
+    } else if (theme === 'oled') {
+      document.body.classList.add('oled-mode');
     }
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
+
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Notizen vom Server laden
   const fetchNotes = useCallback(async (search = '', page = 1) => {
@@ -138,7 +143,7 @@ function AppContent() {
     try {
       const response = await notesAPI.togglePin(id);
       setNotes(notes.map(note => note._id === id ? response : note));
-      const message = response.isPinned ? 'Notiz angeheftet' : 'Notiz abgeheftet';
+      const message = response.isPinned ? t('notePinned') : t('noteUnpinned');
       showToast(message, 'success');
     } catch (error) {
       console.error('Fehler beim Anheften der Notiz:', error);
@@ -197,7 +202,7 @@ function AppContent() {
     if (draggedNote.isPinned !== targetNote.isPinned) {
       await togglePinNote(draggedNoteId);
       showToast(
-        targetNote.isPinned ? 'Notiz wurde angeheftet' : 'Notiz wurde abgeheftet',
+        targetNote.isPinned ? t('noteWasPinned') : t('noteWasUnpinned'),
         'success'
       );
       return;
@@ -224,7 +229,12 @@ function AppContent() {
 
   // Theme umschalten
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+    // Cycle through themes: light -> dark -> oled -> light
+    setTheme(prevTheme => {
+      if (prevTheme === 'light') return 'dark';
+      if (prevTheme === 'dark') return 'oled';
+      return 'light';
+    });
   };
 
   // Keyboard shortcuts
@@ -259,7 +269,7 @@ function AppContent() {
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isLoggedIn, isDarkMode]);
+  }, [isLoggedIn, theme]);
 
   // Extract all unique tags from notes with counts
   const allTags = useMemo(() => {
@@ -332,7 +342,7 @@ function AppContent() {
     return (
       <>
         <div className="floating-controls">
-          <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <LanguageSelector />
         </div>
         <Setup onSetup={handleSetup} />
@@ -352,7 +362,7 @@ function AppContent() {
     return (
       <>
         <div className="floating-controls">
-          <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <LanguageSelector />
         </div>
         {showRegister ? (
@@ -399,7 +409,7 @@ function AppContent() {
           />
           <div className="user-info">
             <LanguageSelector />
-            <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
             {user?.isAdmin ? (
               <button
                 className="user-name clickable"
@@ -436,7 +446,7 @@ function AppContent() {
           onAdminClick={() => setShowAdminConsole(true)}
           user={user}
           onLogout={handleLogout}
-          isDarkMode={isDarkMode}
+          theme={theme}
           onThemeToggle={toggleTheme}
           isMobileOpen={isMobileMenuOpen}
           onMobileClose={() => setIsMobileMenuOpen(false)}
@@ -458,7 +468,7 @@ function AppContent() {
           <>
             {pinnedNotes.length > 0 && (
               <div className="notes-section">
-                <h2 className="section-title">ANGEHEFTET</h2>
+                <h2 className="section-title">{t('pinnedSection')}</h2>
                 <NoteList
                   notes={pinnedNotes}
                   onDeleteNote={deleteNote}
@@ -475,7 +485,7 @@ function AppContent() {
             )}
             {otherNotes.length > 0 && (
               <div className="notes-section">
-                {pinnedNotes.length > 0 && <h2 className="section-title">ANDERE</h2>}
+                {pinnedNotes.length > 0 && <h2 className="section-title">{t('otherSection')}</h2>}
                 <NoteList
                   notes={otherNotes}
                   onDeleteNote={deleteNote}
@@ -541,9 +551,9 @@ function AppContent() {
       </div>
 
       <ThemeToggle
-        isDarkMode={isDarkMode}
+        theme={theme}
         onToggle={toggleTheme}
-        aria-label={isDarkMode ? 'Zum hellen Modus wechseln' : 'Zum dunklen Modus wechseln'}
+        aria-label="Toggle theme"
       />
 
       {toast && (

@@ -15,6 +15,11 @@
   border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.oled-mode .sidebar {
+  background: transparent;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .sidebar.collapsed {
   width: 72px;
 }
@@ -43,6 +48,10 @@
 
 .dark-mode .sidebar-toggle:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.oled-mode .sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .sidebar-nav {
@@ -86,6 +95,15 @@
   color: #87CEEB;
 }
 
+.oled-mode .sidebar-item:hover {
+  background: rgba(135, 206, 235, 0.15);
+}
+
+.oled-mode .sidebar-item.active {
+  background: rgba(135, 206, 235, 0.3);
+  color: #87CEEB;
+}
+
 .sidebar-admin {
   color: #667eea;
   font-weight: 600;
@@ -96,6 +114,10 @@
 }
 
 .dark-mode .sidebar-admin {
+  color: #8ab4f8;
+}
+
+.oled-mode .sidebar-admin {
   color: #8ab4f8;
 }
 
@@ -180,6 +202,11 @@
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
   }
 
+  .oled-mode .sidebar {
+    background: rgba(0, 0, 0, 0.98);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.6);
+  }
+
   .sidebar.mobile-open {
     transform: translateX(0);
   }
@@ -201,6 +228,10 @@
 
   .dark-mode .sidebar-mobile-logo {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .oled-mode .sidebar-mobile-logo {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   }
 
   .sidebar-mobile-logo .logo-container {
@@ -225,6 +256,11 @@
   .dark-mode .sidebar-mobile-user {
     background: rgba(135, 206, 235, 0.15);
     border: 1px solid rgba(135, 206, 235, 0.2);
+  }
+
+  .oled-mode .sidebar-mobile-user {
+    background: rgba(135, 206, 235, 0.2);
+    border: 1px solid rgba(135, 206, 235, 0.25);
   }
 
   .mobile-user-icon {
@@ -274,6 +310,15 @@
   }
 
   .dark-mode .sidebar-mobile-logout:hover {
+    background: rgba(135, 206, 235, 1);
+  }
+
+  .oled-mode .sidebar-mobile-logout {
+    background: rgba(135, 206, 235, 0.8);
+    color: #000000;
+  }
+
+  .oled-mode .sidebar-mobile-logout:hover {
     background: rgba(135, 206, 235, 1);
   }
 

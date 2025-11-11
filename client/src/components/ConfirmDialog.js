@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './ConfirmDialog.css';
 
 function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
+  const { t } = useLanguage();
   const dialogRef = useRef(null);
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
@@ -84,17 +86,17 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
             ref={cancelButtonRef}
             onClick={onCancel}
             className="btn-cancel-confirm"
-            aria-label="Abbrechen"
+            aria-label={t('cancel')}
           >
-            Abbrechen
+            {t('cancel')}
           </button>
           <button
             ref={confirmButtonRef}
             onClick={onConfirm}
             className="btn-confirm"
-            aria-label="Bestätigen und löschen"
+            aria-label={t('delete')}
           >
-            Löschen
+            {t('delete')}
           </button>
         </div>
       </div>

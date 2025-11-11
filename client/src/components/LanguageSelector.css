@@ -24,6 +24,10 @@
   background-color: rgba(255, 255, 255, 0.15);
 }
 
+.oled-mode .language-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
 .language-emoji {
   font-size: 24px;
   line-height: 1;
@@ -45,6 +49,12 @@
 .dark-mode .language-popup {
   background: #2d2d2d;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.oled-mode .language-popup {
+  background: #0a0a0a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @keyframes slideDown {
@@ -82,6 +92,10 @@
   color: #e0e0e0;
 }
 
+.oled-mode .language-option {
+  color: #f0f0f0;
+}
+
 .language-option:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
@@ -90,12 +104,20 @@
   background-color: rgba(255, 255, 255, 0.1);
 }
 
+.oled-mode .language-option:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
 .language-option.active {
   background-color: rgba(66, 133, 244, 0.15);
 }
 
 .dark-mode .language-option.active {
   background-color: rgba(66, 133, 244, 0.25);
+}
+
+.oled-mode .language-option.active {
+  background-color: rgba(66, 133, 244, 0.3);
 }
 
 .language-emoji-large {

@@ -71,6 +71,8 @@ export const de = {
   // Confirm
   confirmDelete: 'Möchten Sie diese Notiz wirklich löschen?',
   confirmDeleteTitle: 'Notiz löschen',
+  confirmDeleteMessage: 'Möchten Sie diese Notiz wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
+  confirmDeleteNoteTitle: 'Notiz löschen?',
   yes: 'Ja',
   no: 'Nein',
 
@@ -124,4 +126,51 @@ export const de = {
   selectOtherTagOrCreate: 'Wählen Sie ein anderes Label oder erstellen Sie eine neue Notiz',
   noNotesFound: 'Keine Notizen gefunden',
   tryDifferentSearch: 'Versuchen Sie es mit einem anderen Suchbegriff',
+
+  // Sections
+  pinnedSection: 'ANGEHEFTET',
+  otherSection: 'ANDERE',
+  notePinned: 'Notiz angeheftet',
+  noteUnpinned: 'Notiz abgeheftet',
+  noteWasPinned: 'Notiz wurde angeheftet',
+  noteWasUnpinned: 'Notiz wurde abgeheftet',
+
+  // Placeholders
+  enterNote: 'Notiz eingeben...',
+  todoItem: 'Listenelement',
+  deleteItem: 'Element löschen',
+  tagsPlaceholder: 'Tags (durch Komma getrennt)',
+
+  // Theme switching
+  switchToLightMode: 'Zum hellen Modus wechseln',
+  switchToDarkMode: 'Zum dunklen Modus wechseln',
+  switchToOledMode: 'Zum OLED-Modus wechseln',
+  switchToNote: 'Zu Notiz wechseln',
+  switchToList: 'Zu Liste wechseln',
+
+  // Admin
+  newUser: 'Neuer Benutzer',
+  deleteUser: 'Benutzer löschen',
+  deleteUserConfirm: 'Benutzer löschen?',
+  deleteUserMessage: 'Möchten Sie den Benutzer "{username}" wirklich löschen? Alle Notizen dieses Benutzers werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+
+  // Color picker
+  changeColor: 'Farbe ändern',
+  openColorPicker: 'Farbauswahl öffnen',
+  selectColor: 'Farbe auswählen',
+  colorWhite: 'Weiß',
+  colorRed: 'Rot',
+  colorOrange: 'Orange',
+  colorYellow: 'Gelb',
+  colorGreen: 'Grün',
+  colorTeal: 'Türkis',
+  colorLightBlue: 'Hellblau',
+  colorBlue: 'Blau',
+  colorPurple: 'Lila',
+  colorPink: 'Rosa',
+  colorBrown: 'Braun',
+  colorGray: 'Grau',
+
+  // Search
+  clearSearch: 'Suche löschen',
 };
