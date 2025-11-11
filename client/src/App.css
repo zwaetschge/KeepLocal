@@ -90,8 +90,14 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
   font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -112,8 +118,11 @@ body.oled-mode {
 }
 
 .App {
-  min-height: 100vh;
+  height: 100vh;
   background: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .App-header {
@@ -121,11 +130,10 @@ body.oled-mode {
   color: #000000;
   padding: 12px 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  position: sticky;
-  top: 0;
   z-index: 1000;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
 }
 
 .dark-mode .App-header {
@@ -322,8 +330,9 @@ body.oled-mode {
 
 .App-container {
   display: flex;
-  height: calc(100vh - 60px);
+  flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 .App-main {
