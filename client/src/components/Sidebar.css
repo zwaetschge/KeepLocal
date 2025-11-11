@@ -1,12 +1,12 @@
 .sidebar {
   width: 240px;
   background: transparent;
-  height: calc(100vh - 60px);
-  position: sticky;
-  top: 60px;
+  height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-right: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
 }
 
 .dark-mode .sidebar {
