@@ -91,7 +91,7 @@ ENV NODE_ENV=production \
     PORT=5000 \
     MONGODB_URI=mongodb://localhost:27017/keeplocal \
     JWT_SECRET=changeme-generate-secure-secret \
-    ALLOWED_ORIGINS=http://localhost
+    ALLOWED_ORIGINS=*
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

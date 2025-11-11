@@ -30,6 +30,22 @@ const corsOptions = {
     // Erlaube Requests ohne Origin (z.B. mobile apps, Postman)
     if (!origin) return callback(null, true);
 
+    // Wenn ALLOWED_ORIGINS auf '*' gesetzt ist, erlaube alle Origins
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+
+    // Erlaube lokale IPs und localhost für Entwicklung/private Deployments
+    if (origin && (
+      origin.match(/^http:\/\/localhost(:\d+)?$/) ||
+      origin.match(/^http:\/\/127\.0\.0\.1(:\d+)?$/) ||
+      origin.match(/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/) ||
+      origin.match(/^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/) ||
+      origin.match(/^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+(:\d+)?$/)
+    )) {
+      return callback(null, true);
+    }
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
