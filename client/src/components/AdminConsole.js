@@ -38,7 +38,7 @@ function AdminConsole({ onClose }) {
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
-      setError(error.message || 'Fehler beim Laden der Daten');
+      setError(error.message || t('errorLoadingData'));
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ function AdminConsole({ onClose }) {
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      setError(error.message || 'Fehler beim Löschen des Benutzers');
+      setError(error.message || t('errorDeletingUser'));
     } finally {
       setOperationLoading(prev => ({ ...prev, [userId]: false }));
     }
@@ -67,7 +67,7 @@ function AdminConsole({ onClose }) {
       ));
     } catch (error) {
       console.error('Error toggling admin status:', error);
-      setError(error.message || 'Fehler beim Ändern des Admin-Status');
+      setError(error.message || t('errorTogglingAdmin'));
     } finally {
       setOperationLoading(prev => ({ ...prev, [userId]: false }));
     }
@@ -77,7 +77,7 @@ function AdminConsole({ onClose }) {
     e.preventDefault();
 
     if (!newUser.username || !newUser.email || !newUser.password) {
-      setError('Bitte alle Felder ausfüllen');
+      setError(t('fillAllFields'));
       return;
     }
 
@@ -90,7 +90,7 @@ function AdminConsole({ onClose }) {
       setError(null);
     } catch (error) {
       console.error('Error creating user:', error);
-      setError(error.message || 'Fehler beim Erstellen des Benutzers');
+      setError(error.message || t('errorCreatingUser'));
     } finally {
       setOperationLoading(prev => ({ ...prev, create: false }));
     }
@@ -106,7 +106,7 @@ function AdminConsole({ onClose }) {
       setError(null);
     } catch (error) {
       console.error('Error updating settings:', error);
-      setError(error.message || 'Fehler beim Aktualisieren der Einstellungen');
+      setError(error.message || t('errorUpdatingSettings'));
     } finally {
       setOperationLoading(prev => ({ ...prev, settings: false }));
     }
@@ -122,7 +122,7 @@ function AdminConsole({ onClose }) {
           </svg>
         </button>
         <div className="admin-console-header">
-          <h2>🔧 Admin-Konsole</h2>
+          <h2>🔧 {t('adminConsoleHeader')}</h2>
         </div>
 
         <div className="admin-tabs">
@@ -130,19 +130,19 @@ function AdminConsole({ onClose }) {
             className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`}
             onClick={() => setActiveTab('stats')}
           >
-            📊 Statistiken
+            📊 {t('statistics')}
           </button>
           <button
             className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
             onClick={() => setActiveTab('users')}
           >
-            👥 Benutzer
+            👥 {t('users')}
           </button>
           <button
             className={`admin-tab ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
-            ⚙️ Einstellungen
+            ⚙️ {t('settings')}
           </button>
         </div>
 
@@ -157,21 +157,21 @@ function AdminConsole({ onClose }) {
           {loading ? (
             <div className="admin-loading">
               <div className="loading-spinner"></div>
-              <p>Lade Daten...</p>
+              <p>{t('loadingData')}</p>
             </div>
           ) : (
             <>
               {activeTab === 'stats' && stats && (
                 <div className="admin-stats">
                   <div className="stat-card">
-                    <h3>Gesamtstatistik</h3>
+                    <h3>{t('overallStats')}</h3>
                     <div className="stat-grid">
                       <div className="stat-item">
-                        <span className="stat-label">👥 Benutzer</span>
+                        <span className="stat-label">👥 {t('users')}</span>
                         <span className="stat-value">{stats.totalUsers}</span>
                       </div>
                       <div className="stat-item">
-                        <span className="stat-label">📝 Notizen</span>
+                        <span className="stat-label">📝 {t('notes')}</span>
                         <span className="stat-value">{stats.totalNotes}</span>
                       </div>
                     </div>
@@ -179,13 +179,13 @@ function AdminConsole({ onClose }) {
 
                   {stats.topUsers && stats.topUsers.length > 0 && (
                     <div className="stat-card">
-                      <h3>Top Benutzer (nach Notizen)</h3>
+                      <h3>{t('topUsersByNotes')}</h3>
                       <table className="admin-table">
                         <thead>
                           <tr>
-                            <th>Benutzername</th>
-                            <th>E-Mail</th>
-                            <th>Notizen</th>
+                            <th>{t('username')}</th>
+                            <th>{t('email')}</th>
+                            <th>{t('noteCount')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -203,14 +203,14 @@ function AdminConsole({ onClose }) {
 
                   {stats.recentUsers && stats.recentUsers.length > 0 && (
                     <div className="stat-card">
-                      <h3>Neueste Benutzer</h3>
+                      <h3>{t('recentUsers')}</h3>
                       <table className="admin-table">
                         <thead>
                           <tr>
-                            <th>Benutzername</th>
-                            <th>E-Mail</th>
-                            <th>Admin</th>
-                            <th>Erstellt</th>
+                            <th>{t('username')}</th>
+                            <th>{t('email')}</th>
+                            <th>{t('admin')}</th>
+                            <th>{t('created')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -232,7 +232,7 @@ function AdminConsole({ onClose }) {
               {activeTab === 'users' && (
                 <div className="admin-users">
                   <div className="admin-users-header">
-                    <h3>Benutzerverwaltung</h3>
+                    <h3>{t('userManagement')}</h3>
                     <button
                       onClick={() => setShowCreateUser(!showCreateUser)}
                       className="btn-create-user"
@@ -245,35 +245,35 @@ function AdminConsole({ onClose }) {
                     <form onSubmit={handleCreateUser} className="create-user-form">
                       <div className="form-grid">
                         <div className="form-group">
-                          <label htmlFor="username">Benutzername</label>
+                          <label htmlFor="username">{t('username')}</label>
                           <input
                             id="username"
                             type="text"
                             value={newUser.username}
                             onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                            placeholder="Benutzername"
+                            placeholder={t('usernamePlaceholder')}
                             required
                           />
                         </div>
                         <div className="form-group">
-                          <label htmlFor="email">E-Mail</label>
+                          <label htmlFor="email">{t('email')}</label>
                           <input
                             id="email"
                             type="email"
                             value={newUser.email}
                             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                            placeholder="email@example.com"
+                            placeholder={t('emailPlaceholder')}
                             required
                           />
                         </div>
                         <div className="form-group">
-                          <label htmlFor="password">Passwort</label>
+                          <label htmlFor="password">{t('password')}</label>
                           <input
                             id="password"
                             type="password"
                             value={newUser.password}
                             onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                            placeholder="Passwort"
+                            placeholder={t('passwordPlaceholder')}
                             required
                             minLength="6"
                           />
@@ -286,7 +286,7 @@ function AdminConsole({ onClose }) {
                               checked={newUser.isAdmin}
                               onChange={(e) => setNewUser({ ...newUser, isAdmin: e.target.checked })}
                             />
-                            <span>Als Administrator anlegen</span>
+                            <span>{t('createAsAdmin')}</span>
                           </label>
                         </div>
                       </div>
@@ -295,7 +295,7 @@ function AdminConsole({ onClose }) {
                         className="btn-submit-user"
                         disabled={operationLoading.create}
                       >
-                        {operationLoading.create ? 'Erstelle...' : '✓ Benutzer erstellen'}
+                        {operationLoading.create ? t('creating') : `✓ ${t('createUser')}`}
                       </button>
                     </form>
                   )}
@@ -303,11 +303,11 @@ function AdminConsole({ onClose }) {
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Benutzername</th>
-                        <th>E-Mail</th>
-                        <th>Admin</th>
-                        <th>Erstellt</th>
-                        <th>Aktionen</th>
+                        <th>{t('username')}</th>
+                        <th>{t('email')}</th>
+                        <th>{t('admin')}</th>
+                        <th>{t('created')}</th>
+                        <th>{t('actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -323,9 +323,9 @@ function AdminConsole({ onClose }) {
                                 onClick={() => handleToggleAdmin(user._id)}
                                 disabled={operationLoading[user._id]}
                                 className="btn-admin-toggle"
-                                title={user.isAdmin ? 'Admin-Rechte entziehen' : 'Zum Admin ernennen'}
+                                title={user.isAdmin ? t('removeAdmin') : t('makeAdmin')}
                               >
-                                {user.isAdmin ? '🔒 Admin entfernen' : '🔓 Admin machen'}
+                                {user.isAdmin ? `🔒 ${t('removeAdmin')}` : `🔓 ${t('makeAdmin')}`}
                               </button>
                               <button
                                 onClick={() => setDeleteConfirm(user)}
@@ -347,9 +347,9 @@ function AdminConsole({ onClose }) {
               {activeTab === 'settings' && settings && (
                 <div className="admin-settings">
                   <div className="settings-section">
-                    <h3>Registrierung</h3>
+                    <h3>{t('registration')}</h3>
                     <p className="settings-description">
-                      Kontrolliere ob neue Benutzer sich registrieren können oder ob nur Admins Accounts erstellen dürfen.
+                      {t('registrationControlDescription')}
                     </p>
                     <div className="setting-item">
                       <label className="toggle-label">
@@ -363,18 +363,18 @@ function AdminConsole({ onClose }) {
                         <span className="toggle-switch"></span>
                         <span className="toggle-text">
                           {settings.registrationEnabled
-                            ? 'Registrierung ist aktiviert'
-                            : 'Registrierung ist deaktiviert'}
+                            ? t('registrationEnabled')
+                            : t('registrationDisabled')}
                         </span>
                       </label>
                       {operationLoading.settings && (
-                        <span className="loading-indicator">Speichert...</span>
+                        <span className="loading-indicator">{t('saving')}</span>
                       )}
                     </div>
                     <p className="settings-note">
                       {settings.registrationEnabled
-                        ? '✅ Neue Benutzer können sich selbst registrieren.'
-                        : '🔒 Nur Administratoren können neue Benutzer erstellen.'}
+                        ? `✅ ${t('registrationNote')}`
+                        : `🔒 ${t('registrationNoteDisabled')}`}
                     </p>
                   </div>
                 </div>
