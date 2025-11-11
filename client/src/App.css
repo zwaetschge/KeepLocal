@@ -107,6 +107,11 @@ body {
   transition: background 0.3s ease, color 0.2s;
 }
 
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 body.dark-mode {
   background: linear-gradient(to bottom, #1e3a5f 0%, #1a1a1a 100%);
   background-attachment: fixed;
