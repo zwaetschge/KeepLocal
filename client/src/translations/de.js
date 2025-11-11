@@ -103,4 +103,10 @@ export const de = {
   // Link Preview
   linkPreview: 'Link-Vorschau',
   visitLink: 'Link besuchen',
+
+  // Sidebar
+  expand: 'Erweitern',
+  collapse: 'Minimieren',
+  expandSidebar: 'Sidebar erweitern',
+  collapseSidebar: 'Sidebar minimieren',
 };

@@ -1,16 +1,39 @@
 import React, { useState } from 'react';
+import ThemeToggle from './ThemeToggle';
+import LanguageSelector from './LanguageSelector';
+import { useLanguage } from '../contexts/LanguageContext';
 import './Sidebar.css';
 
-function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdminClick }) {
+function Sidebar({
+  allTags,
+  selectedTag,
+  onTagSelect,
+  noteCount,
+  isAdmin,
+  onAdminClick,
+  user,
+  onLogout,
+  isDarkMode,
+  onThemeToggle,
+  isMobileOpen,
+  onMobileClose
+}) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { t } = useLanguage();
 
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+    <>
+      {/* Mobile overlay */}
+      {isMobileOpen && (
+        <div className="sidebar-overlay" onClick={onMobileClose} />
+      )}
+
+      <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}>
       <button
         className="sidebar-toggle"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        aria-label={isCollapsed ? "Sidebar erweitern" : "Sidebar minimieren"}
-        title={isCollapsed ? "Erweitern" : "Minimieren"}
+        aria-label={isCollapsed ? t('expandSidebar') || "Sidebar erweitern" : t('collapseSidebar') || "Sidebar minimieren"}
+        title={isCollapsed ? t('expand') || "Erweitern" : t('collapse') || "Minimieren"}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           {isCollapsed ? (
@@ -20,16 +43,46 @@ function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdmi
           )}
         </svg>
       </button>
+
+      {/* Mobile controls - only visible on mobile */}
+      <div className="sidebar-mobile-controls">
+        <div className="sidebar-mobile-user">
+          <span className="mobile-user-icon">👤</span>
+          <span className="mobile-user-name">{user?.username}</span>
+        </div>
+
+        <div className="sidebar-mobile-actions">
+          <LanguageSelector />
+          <ThemeToggle isDarkMode={isDarkMode} onToggle={onThemeToggle} />
+        </div>
+
+        <button
+          className="sidebar-mobile-logout"
+          onClick={onLogout}
+          aria-label={t('logout')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+          </svg>
+          <span>{t('logout')}</span>
+        </button>
+
+        <div className="sidebar-divider"></div>
+      </div>
+
       <nav className="sidebar-nav">
         <button
           className={`sidebar-item ${!selectedTag ? 'active' : ''}`}
-          onClick={() => onTagSelect(null)}
-          aria-label="Alle Notizen"
+          onClick={() => {
+            onTagSelect(null);
+            onMobileClose();
+          }}
+          aria-label={t('allNotes')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
           </svg>
-          <span>Notizen</span>
+          <span>{t('notes')}</span>
           <span className="count">{noteCount}</span>
         </button>
 
@@ -38,14 +91,17 @@ function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdmi
             <div className="sidebar-divider"></div>
             <button
               className="sidebar-item sidebar-admin"
-              onClick={onAdminClick}
-              aria-label="Admin-Konsole"
+              onClick={() => {
+                onAdminClick();
+                onMobileClose();
+              }}
+              aria-label={t('adminConsole')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
               </svg>
-              <span>Admin</span>
+              <span>{t('admin')}</span>
             </button>
           </>
         )}
@@ -58,7 +114,10 @@ function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdmi
               <button
                 key={tag.name}
                 className={`sidebar-item ${selectedTag === tag.name ? 'active' : ''}`}
-                onClick={() => onTagSelect(tag.name)}
+                onClick={() => {
+                  onTagSelect(tag.name);
+                  onMobileClose();
+                }}
                 aria-label={`Label: ${tag.name}`}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -73,6 +132,7 @@ function Sidebar({ allTags, selectedTag, onTagSelect, noteCount, isAdmin, onAdmi
         )}
       </nav>
     </aside>
+    </>
   );
 }
 
