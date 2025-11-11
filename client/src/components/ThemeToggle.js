@@ -7,9 +7,9 @@ function ThemeToggle({ theme, onToggle }) {
 
   // Get icon and title based on current theme
   const getThemeIcon = () => {
-    if (theme === 'light') return '🌙'; // Dark mode next
-    if (theme === 'dark') return '⚫'; // OLED mode next
-    return '☀️'; // Light mode next
+    if (theme === 'light') return '☀️'; // Currently light mode
+    if (theme === 'dark') return '🌙'; // Currently dark mode
+    return '⚫'; // Currently OLED mode
   };
 
   const getThemeTitle = () => {
