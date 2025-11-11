@@ -73,6 +73,10 @@ RUN rm -f /etc/nginx/sites-enabled/default \
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create log directories
 RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal
 
@@ -92,5 +96,5 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost/api/health || exit 1
 
-# Start supervisor which manages all services
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Use entrypoint script to fix permissions before starting services
+ENTRYPOINT ["/entrypoint.sh"]
