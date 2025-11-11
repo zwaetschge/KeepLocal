@@ -123,6 +123,15 @@ function Sidebar({
                   onTagSelect(tag.name);
                   onMobileClose();
                 }}
+                draggable="true"
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'copy';
+                  e.dataTransfer.setData('application/keeplocal-tag', tag.name);
+                  e.currentTarget.classList.add('dragging');
+                }}
+                onDragEnd={(e) => {
+                  e.currentTarget.classList.remove('dragging');
+                }}
                 aria-label={`Label: ${tag.name}`}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

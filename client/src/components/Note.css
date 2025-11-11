@@ -43,6 +43,12 @@
   background: rgba(26, 115, 232, 0.05);
 }
 
+.note.drag-over-tag {
+  border: 2px dashed #34a853;
+  background: rgba(52, 168, 83, 0.08);
+  transform: scale(1.02);
+}
+
 .note-content-wrapper {
   flex: 1;
   min-height: 60px;
@@ -506,6 +512,11 @@
   fill: var(--accent-color);
 }
 
+.dark-mode .note.drag-over-tag {
+  border: 2px dashed #5bb974;
+  background: rgba(91, 185, 116, 0.12);
+}
+
 /* OLED mode */
 .oled-mode .note {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
@@ -595,6 +606,11 @@
 .oled-mode .todo-checkbox:checked {
   background: var(--accent-color);
   border-color: var(--accent-color);
+}
+
+.oled-mode .note.drag-over-tag {
+  border: 2px dashed #5bb974;
+  background: rgba(91, 185, 116, 0.15);
 }
 
 /* Responsive */

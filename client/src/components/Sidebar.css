@@ -86,6 +86,11 @@
   color: rgba(0, 0, 0, 0.87);
 }
 
+.sidebar-item.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
 .dark-mode .sidebar-item:hover {
   background: rgba(135, 206, 235, 0.12);
 }

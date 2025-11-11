@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
-import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
 import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
@@ -11,6 +10,7 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
   const { t } = useLanguage();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [dragOverTag, setDragOverTag] = useState(false);
   const contentRef = useRef(null);
 
   const handleDeleteClick = () => {
@@ -42,15 +42,51 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
     if (e.preventDefault) {
       e.preventDefault();
     }
-    e.dataTransfer.dropEffect = 'move';
+
+    // Check if we're dragging a tag from the sidebar
+    const types = Array.from(e.dataTransfer.types || []);
+    if (types.includes('application/keeplocal-tag')) {
+      e.dataTransfer.dropEffect = 'copy';
+      setDragOverTag(true);
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+    }
+
     if (onDragOver) onDragOver(note._id, e);
     return false;
+  };
+
+  const handleDragLeave = (e) => {
+    // Only reset if we're actually leaving the note element
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverTag(false);
+    }
   };
 
   const handleDrop = (e) => {
     if (e.stopPropagation) {
       e.stopPropagation();
     }
+    if (e.preventDefault) {
+      e.preventDefault();
+    }
+
+    setDragOverTag(false);
+
+    // Check if we're dropping a tag from the sidebar
+    const tagName = e.dataTransfer.getData('application/keeplocal-tag');
+    if (tagName) {
+      // Check if the note already has this tag
+      const currentTags = note.tags || [];
+      if (!currentTags.includes(tagName)) {
+        // Add the tag to the note
+        const updatedTags = [...currentTags, tagName];
+        onUpdate(note._id, { tags: updatedTags });
+      }
+      return false;
+    }
+
+    // Otherwise, handle as note reordering
     if (onDrop) onDrop(note._id, e);
     return false;
   };
@@ -70,13 +106,14 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onOpenModal, onDragStart,
 
   return (
     <div
-      className={`note ${isDragging ? 'dragging' : ''}`}
+      className={`note ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
       style={{ backgroundColor: getColorVar(note.color) }}
       onClick={() => onOpenModal(note)}
       draggable="true"
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <div className="note-content-wrapper">
