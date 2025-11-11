@@ -54,3 +54,11 @@
 .dark-mode .empty-state p:last-child {
   color: rgba(255, 255, 255, 0.7);
 }
+
+.oled-mode .empty-state {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.oled-mode .empty-state p:last-child {
+  color: rgba(255, 255, 255, 0.8);
+}

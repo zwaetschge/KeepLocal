@@ -506,6 +506,97 @@
   fill: var(--accent-color);
 }
 
+/* OLED mode */
+.oled-mode .note {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+}
+
+.oled-mode .note:hover {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+}
+
+.oled-mode .note-title,
+.oled-mode .note-content,
+.oled-mode .note-edit-title,
+.oled-mode .note-edit-content {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-tag {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-edit-tags {
+  color: rgba(255, 255, 255, 0.8);
+  border-top-color: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .action-btn,
+.oled-mode .toolbar-btn {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .action-btn:hover,
+.oled-mode .toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .action-btn:active,
+.oled-mode .toolbar-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.oled-mode .btn-text {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .btn-text:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .btn-text:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.oled-mode .pin-btn.pinned {
+  color: var(--accent-color);
+}
+
+.oled-mode .pin-btn.pinned svg {
+  fill: var(--accent-color);
+}
+
+.oled-mode .note-todo-text {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-todo-text.completed {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.oled-mode .note-link {
+  color: #8ab4f8;
+}
+
+.oled-mode .note-link:hover::after {
+  background: rgba(138, 180, 248, 0.15);
+}
+
+.oled-mode .todo-checkbox {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.oled-mode .todo-checkbox:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .todo-checkbox:checked {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .note {

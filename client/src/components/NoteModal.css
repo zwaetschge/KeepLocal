@@ -408,6 +408,101 @@
   color: rgba(255, 255, 255, 0.87);
 }
 
+/* OLED mode */
+.oled-mode .note-modal {
+  background: #0a0a0a;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7), 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+.oled-mode .note-modal-close {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.oled-mode .note-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-modal-title {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-modal-title::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.oled-mode .note-modal-content {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .note-modal-content::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.oled-mode .note-modal-tags {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.oled-mode .note-modal-tags::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.oled-mode .btn-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .btn-modal-checkbox {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .btn-modal-checkbox:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .btn-modal-checkbox:active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .btn-modal-checkbox.active {
+  background: rgba(138, 180, 248, 0.2);
+  color: #8ab4f8;
+}
+
+.oled-mode .todo-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.oled-mode .todo-item-input {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .todo-item-input.completed {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.oled-mode .todo-item-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.oled-mode .todo-item-delete {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.oled-mode .todo-item-delete:hover {
+  color: #f28b82;
+  background: rgba(242, 139, 130, 0.15);
+}
+
+.oled-mode .todo-add-item {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.oled-mode .todo-add-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
+
 .note-modal-link-previews {
   margin-top: 0.75rem;
 }
