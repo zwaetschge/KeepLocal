@@ -207,4 +207,46 @@ export const en = {
 
   // Search
   clearSearch: 'Clear search',
+
+  // Archive
+  archive: 'Archive',
+  unarchive: 'Unarchive',
+  archived: 'Archived',
+  noteArchived: 'Note archived',
+  noteUnarchived: 'Note unarchived',
+
+  // Collaboration
+  collaborate: 'Share',
+  share: 'Share',
+  shareNote: 'Share note',
+  sharedWith: 'Shared with',
+  collaborators: 'Collaborators',
+  removeCollaborator: 'Remove collaborator',
+  addCollaborator: 'Add collaborator',
+  noteShared: 'Note shared',
+  noteUnshared: 'Sharing removed',
+  collaboratorRemoved: 'Collaborator removed',
+  sharedWithCount: 'Shared with {count}',
+
+  // Friends
+  friends: 'Friends',
+  addFriend: 'Add friend',
+  removeFriend: 'Remove friend',
+  friendRequests: 'Friend requests',
+  sendFriendRequest: 'Send friend request',
+  acceptFriendRequest: 'Accept request',
+  rejectFriendRequest: 'Reject request',
+  friendRequestSent: 'Friend request sent',
+  friendRequestAccepted: 'Friend request accepted',
+  friendRequestRejected: 'Friend request rejected',
+  friendRemoved: 'Friend removed',
+  searchUsers: 'Search users',
+  noFriends: 'No friends',
+  noFriendRequests: 'No friend requests',
+  pending: 'Pending',
+  accept: 'Accept',
+  reject: 'Reject',
+  friendsList: 'Friends list',
+  requests: 'Requests',
+  addFriendTab: 'Add friend',
 };

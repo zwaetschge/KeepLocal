@@ -168,7 +168,7 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'archive' }));
     try {
       const response = await notesAPI.toggleArchive(id);
-      const message = response.isArchived ? 'Notiz archiviert' : 'Notiz dearchiviert';
+      const message = response.isArchived ? t('noteArchived') : t('noteUnarchived');
       showToast(message, 'success');
 
       // Notiz aus der Liste entfernen wenn sie archiviert/dearchiviert wird
@@ -182,7 +182,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Fehler beim Archivieren der Notiz:', error);
-      showToast(error.message || 'Fehler beim Archivieren der Notiz', 'error');
+      showToast(error.message || t('errorUpdating'), 'error');
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }

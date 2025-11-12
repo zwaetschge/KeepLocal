@@ -173,6 +173,39 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
             ))}
           </div>
         )}
+
+        {note.sharedWith && note.sharedWith.length > 0 && (
+          <div className="note-collaborators">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '4px' }}>
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span className="collaborators-text">
+              {note.sharedWith.length === 1
+                ? note.sharedWith[0].username || note.sharedWith[0].email
+                : t('sharedWithCount').replace('{count}', note.sharedWith.length)}
+            </span>
+            <div className="collaborator-avatars">
+              {note.sharedWith.slice(0, 3).map((user, index) => (
+                <div
+                  key={user._id || index}
+                  className="collaborator-avatar"
+                  title={user.username || user.email}
+                >
+                  {(user.username || user.email || '?').charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {note.sharedWith.length > 3 && (
+                <div className="collaborator-avatar more" title={`+${note.sharedWith.length - 3} ${t('collaborators')}`}>
+                  +{note.sharedWith.length - 3}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="note-hover-actions">
           <button
             onClick={(e) => {
@@ -180,8 +213,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
               onTogglePin(note._id);
             }}
             className={`action-btn pin-btn ${note.isPinned ? 'pinned' : ''}`}
-            title={note.isPinned ? "Abheften" : "Anheften"}
-            aria-label={note.isPinned ? "Abheften" : "Anheften"}
+            title={note.isPinned ? t('unpin') : t('pin')}
+            aria-label={note.isPinned ? t('unpin') : t('pin')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
@@ -193,8 +226,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
               onToggleArchive(note._id);
             }}
             className={`action-btn archive-btn ${note.isArchived ? 'archived' : ''}`}
-            title={note.isArchived ? "Dearchivieren" : "Archivieren"}
-            aria-label={note.isArchived ? "Dearchivieren" : "Archivieren"}
+            title={note.isArchived ? t('unarchive') : t('archive')}
+            aria-label={note.isArchived ? t('unarchive') : t('archive')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
@@ -206,8 +239,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
               onOpenCollaborate(note);
             }}
             className="action-btn collaborate-btn"
-            title="Teilen"
-            aria-label="Teilen"
+            title={t('share')}
+            aria-label={t('share')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>

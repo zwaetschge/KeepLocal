@@ -322,8 +322,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
                   onToggleArchive(note._id);
                   onClose();
                 }}
-                title={note.isArchived ? "Dearchivieren" : "Archivieren"}
-                aria-label={note.isArchived ? "Dearchivieren" : "Archivieren"}
+                title={note.isArchived ? t('unarchive') : t('archive')}
+                aria-label={note.isArchived ? t('unarchive') : t('archive')}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
@@ -339,8 +339,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
                   onOpenCollaborate(note);
                   onClose();
                 }}
-                title="Teilen"
-                aria-label="Teilen"
+                title={t('share')}
+                aria-label={t('share')}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
