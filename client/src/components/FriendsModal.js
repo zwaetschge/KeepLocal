@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './FriendsModal.css';
 import { friendsAPI } from '../services/api';
+import { useLanguage } from '../contexts/LanguageContext';
 
 function FriendsModal({ isOpen, onClose, isAdmin }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'requests', 'add'
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
@@ -106,7 +108,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="friends-modal" onClick={(e) => e.stopPropagation()}>
         <div className="friends-modal-header">
-          <h2>Freunde verwalten</h2>
+          <h2>{t('friends')}</h2>
           <button className="close-btn" onClick={onClose}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -119,19 +121,19 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
             className={`tab-btn ${activeTab === 'friends' ? 'active' : ''}`}
             onClick={() => setActiveTab('friends')}
           >
-            Freunde ({friends.length})
+            {t('friendsList')} ({friends.length})
           </button>
           <button
             className={`tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
             onClick={() => setActiveTab('requests')}
           >
-            Anfragen ({friendRequests.length})
+            {t('requests')} ({friendRequests.length})
           </button>
           <button
             className={`tab-btn ${activeTab === 'add' ? 'active' : ''}`}
             onClick={() => setActiveTab('add')}
           >
-            {isAdmin ? 'Benutzer suchen' : 'Freund hinzufügen'}
+            {isAdmin ? t('searchUsers') : t('addFriendTab')}
           </button>
         </div>
 
@@ -146,11 +148,11 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
           {activeTab === 'friends' && (
             <div className="friends-list">
               {loading ? (
-                <div className="loading">Lade Freunde...</div>
+                <div className="loading">{t('loading')}</div>
               ) : friends.length === 0 ? (
                 <div className="empty-state">
-                  <p>Keine Freunde gefunden</p>
-                  <p className="hint">Füge Freunde hinzu, um Notizen zu teilen</p>
+                  <p>{t('noFriends')}</p>
+                  <p className="hint">{t('addFriend')}</p>
                 </div>
               ) : (
                 friends.map((friend) => (
@@ -162,7 +164,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                     <button
                       className="btn-remove"
                       onClick={() => handleRemoveFriend(friend._id)}
-                      title="Freund entfernen"
+                      title={t('removeFriend')}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M18 6L6 18M6 6l12 12"/>
@@ -178,7 +180,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
             <div className="requests-list">
               {friendRequests.length === 0 ? (
                 <div className="empty-state">
-                  <p>Keine Anfragen</p>
+                  <p>{t('noFriendRequests')}</p>
                 </div>
               ) : (
                 friendRequests.map((request) => (
@@ -192,13 +194,13 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                         className="btn-accept"
                         onClick={() => handleAcceptRequest(request._id)}
                       >
-                        ✓ Akzeptieren
+                        ✓ {t('accept')}
                       </button>
                       <button
                         className="btn-reject"
                         onClick={() => handleRejectRequest(request._id)}
                       >
-                        × Ablehnen
+                        × {t('reject')}
                       </button>
                     </div>
                   </div>
@@ -212,20 +214,20 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
               <div className="search-box">
                 <input
                   type="text"
-                  placeholder={isAdmin ? "Benutzername oder E-Mail suchen..." : "Benutzername eingeben..."}
+                  placeholder={t('searchUsers')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                 />
                 <button onClick={handleSearch} disabled={loading}>
-                  {loading ? 'Suche...' : 'Suchen'}
+                  {loading ? t('loading') : t('search')}
                 </button>
               </div>
 
               <div className="search-results">
                 {searchResults.length === 0 && searchQuery && !loading && (
                   <div className="empty-state">
-                    <p>Keine Benutzer gefunden</p>
+                    <p>{t('noFriends')}</p>
                   </div>
                 )}
 
@@ -240,7 +242,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                       onClick={() => handleSendRequest(user.username)}
                       disabled={friends.some(f => f._id === user._id)}
                     >
-                      {friends.some(f => f._id === user._id) ? 'Bereits Freund' : '+ Anfrage senden'}
+                      {friends.some(f => f._id === user._id) ? t('noFriends') : `+ ${t('sendFriendRequest')}`}
                     </button>
                   </div>
                 ))}

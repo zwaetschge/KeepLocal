@@ -243,6 +243,70 @@
   transition: all 0.3s ease;
 }
 
+/* Collaborators */
+.note-collaborators {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 6px 0;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.dark-mode .note-collaborators {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.oled-mode .note-collaborators {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.collaborators-text {
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.collaborator-avatars {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.collaborator-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  border: 2px solid var(--bg-primary);
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.collaborator-avatar:hover {
+  transform: scale(1.1);
+  z-index: 1;
+}
+
+.collaborator-avatar.more {
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 0.5rem;
+}
+
+.dark-mode .collaborator-avatar.more {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.oled-mode .collaborator-avatar.more {
+  background: rgba(255, 255, 255, 0.4);
+}
+
 /* Hover actions */
 .note-hover-actions {
   opacity: 0;

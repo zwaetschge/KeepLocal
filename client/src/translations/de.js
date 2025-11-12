@@ -207,4 +207,46 @@ export const de = {
 
   // Search
   clearSearch: 'Suche löschen',
+
+  // Archive
+  archive: 'Archivieren',
+  unarchive: 'Dearchivieren',
+  archived: 'Archiviert',
+  noteArchived: 'Notiz archiviert',
+  noteUnarchived: 'Notiz dearchiviert',
+
+  // Collaboration
+  collaborate: 'Teilen',
+  share: 'Teilen',
+  shareNote: 'Notiz teilen',
+  sharedWith: 'Geteilt mit',
+  collaborators: 'Mitbearbeiter',
+  removeCollaborator: 'Mitbearbeiter entfernen',
+  addCollaborator: 'Mitbearbeiter hinzufügen',
+  noteShared: 'Notiz geteilt',
+  noteUnshared: 'Freigabe aufgehoben',
+  collaboratorRemoved: 'Mitbearbeiter entfernt',
+  sharedWithCount: 'Geteilt mit {count}',
+
+  // Friends
+  friends: 'Freunde',
+  addFriend: 'Freund hinzufügen',
+  removeFriend: 'Freund entfernen',
+  friendRequests: 'Freundschaftsanfragen',
+  sendFriendRequest: 'Freundschaftsanfrage senden',
+  acceptFriendRequest: 'Anfrage annehmen',
+  rejectFriendRequest: 'Anfrage ablehnen',
+  friendRequestSent: 'Freundschaftsanfrage gesendet',
+  friendRequestAccepted: 'Freundschaftsanfrage angenommen',
+  friendRequestRejected: 'Freundschaftsanfrage abgelehnt',
+  friendRemoved: 'Freund entfernt',
+  searchUsers: 'Benutzer suchen',
+  noFriends: 'Keine Freunde',
+  noFriendRequests: 'Keine Freundschaftsanfragen',
+  pending: 'Ausstehend',
+  accept: 'Annehmen',
+  reject: 'Ablehnen',
+  friendsList: 'Freundesliste',
+  requests: 'Anfragen',
+  addFriendTab: 'Freund hinzufügen',
 };
