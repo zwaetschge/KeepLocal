@@ -1,39 +1,70 @@
 # KeepLocal 📝
 
-A self-hosted notes application inspired by Google Keep. Create, edit, and organize your notes with an intuitive user interface.
+A self-hosted notes application inspired by Google Keep. Create, edit, organize, and collaborate on your notes with an intuitive, feature-rich user interface.
 
 ## Features
 
+### Core Note Features
 - ✅ Create, edit, and delete notes with confirmation dialogs
-- 🎨 10 different colors for your notes
-- 📌 Pin/unpin functionality
-- 🏷️ Tags/categories for better organization
+- 🎨 12 different colors for your notes
+- 📌 Pin/unpin notes for quick access
+- 🏷️ Tags/labels for better organization with drag-and-drop support
 - 🔍 Full-text search in title and content
+- 📋 Todo lists/checklists within notes
+- 🔗 Automatic link preview generation
+- 📦 Archive notes (hide without deleting)
+- 🎯 Drag and drop to organize and reorder notes
+
+### Collaboration & Sharing
+- 👥 Multi-user support with JWT authentication
+- 🤝 Friend system with friend requests
+- 🔄 Share and collaborate on notes with friends
+- 👁️ Visual indicators showing who has access to shared notes
+- 🔐 Granular sharing permissions
+
+### User Experience
+- 🌍 Internationalization (English & German)
 - 🌙 Dark mode with theme persistence
-- 📱 Responsive design (works on desktop and mobile)
-- 🚀 Fast and easy to use
+- 🖤 OLED mode for AMOLED displays
+- 📱 Fully responsive design (works on desktop and mobile)
+- 🚀 Fast and intuitive interface
+- 🎯 Toast notifications for instant feedback
+- ⌨️ Keyboard shortcuts for power users
+
+### Security & Admin
+- 🔒 Advanced security (XSS protection, CSRF tokens, CORS, Rate Limiting)
+- 👨‍💼 Admin console for user management
+- 🔐 User registration control (enable/disable)
+- 📊 Statistics and usage analytics
 - 💾 MongoDB database integration
-- 🔒 Advanced security (XSS protection, CORS, Rate Limiting)
-- ⚛️ Modern React frontend architecture
-- 🎯 Toast notifications for better feedback
-- 🐳 Docker & Unraid support for easy deployment
+
+### Deployment
+- 🐳 Docker & Docker Compose support
+- 📦 Unraid ready with templates
+- 🔄 Easy updates and maintenance
 
 ## Technology Stack
 
 ### Frontend
-- React 18
+- React 18 with Hooks (useState, useEffect, useContext, etc.)
+- React Context API for state management (Auth, Language)
 - Axios for HTTP requests
-- CSS3 with Grid Layout & CSS Variables for theming
+- CSS3 with Grid Layout, Flexbox & CSS Variables for theming
 - DOMPurify for XSS protection
+- i18n with custom translation system
+- Service Worker for offline capability
 
 ### Backend
-- Node.js
-- Express.js
-- MongoDB & Mongoose
+- Node.js & Express.js
+- MongoDB & Mongoose ODM
+- JWT (JSON Web Tokens) for authentication
+- bcrypt for password hashing
+- CSRF protection with csurf
 - Helmet for security headers
-- Express Rate Limit
+- Express Rate Limit for DDoS protection
 - XSS sanitization
 - CORS with origin control
+- Session management with express-session
 
 ## Quick Start with Docker (Recommended)
 
@@ -184,122 +215,198 @@ After installation, you may need to update the CORS settings:
 
 ## Usage
 
+### First Time Setup
+1. Access the application at `http://localhost:3000`
+2. Create your admin account on the setup page
+3. Log in with your credentials
+
 ### Creating a Note
-1. Click on the input field "Enter a note..."
-2. Optional: Add a title
-3. Enter your note content
-4. Optional: Add tags (comma-separated)
+1. Click on the input field "Take a note..." or click anywhere in the note form
+2. Add a title (optional)
+3. Enter your note content or create a todo list
+4. Add tags (comma-separated) for organization
 5. Select a color from the palette
-6. Click "Save"
+6. Click "Save" or press `Ctrl+Enter`
 
 ### Editing a Note
-1. Click the pencil icon (✏️) on a note
-2. Edit the title, content, and/or tags
-3. Click "Save"
+1. Click on any note to open the edit modal
+2. Edit the title, content, tags, or color
+3. Switch between regular note and todo list mode
+4. Click "Save" or press `Ctrl+Enter`
 
-### Deleting a Note
-1. Click the trash icon (🗑️) on a note
-2. Confirm deletion in the dialog
+### Note Actions
+- **Pin/Unpin**: Click the pin icon to keep notes at the top
+- **Archive**: Click the archive icon to hide notes without deleting
+- **Share**: Click the share icon to collaborate with friends
+- **Delete**: Click the trash icon and confirm deletion
 
-### Pinning a Note
-1. Click the pin icon (📍/📌) on a note
-2. Pinned notes appear at the top
+### Todo Lists
+1. Click the checkbox icon when creating/editing a note
+2. Add items to your todo list
+3. Check items off as you complete them
+4. Press `Enter` to add new items
+5. Press `Backspace` on empty items to delete them
 
-### Searching Notes
-1. Use the search bar at the top
-2. Search queries filter title and content in real-time
+### Collaboration Features
+1. **Add Friends**: Click "Freunde" (Friends) in the sidebar
+2. **Send Requests**: Search for users and send friend requests
+3. **Share Notes**: Click the share icon on any note
+4. **Manage Access**: Add or remove collaborators
+5. **View Shared Notes**: See avatar indicators on shared notes
 
-### Dark Mode
-1. Click the moon/sun icon in the bottom right
-2. Your preference is automatically saved
+### Searching & Filtering
+- Use the search bar at the top for full-text search
+- Click on tags in the sidebar to filter by category
+- Drag tags onto notes to add them
+- Click "Archiviert" to view archived notes
+
+### Theme Customization
+1. Click the theme toggle icon
+2. Cycle through: Light → Dark → OLED → Light
+3. Your preference is automatically saved
+
+### Language Selection
+1. Click the language selector (🇩🇪/🇬🇧)
+2. Choose between German and English
+3. All UI text updates instantly
+
+### Keyboard Shortcuts
+- `Ctrl+N`: Focus on new note input
+- `Ctrl+F`: Focus on search bar
+- `Ctrl+K`: Toggle theme
+- `Ctrl+Shift+L`: Logout
+- `Ctrl+Enter`: Save note (in modal)
+- `Esc`: Close modal
+
+### Admin Features
+1. Click on your username (admin only)
+2. View statistics and user management
+3. Create new users manually
+4. Delete users or change admin status
+5. Enable/disable user registration
 
 ## API Endpoints
 
-### GET /api/notes
-Returns all notes (sorted by pin status and creation date)
+### Authentication
+- `POST /api/auth/setup` - Initial admin account creation
+- `POST /api/auth/register` - Register new user (if enabled)
+- `POST /api/auth/login` - User login (returns JWT)
+- `POST /api/auth/logout` - User logout
+- `GET /api/auth/me` - Get current user info
+- `GET /api/csrf-token` - Get CSRF token
 
-**Query Parameters:**
-- `search`: Full-text search in title and content
-- `tag`: Filter by tag
+### Notes
+- `GET /api/notes` - Get all notes (own + shared)
+  - Query params: `search`, `tag`, `page`, `limit`, `archived`
+- `GET /api/notes/:id` - Get single note
+- `POST /api/notes` - Create new note
+- `PUT /api/notes/:id` - Update note
+- `DELETE /api/notes/:id` - Delete note
+- `POST /api/notes/:id/pin` - Toggle pin status
+- `POST /api/notes/:id/archive` - Toggle archive status
+- `POST /api/notes/:id/share` - Share note with user
+- `DELETE /api/notes/:id/share/:userId` - Unshare note
 
-### GET /api/notes/:id
-Returns a single note
+### Friends
+- `GET /api/friends` - Get friends list
+- `GET /api/friends/requests` - Get pending friend requests
+- `POST /api/friends/request` - Send friend request
+- `POST /api/friends/accept/:requestId` - Accept friend request
+- `POST /api/friends/reject/:requestId` - Reject friend request
+- `DELETE /api/friends/:friendId` - Remove friend
+- `GET /api/friends/search` - Search users
 
-### POST /api/notes
-Creates a new note
+### Admin
+- `GET /api/admin/stats` - Get system statistics
+- `GET /api/admin/users` - Get all users
+- `POST /api/admin/users` - Create new user
+- `DELETE /api/admin/users/:id` - Delete user
+- `POST /api/admin/users/:id/toggle-admin` - Toggle admin status
+- `GET /api/admin/settings` - Get system settings
+- `PUT /api/admin/settings` - Update system settings
 
-**Body:**
-```json
-{
-  "title": "Title (optional)",
-  "content": "Content (required)",
-  "color": "#ffffff",
-  "tags": ["work", "important"],
-  "isPinned": false
-}
-```
+### Link Previews
+- `GET /api/link-preview` - Fetch link preview data
+  - Query param: `url`
 
-### PUT /api/notes/:id
-Updates an existing note
-
-**Body:**
-```json
-{
-  "title": "New Title",
-  "content": "New Content",
-  "color": "#f28b82",
-  "tags": ["personal"],
-  "isPinned": true
-}
-```
-
-### DELETE /api/notes/:id
-Deletes a note
-
-### POST /api/notes/:id/pin
-Toggles pin status of a note
+All endpoints (except auth and setup) require authentication via JWT token.
 
 ## Project Structure
 
 ```
 KeepLocal/
-├── client/                     # React Frontend
+├── client/                          # React Frontend
 │   ├── public/
+│   │   ├── service-worker.js       # PWA Service Worker
+│   │   └── manifest.json
 │   ├── src/
-│   │   ├── components/        # React Components
-│   │   │   ├── ConfirmDialog.js
-│   │   │   ├── Note.js
-│   │   │   ├── NoteForm.js
-│   │   │   ├── NoteList.js
-│   │   │   ├── SearchBar.js
-│   │   │   ├── ThemeToggle.js
-│   │   │   └── Toast.js
-│   │   ├── utils/             # Utility functions
+│   │   ├── components/             # React Components
+│   │   │   ├── AdminConsole.js     # Admin panel
+│   │   │   ├── CollaborateModal.js # Note sharing UI
+│   │   │   ├── ColorPicker.js      # Color selection
+│   │   │   ├── ConfirmDialog.js    # Confirmation dialogs
+│   │   │   ├── FriendsModal.js     # Friend management
+│   │   │   ├── LanguageSelector.js # i18n switcher
+│   │   │   ├── LinkPreview.js      # URL preview cards
+│   │   │   ├── Login.js            # Login form
+│   │   │   ├── Logo.js             # App logo
+│   │   │   ├── Note.js             # Individual note card
+│   │   │   ├── NoteForm.js         # New note input
+│   │   │   ├── NoteList.js         # Notes grid
+│   │   │   ├── NoteModal.js        # Note editor modal
+│   │   │   ├── Register.js         # Registration form
+│   │   │   ├── SearchBar.js        # Search input
+│   │   │   ├── Setup.js            # Initial setup
+│   │   │   ├── Sidebar.js          # Navigation sidebar
+│   │   │   ├── ThemeToggle.js      # Theme switcher
+│   │   │   └── Toast.js            # Notifications
+│   │   ├── contexts/               # React Context
+│   │   │   ├── AuthContext.js      # Authentication state
+│   │   │   └── LanguageContext.js  # i18n state
+│   │   ├── translations/           # i18n files
+│   │   │   ├── de.js               # German translations
+│   │   │   ├── en.js               # English translations
+│   │   │   └── index.js
+│   │   ├── utils/                  # Utility functions
+│   │   │   ├── colorMapper.js      # Color theme mapping
+│   │   │   └── sanitize.js         # XSS protection
+│   │   ├── services/
+│   │   │   └── api.js              # API client
 │   │   ├── App.js
+│   │   ├── App.css
 │   │   └── index.js
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   └── package.json
 │
-├── server/                    # Express Backend
+├── server/                         # Express Backend
 │   ├── config/
-│   │   └── database.js
+│   │   └── database.js            # MongoDB connection
 │   ├── middleware/
-│   │   ├── errorHandler.js
-│   │   └── sanitizeInput.js
+│   │   ├── auth.js                # JWT authentication
+│   │   ├── errorHandler.js        # Error handling
+│   │   └── sanitizeInput.js       # Input sanitization
 │   ├── models/
-│   │   └── Note.js
+│   │   ├── Note.js                # Note schema
+│   │   ├── Settings.js            # System settings schema
+│   │   └── User.js                # User schema
 │   ├── routes/
-│   │   └── notes.js
+│   │   ├── admin.js               # Admin endpoints
+│   │   ├── auth.js                # Authentication
+│   │   ├── friends.js             # Friend management
+│   │   ├── linkPreview.js         # Link previews
+│   │   └── notes.js               # Note CRUD
 │   ├── utils/
 │   │   └── sanitize.js
 │   ├── Dockerfile
 │   ├── server.js
 │   └── package.json
 │
-├── docker-compose.yml         # Docker Compose configuration
-├── unraid-template.xml        # Unraid template
-├── .env.example              # Environment variables example
+├── unraid/                        # Unraid templates
+│   ├── keeplocal-compose.xml
+│   └── README.md
+├── docker-compose.yml             # Docker Compose config
+├── .env.example                   # Environment template
 ├── .gitignore
 └── README.md
 ```
@@ -328,12 +435,17 @@ Creates an optimized production build in the `client/build/` directory.
 
 KeepLocal implements multiple security layers:
 
-- **XSS Protection**: Input sanitization on server and client
-- **CORS Control**: Only allowed origins can access the API
+- **Authentication**: JWT-based authentication with secure token storage
+- **Password Security**: bcrypt hashing with salt rounds
+- **CSRF Protection**: csurf middleware with token validation
+- **XSS Protection**: Input sanitization on server and client (DOMPurify)
+- **CORS Control**: Configurable allowed origins
 - **Rate Limiting**: Protection against brute-force attacks (100 requests/15min)
 - **Security Headers**: Helmet.js for additional HTTP header security
-- **Input Validation**: Mongoose schema validation
+- **Input Validation**: Mongoose schema validation on all inputs
 - **Payload Limits**: Request size restrictions
+- **Session Security**: Secure session management with express-session
+- **SQL Injection**: Protected via Mongoose ODM parameterized queries
 
 ## Environment Variables
 
@@ -346,6 +458,8 @@ KeepLocal implements multiple security layers:
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/keeplocal` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3000` |
 | `SESSION_SECRET` | Session encryption key | Random string |
+| `JWT_SECRET` | JWT token signing key | Auto-generated |
+| `CSRF_SECRET` | CSRF token secret | Auto-generated |
 
 ## Notes
 
@@ -398,16 +512,22 @@ docker-compose up -d
 
 ## Future Enhancements
 
-- 🔐 User authentication & multi-user support
-- 📋 Checklists in notes
-- 🖼️ Image attachments in notes
-- 📄 Pagination for large note collections
+- 🖼️ Image and file attachments in notes
 - 🔄 Real-time synchronization with WebSockets
-- 📤 Export/Import functionality
-- 🗂️ Note archives
-- 📱 Mobile apps (iOS/Android)
-- 🔗 Note sharing & collaboration
+- 📤 Export/Import functionality (JSON, Markdown, PDF)
+- 📱 Progressive Web App (PWA) improvements
 - 🔔 Reminders & notifications
+- 📧 Email notifications for shared notes
+- 🔍 Advanced search filters (by date, color, collaborator)
+- 🏷️ Nested tags/folders
+- 📊 Note statistics and analytics
+- 🎨 Custom color themes
+- 🌐 Additional languages
+- 🔗 Browser extensions (Chrome, Firefox)
+- 📱 Native mobile apps (iOS/Android)
+- 🔐 Two-factor authentication (2FA)
+- 💬 Comments on shared notes
+- 📝 Rich text editor with formatting
 
 ## Contributing
 
