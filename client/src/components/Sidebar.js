@@ -10,6 +10,10 @@ function Sidebar({
   selectedTag,
   onTagSelect,
   noteCount,
+  archivedCount,
+  showArchived,
+  onShowArchivedToggle,
+  onOpenFriends,
   isAdmin,
   onAdminClick,
   user,
@@ -77,9 +81,10 @@ function Sidebar({
 
       <nav className="sidebar-nav">
         <button
-          className={`sidebar-item ${!selectedTag ? 'active' : ''}`}
+          className={`sidebar-item ${!selectedTag && !showArchived ? 'active' : ''}`}
           onClick={() => {
             onTagSelect(null);
+            if (showArchived) onShowArchivedToggle();
             onMobileClose();
           }}
           aria-label={t('allNotes')}
@@ -89,6 +94,38 @@ function Sidebar({
           </svg>
           <span>{t('notes')}</span>
           <span className="count">{noteCount}</span>
+        </button>
+
+        <button
+          className={`sidebar-item ${showArchived ? 'active' : ''}`}
+          onClick={() => {
+            onShowArchivedToggle();
+            onTagSelect(null);
+            onMobileClose();
+          }}
+          aria-label="Archivierte Notizen"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
+          </svg>
+          <span>Archiviert</span>
+          <span className="count">{archivedCount || 0}</span>
+        </button>
+
+        <button
+          className="sidebar-item"
+          onClick={() => {
+            onOpenFriends();
+            onMobileClose();
+          }}
+          aria-label="Freunde verwalten"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          <span>Freunde</span>
         </button>
 
         {isAdmin && (
