@@ -630,6 +630,8 @@ function AppContent() {
           note={noteModal.note}
           onSave={handleModalSave}
           onClose={closeNoteModal}
+          onToggleArchive={toggleArchiveNote}
+          onOpenCollaborate={openCollaborateModal}
         />
       )}
 

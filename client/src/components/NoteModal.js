@@ -7,7 +7,7 @@ import { sanitize } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 import { fetchLinkPreviewAPI } from '../services/api';
 
-function NoteModal({ note, onSave, onClose }) {
+function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }) {
   const { t } = useLanguage();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
@@ -313,6 +313,43 @@ function NoteModal({ note, onSave, onClose }) {
                 <path d="M9 11l3 3 6-6"/>
               </svg>
             </button>
+            {note && onToggleArchive && (
+              <button
+                type="button"
+                className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleArchive(note._id);
+                  onClose();
+                }}
+                title={note.isArchived ? "Dearchivieren" : "Archivieren"}
+                aria-label={note.isArchived ? "Dearchivieren" : "Archivieren"}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
+                </svg>
+              </button>
+            )}
+            {note && onOpenCollaborate && (
+              <button
+                type="button"
+                className="btn-modal-collaborate"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenCollaborate(note);
+                  onClose();
+                }}
+                title="Teilen"
+                aria-label="Teilen"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="note-modal-actions">
             <button

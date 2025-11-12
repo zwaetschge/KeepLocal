@@ -278,6 +278,75 @@
   background: rgba(26, 115, 232, 0.2);
 }
 
+.btn-modal-archive,
+.btn-modal-collaborate {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.71);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-modal-archive:hover,
+.btn-modal-collaborate:hover {
+  background: rgba(95, 99, 104, 0.157);
+}
+
+.btn-modal-archive:active,
+.btn-modal-collaborate:active {
+  background: rgba(95, 99, 104, 0.22);
+}
+
+.btn-modal-archive.archived {
+  background: rgba(251, 188, 4, 0.1);
+  color: #f57f17;
+}
+
+.dark-mode .btn-modal-archive,
+.dark-mode .btn-modal-collaborate {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .btn-modal-archive:hover,
+.dark-mode .btn-modal-collaborate:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .btn-modal-archive:active,
+.dark-mode .btn-modal-collaborate:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dark-mode .btn-modal-archive.archived {
+  background: rgba(251, 188, 4, 0.2);
+  color: #fbc02d;
+}
+
+.oled-mode .btn-modal-archive,
+.oled-mode .btn-modal-collaborate {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .btn-modal-archive:hover,
+.oled-mode .btn-modal-collaborate:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .btn-modal-archive:active,
+.oled-mode .btn-modal-collaborate:active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .btn-modal-archive.archived {
+  background: rgba(251, 188, 4, 0.25);
+  color: #fdd835;
+}
+
 .todo-list-container {
   flex: 1;
   display: flex;
