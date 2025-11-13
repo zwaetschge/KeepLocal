@@ -126,7 +126,7 @@ router.post('/:id/pin', noteValidation.pin, async (req, res, next) => {
 /**
  * POST /api/notes/:id/archive - Toggle archive status of a note
  */
-router.post('/:id/archive', noteValidation.archive, async (req, res, next) => {
+router.post('/:id/archive', async (req, res, next) => {
   try {
     const note = await notesService.toggleArchiveNote(req.params.id, req.user._id);
     res.json(note);
@@ -141,7 +141,7 @@ router.post('/:id/archive', noteValidation.archive, async (req, res, next) => {
 /**
  * POST /api/notes/:id/share - Share a note with another user
  */
-router.post('/:id/share', noteValidation.share, async (req, res, next) => {
+router.post('/:id/share', async (req, res, next) => {
   try {
     const { userId: targetUserId } = req.body;
     const note = await notesService.shareNote(
@@ -161,7 +161,7 @@ router.post('/:id/share', noteValidation.share, async (req, res, next) => {
 /**
  * DELETE /api/notes/:id/share/:userId - Unshare a note from a user
  */
-router.delete('/:id/share/:userId', noteValidation.unshare, async (req, res, next) => {
+router.delete('/:id/share/:userId', async (req, res, next) => {
   try {
     const note = await notesService.unshareNote(
       req.params.id,
