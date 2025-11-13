@@ -3,9 +3,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import './NoteModal.css';
 import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
-import { sanitize } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
-import { fetchLinkPreviewAPI } from '../services/api';
+import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 
 function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }) {
   const { t } = useLanguage();
@@ -14,11 +13,19 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
   const [tags, setTags] = useState(note?.tags?.join(', ') || '');
   const [color, setColor] = useState(note?.color || '#ffffff');
   const [isTodoList, setIsTodoList] = useState(note?.isTodoList || false);
-  const [todoItems, setTodoItems] = useState(note?.todoItems || []);
-  const [linkPreviews, setLinkPreviews] = useState(note?.linkPreviews || []);
-  const [fetchingPreview, setFetchingPreview] = useState(false);
   const contentTextareaRef = useRef(null);
-  const fetchTimeoutRef = useRef(null);
+
+  // Custom hooks for link preview and todo list management
+  const { linkPreviews, setLinkPreviews, fetchingPreview } = useLinkPreview(content, !isTodoList);
+  const {
+    todoItems,
+    setTodoItems,
+    updateItemText: handleTodoItemChange,
+    toggleItem: handleTodoItemToggle,
+    deleteItem: handleTodoItemDelete,
+    handleItemKeyDown: handleTodoItemKeyDown,
+    getCleanedItems,
+  } = useTodoList(note?.todoItems || []);
 
   // Update state when note changes
   useEffect(() => {
@@ -31,58 +38,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
       setTodoItems(note.todoItems || []);
       setLinkPreviews(note.linkPreviews || []);
     }
-  }, [note]);
-
-  // Detect URLs in content and fetch previews
-  useEffect(() => {
-    if (isTodoList || !content || content.trim() === '') {
-      return;
-    }
-
-    // Clear previous timeout
-    if (fetchTimeoutRef.current) {
-      clearTimeout(fetchTimeoutRef.current);
-    }
-
-    // Debounce URL detection
-    fetchTimeoutRef.current = setTimeout(() => {
-      const urlPattern = /(https?:\/\/[^\s]+)/g;
-      const urls = content.match(urlPattern);
-
-      if (urls && urls.length > 0) {
-        // Only fetch preview for first URL and if it's not already in linkPreviews
-        const firstUrl = urls[0];
-        const existingPreview = linkPreviews.find(p => p.url === firstUrl);
-
-        if (!existingPreview && !fetchingPreview) {
-          setFetchingPreview(true);
-          fetchLinkPreviewAPI(firstUrl)
-            .then(preview => {
-              setLinkPreviews([preview]);
-              setFetchingPreview(false);
-            })
-            .catch(error => {
-              console.error('Failed to fetch link preview:', error);
-              setFetchingPreview(false);
-            });
-        }
-      } else {
-        // No URLs found, clear previews
-        setLinkPreviews([]);
-      }
-    }, 1000); // Wait 1 second after typing stops
-
-    return () => {
-      if (fetchTimeoutRef.current) {
-        clearTimeout(fetchTimeoutRef.current);
-      }
-    };
-  }, [content, isTodoList, linkPreviews, fetchingPreview]);
+  }, [note, setTodoItems, setLinkPreviews]);
 
   const handleSave = () => {
     // Validate based on mode
     if (isTodoList) {
-      if (todoItems.length === 0 || todoItems.every(item => !item.text.trim())) {
+      if (todoItems.length === 0 || todoItems.every((item) => !item.text.trim())) {
         return;
       }
     } else {
@@ -93,8 +54,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
 
     const tagArray = tags
       .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag !== '');
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== '');
 
     const noteData = {
       title: title.trim(),
@@ -102,11 +63,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
       tags: tagArray,
       color: color,
       isTodoList: isTodoList,
-      todoItems: isTodoList ? todoItems.filter(item => item.text.trim()).map((item, index) => ({
-        text: item.text.trim(),
-        completed: item.completed || false,
-        order: index
-      })) : [],
+      todoItems: isTodoList ? getCleanedItems() : [],
       linkPreviews: linkPreviews || [],
     };
 
@@ -121,11 +78,11 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
     // When switching to todo mode, convert content to todo items
     if (newMode) {
       if (content.trim()) {
-        const lines = content.split('\n').filter(line => line.trim());
+        const lines = content.split('\n').filter((line) => line.trim());
         const items = lines.map((line, index) => ({
           text: line.trim(),
           completed: false,
-          order: index
+          order: index,
         }));
         setTodoItems(items);
         setContent('');
@@ -136,58 +93,19 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
     }
     // When switching to regular mode, convert todo items to content
     else if (!newMode && todoItems.length > 0) {
-      const contentText = todoItems.map(item => item.text).join('\n');
+      const contentText = todoItems.map((item) => item.text).join('\n');
       setContent(contentText);
       setTodoItems([]);
     }
   };
 
+  // Add todo item handler (using the hook's internal logic via setTodoItems)
   const handleAddTodoItem = () => {
     setTodoItems([...todoItems, { text: '', completed: false, order: todoItems.length }]);
   };
 
-  const handleTodoItemChange = (index, text) => {
-    const updated = [...todoItems];
-    updated[index] = { ...updated[index], text };
-    setTodoItems(updated);
-  };
-
-  const handleTodoItemToggle = (index) => {
-    const updated = [...todoItems];
-    updated[index] = { ...updated[index], completed: !updated[index].completed };
-    setTodoItems(updated);
-  };
-
-  const handleTodoItemDelete = (index) => {
-    const updated = todoItems.filter((_, i) => i !== index);
-    setTodoItems(updated.map((item, i) => ({ ...item, order: i })));
-  };
-
-  const handleTodoItemKeyDown = (e, index) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddTodoItem();
-    } else if (e.key === 'Backspace' && !todoItems[index].text && todoItems.length > 1) {
-      e.preventDefault();
-      handleTodoItemDelete(index);
-    }
-  };
-
-  const handleKeyDown = (e) => {
-    // ESC to close
-    if (e.key === 'Escape') {
-      onClose();
-    }
-    // Ctrl/Cmd + Enter to save
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      handleSave();
-    }
-  };
-
-  useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [title, content, tags, color]);
+  // Keyboard shortcuts for modal
+  useModalShortcuts(onClose, handleSave, [title, content, tags, color]);
 
   return (
     <div className="note-modal-overlay" onClick={onClose}>

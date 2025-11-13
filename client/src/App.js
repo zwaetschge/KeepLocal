@@ -17,7 +17,8 @@ import FriendsModal from './components/FriendsModal';
 import CollaborateModal from './components/CollaborateModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
-import { notesAPI, initializeCSRF } from './services/api';
+import { initializeCSRF, notesAPI } from './services/api';
+import { useKeyboardShortcuts } from './hooks';
 
 function AppContent() {
   const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup } = useAuth();
@@ -283,39 +284,23 @@ function AppContent() {
     });
   };
 
+  // Logout handler
+  const handleLogout = () => {
+    logout();
+    setNotes([]);
+    showToast('Erfolgreich abgemeldet', 'info');
+  };
+
   // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl/Cmd + N: Neue Notiz (Fokus auf Formular)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-        e.preventDefault();
-        noteFormRef.current?.focus();
-      }
-
-      // Ctrl/Cmd + F: Suche
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        searchBarRef.current?.focus();
-      }
-
-      // Ctrl/Cmd + K: Theme Toggle
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        toggleTheme();
-      }
-
-      // Ctrl/Cmd + Shift + L: Logout
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
-        e.preventDefault();
-        handleLogout();
-      }
-    };
-
-    if (isLoggedIn) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isLoggedIn, theme]);
+  useKeyboardShortcuts(
+    {
+      'Ctrl+n': () => noteFormRef.current?.focus(),
+      'Ctrl+f': () => searchBarRef.current?.focus(),
+      'Ctrl+k': toggleTheme,
+      'Ctrl+Shift+L': () => handleLogout(),
+    },
+    isLoggedIn
+  );
 
   // Extract all unique tags from notes with counts
   const allTags = useMemo(() => {
@@ -368,12 +353,6 @@ function AppContent() {
   const handleSetup = async (username, email, password) => {
     await setup(username, email, password);
     showToast('Administrator-Konto erfolgreich erstellt', 'success');
-  };
-
-  const handleLogout = () => {
-    logout();
-    setNotes([]);
-    showToast('Erfolgreich abgemeldet', 'info');
   };
 
   // Show loading screen while checking auth
