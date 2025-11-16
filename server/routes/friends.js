@@ -3,6 +3,15 @@ const router = express.Router();
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 
+/**
+ * Escape regex special characters to prevent NoSQL injection
+ * @param {string} string - String to escape
+ * @returns {string} Escaped string
+ */
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Alle Routen erfordern Authentifizierung
 router.use(authenticateToken);
 
@@ -172,13 +181,16 @@ router.get('/search', async (req, res, next) => {
       return res.json([]);
     }
 
+    // Escape regex special characters to prevent NoSQL injection
+    const escapedQuery = escapeRegex(query.trim());
+
     // Admin kann alle Benutzer suchen, normale Benutzer nur Freunde
     let users;
     if (req.user.isAdmin) {
       users = await User.find({
         $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } }
+          { username: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } }
         ],
         _id: { $ne: req.user._id } // Nicht sich selbst
       }).select('username email').limit(10);
@@ -186,8 +198,8 @@ router.get('/search', async (req, res, next) => {
       users = await User.find({
         _id: { $in: req.user.friends, $ne: req.user._id },
         $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } }
+          { username: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } }
         ]
       }).select('username email').limit(10);
     }

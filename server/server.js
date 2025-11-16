@@ -26,15 +26,19 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : ['http://localhost:3000'];
 
+// Security: Prevent wildcard CORS with credentials
+if (allowedOrigins.includes('*')) {
+  console.error('FATAL ERROR: CORS wildcard (*) is not allowed with credentials: true');
+  console.error('This creates a serious security vulnerability.');
+  console.error('Please specify exact origins in ALLOWED_ORIGINS environment variable.');
+  console.error('Example: ALLOWED_ORIGINS=https://example.com,https://app.example.com');
+  process.exit(1);
+}
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Erlaube Requests ohne Origin (z.B. mobile apps, Postman)
     if (!origin) return callback(null, true);
-
-    // Wenn ALLOWED_ORIGINS auf '*' gesetzt ist, erlaube alle Origins
-    if (allowedOrigins.includes('*')) {
-      return callback(null, true);
-    }
 
     // Erlaube lokale IPs und localhost für Entwicklung/private Deployments
     if (origin && (

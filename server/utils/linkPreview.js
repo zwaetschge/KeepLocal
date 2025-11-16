@@ -1,13 +1,98 @@
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
+const dns = require('dns').promises;
+
+// Blocked hosts and IP ranges to prevent SSRF attacks
+const BLOCKED_HOSTS = [
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  '::',
+];
+
+// Blocked IP range patterns (private networks and link-local)
+const BLOCKED_IP_PATTERNS = [
+  /^10\.\d+\.\d+\.\d+$/,                    // 10.0.0.0/8
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+$/, // 172.16.0.0/12
+  /^192\.168\.\d+\.\d+$/,                    // 192.168.0.0/16
+  /^169\.254\.\d+\.\d+$/,                    // 169.254.0.0/16 (AWS metadata)
+  /^fc[0-9a-f]{2}:/i,                        // IPv6 unique local
+  /^fd[0-9a-f]{2}:/i,                        // IPv6 unique local
+  /^fe80:/i,                                 // IPv6 link-local
+];
+
+/**
+ * Validate URL to prevent SSRF attacks
+ * @param {string} url - The URL to validate
+ * @throws {Error} If URL is not allowed
+ */
+async function validateUrl(url) {
+  const parsedUrl = new URL(url);
+
+  // Only allow HTTP and HTTPS protocols
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Only HTTP and HTTPS protocols are allowed');
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+
+  // Check against blocked hostnames
+  if (BLOCKED_HOSTS.includes(hostname)) {
+    throw new Error('Access to internal resources is not allowed');
+  }
+
+  // Check if hostname is an IP address
+  const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.startsWith('[');
+
+  if (isIpAddress) {
+    // Check against blocked IP patterns
+    for (const pattern of BLOCKED_IP_PATTERNS) {
+      if (pattern.test(hostname)) {
+        throw new Error('Access to private IP ranges is not allowed');
+      }
+    }
+  } else {
+    // Resolve hostname to IP and check if it's private
+    try {
+      const addresses = await dns.resolve4(hostname).catch(() => []);
+      for (const address of addresses) {
+        for (const pattern of BLOCKED_IP_PATTERNS) {
+          if (pattern.test(address)) {
+            throw new Error('Hostname resolves to a private IP address');
+          }
+        }
+        // Check against specific blocked IPs
+        if (BLOCKED_HOSTS.includes(address)) {
+          throw new Error('Hostname resolves to a blocked IP address');
+        }
+      }
+    } catch (error) {
+      if (error.message.includes('private') || error.message.includes('blocked')) {
+        throw error;
+      }
+      // DNS resolution failed, but continue anyway (might be IPv6 only)
+    }
+  }
+}
 
 /**
  * Fetch Open Graph metadata from a URL
  * @param {string} url - The URL to fetch metadata from
+ * @param {number} redirectCount - Number of redirects followed (internal)
  * @returns {Promise<Object>} - Open Graph metadata
  */
-async function fetchLinkPreview(url) {
+async function fetchLinkPreview(url, redirectCount = 0) {
+  // Limit redirect depth to prevent infinite loops
+  const MAX_REDIRECTS = 5;
+  if (redirectCount > MAX_REDIRECTS) {
+    throw new Error('Too many redirects');
+  }
+
+  // Validate URL to prevent SSRF
+  await validateUrl(url);
+
   return new Promise((resolve, reject) => {
     try {
       const parsedUrl = new URL(url);
@@ -25,7 +110,7 @@ async function fetchLinkPreview(url) {
       const request = protocol.get(url, options, (response) => {
         // Handle redirects
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          return fetchLinkPreview(response.headers.location)
+          return fetchLinkPreview(response.headers.location, redirectCount + 1)
             .then(resolve)
             .catch(reject);
         }

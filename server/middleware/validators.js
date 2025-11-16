@@ -272,6 +272,30 @@ const noteValidationRules = {
       .withMessage('Limit muss zwischen 1 und 100 liegen'),
 
     handleValidationErrors
+  ],
+
+  share: [
+    param('id')
+      .isMongoId()
+      .withMessage('Ungültige Notiz-ID'),
+
+    body('userId')
+      .isMongoId()
+      .withMessage('Ungültige Benutzer-ID'),
+
+    handleValidationErrors
+  ],
+
+  unshare: [
+    param('id')
+      .isMongoId()
+      .withMessage('Ungültige Notiz-ID'),
+
+    param('userId')
+      .isMongoId()
+      .withMessage('Ungültige Benutzer-ID'),
+
+    handleValidationErrors
   ]
 };
 
