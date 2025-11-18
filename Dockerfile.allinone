@@ -38,13 +38,15 @@ FROM ubuntu:22.04
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install MongoDB, Node.js, Nginx, and Supervisor
+# Install MongoDB, Node.js, Nginx, Supervisor, and Sharp dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     curl \
     nginx \
     supervisor \
+    build-essential \
+    python3 \
     && wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | apt-key add - \
     && echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list \
     && apt-get update \
@@ -69,11 +71,19 @@ RUN mkdir -p /app/server/uploads/images
 # Copy server from builder
 COPY --from=server-builder /app/server /app/server
 
+# Rebuild Sharp for Ubuntu platform (Alpine binaries won't work)
+# Sharp requires native dependencies that differ between Alpine and Ubuntu
+WORKDIR /app/server
+RUN npm rebuild sharp --verbose
+
 # Copy built client from builder
 COPY --from=client-builder /app/client/build /app/client/build
 
 # Set ownership of application files to node user
 RUN chown -R node:node /app/server
+
+# Return to /app directory
+WORKDIR /app
 
 # Copy and configure Nginx
 COPY nginx-allinone.conf /etc/nginx/sites-available/default
