@@ -690,4 +690,9 @@
   .note-content {
     font-size: 0.8125rem;
   }
+
+  /* Hide hover actions on mobile to prevent accidental taps */
+  .note-hover-actions {
+    display: none !important;
+  }
 }

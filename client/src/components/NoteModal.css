@@ -36,6 +36,7 @@
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transition: all 0.3s ease;
   position: relative;
+  overflow-y: auto;
 }
 
 @keyframes slideUp {
@@ -88,7 +89,6 @@
 .note-modal-body {
   padding: 2rem;
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -279,7 +279,9 @@
 }
 
 .btn-modal-archive,
-.btn-modal-collaborate {
+.btn-modal-collaborate,
+.btn-modal-pin,
+.btn-modal-delete {
   background: transparent;
   border: none;
   padding: 8px;
@@ -293,12 +295,16 @@
 }
 
 .btn-modal-archive:hover,
-.btn-modal-collaborate:hover {
+.btn-modal-collaborate:hover,
+.btn-modal-pin:hover,
+.btn-modal-delete:hover {
   background: rgba(95, 99, 104, 0.157);
 }
 
 .btn-modal-archive:active,
-.btn-modal-collaborate:active {
+.btn-modal-collaborate:active,
+.btn-modal-pin:active,
+.btn-modal-delete:active {
   background: rgba(95, 99, 104, 0.22);
 }
 
@@ -307,18 +313,32 @@
   color: #f57f17;
 }
 
+.btn-modal-pin.pinned {
+  background: rgba(26, 115, 232, 0.1);
+  color: var(--accent-color);
+}
+
+.btn-modal-delete:hover {
+  background: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+}
+
 .dark-mode .btn-modal-archive,
-.dark-mode .btn-modal-collaborate {
+.dark-mode .btn-modal-collaborate,
+.dark-mode .btn-modal-pin,
+.dark-mode .btn-modal-delete {
   color: rgba(255, 255, 255, 0.87);
 }
 
 .dark-mode .btn-modal-archive:hover,
-.dark-mode .btn-modal-collaborate:hover {
+.dark-mode .btn-modal-collaborate:hover,
+.dark-mode .btn-modal-pin:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .dark-mode .btn-modal-archive:active,
-.dark-mode .btn-modal-collaborate:active {
+.dark-mode .btn-modal-collaborate:active,
+.dark-mode .btn-modal-pin:active {
   background: rgba(255, 255, 255, 0.16);
 }
 
@@ -327,24 +347,48 @@
   color: #fbc02d;
 }
 
+.dark-mode .btn-modal-pin.pinned {
+  background: rgba(26, 115, 232, 0.2);
+  color: #8ab4f8;
+}
+
+.dark-mode .btn-modal-delete:hover {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f28b82;
+}
+
 .oled-mode .btn-modal-archive,
-.oled-mode .btn-modal-collaborate {
+.oled-mode .btn-modal-collaborate,
+.oled-mode .btn-modal-pin,
+.oled-mode .btn-modal-delete {
   color: rgba(255, 255, 255, 0.95);
 }
 
 .oled-mode .btn-modal-archive:hover,
-.oled-mode .btn-modal-collaborate:hover {
+.oled-mode .btn-modal-collaborate:hover,
+.oled-mode .btn-modal-pin:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
 .oled-mode .btn-modal-archive:active,
-.oled-mode .btn-modal-collaborate:active {
+.oled-mode .btn-modal-collaborate:active,
+.oled-mode .btn-modal-pin:active {
   background: rgba(255, 255, 255, 0.15);
 }
 
 .oled-mode .btn-modal-archive.archived {
   background: rgba(251, 188, 4, 0.25);
   color: #fdd835;
+}
+
+.oled-mode .btn-modal-pin.pinned {
+  background: rgba(138, 180, 248, 0.2);
+  color: #8ab4f8;
+}
+
+.oled-mode .btn-modal-delete:hover {
+  background: rgba(242, 139, 130, 0.2);
+  color: #f28b82;
 }
 
 .todo-list-container {
