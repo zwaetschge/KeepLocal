@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
+const path = require('path');
 const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
@@ -94,6 +95,9 @@ app.use(limiter); // Rate Limiting anwenden
 
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);
+
+// Static file serving for uploaded images
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CSRF-Schutz (nach cookieParser, vor Routen)
 // Auth-Routen sind ausgenommen, da sie keine CSRF-Token benötigen

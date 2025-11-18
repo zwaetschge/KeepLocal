@@ -164,6 +164,21 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
           </>
         )}
 
+        {note.images && note.images.length > 0 && (
+          <div className="note-images">
+            {note.images.slice(0, 4).map((image, index) => (
+              <div key={index} className="note-image-preview">
+                <img src={image.url} alt={image.filename} />
+              </div>
+            ))}
+            {note.images.length > 4 && (
+              <div className="note-images-more">
+                +{note.images.length - 4}
+              </div>
+            )}
+          </div>
+        )}
+
         {note.tags && note.tags.length > 0 && (
           <div className="note-tags">
             {note.tags.map((tag, index) => (

@@ -299,6 +299,70 @@ async function unshareNote(noteId, userId, targetUserId) {
   return note;
 }
 
+/**
+ * Add images to a note
+ * @param {string} noteId - Note ID
+ * @param {string} userId - Owner user ID
+ * @param {Array} imageData - Array of image objects {url, filename, uploadedAt}
+ * @returns {Promise<Object>} Updated note
+ */
+async function addImages(noteId, userId, imageData) {
+  const note = await Note.findOneAndUpdate(
+    {
+      _id: noteId,
+      userId: userId
+    },
+    {
+      $push: { images: { $each: imageData } }
+    },
+    {
+      new: true,
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
+
+  if (!note) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
+/**
+ * Remove an image from a note
+ * @param {string} noteId - Note ID
+ * @param {string} userId - Owner user ID
+ * @param {string} filename - Image filename to remove
+ * @returns {Promise<Object>} Updated note
+ */
+async function removeImage(noteId, userId, filename) {
+  const note = await Note.findOneAndUpdate(
+    {
+      _id: noteId,
+      userId: userId
+    },
+    {
+      $pull: { images: { filename: filename } }
+    },
+    {
+      new: true,
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
+
+  if (!note) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
 module.exports = {
   getAllNotes,
   getNoteById,
@@ -309,5 +373,7 @@ module.exports = {
   toggleArchiveNote,
   shareNote,
   unshareNote,
+  addImages,
+  removeImage,
   buildNotesQuery, // Export for testing
 };

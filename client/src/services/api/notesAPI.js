@@ -109,6 +109,50 @@ const notesAPI = {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
+
+  /**
+   * Upload images to a note
+   * @param {string} id - Note ID
+   * @param {FileList|Array} files - Files to upload
+   * @returns {Promise<Object>} Updated note with images
+   */
+  uploadImages: async (id, files) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('images', file));
+
+    // Manual fetch for multipart/form-data (don't set Content-Type, browser will set it with boundary)
+    const token = localStorage.getItem('token');
+    const csrfToken = sessionStorage.getItem('csrfToken') || localStorage.getItem('csrfToken');
+
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    const response = await fetch(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Bild-Upload fehlgeschlagen');
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Delete an image from a note
+   * @param {string} id - Note ID
+   * @param {string} filename - Image filename to delete
+   * @returns {Promise<Object>} Updated note without the image
+   */
+  deleteImage: (id, filename) =>
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${filename}`, {
+      method: 'DELETE',
+    }),
 };
 
 export default notesAPI;
