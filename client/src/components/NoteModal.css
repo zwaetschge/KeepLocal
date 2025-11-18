@@ -620,6 +620,166 @@
   margin-top: 0.75rem;
 }
 
+/* Image upload styles */
+.note-modal-images {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.uploaded-images,
+.new-images-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.image-preview {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.image-preview:hover {
+  border-color: var(--accent-color);
+  transform: scale(1.02);
+}
+
+.image-preview.new {
+  border-color: var(--accent-color);
+  border-style: dashed;
+}
+
+.image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: white;
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-preview:hover .image-delete-btn {
+  opacity: 1;
+}
+
+.image-delete-btn:hover {
+  background: #d32f2f;
+  transform: scale(1.1);
+}
+
+.new-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: var(--accent-color);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.image-upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn-select-images {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: transparent;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.938rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.btn-select-images:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.btn-upload-images {
+  padding: 0.75rem 1.25rem;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.938rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.btn-upload-images:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-upload-images:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Dark mode image upload */
+.dark-mode .image-preview {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark-mode .image-preview:hover {
+  border-color: #8ab4f8;
+}
+
+.dark-mode .btn-select-images:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #8ab4f8;
+  color: #8ab4f8;
+}
+
+/* OLED mode image upload */
+.oled-mode .image-preview {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.oled-mode .image-preview:hover {
+  border-color: #8ab4f8;
+}
+
+.oled-mode .btn-select-images:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #8ab4f8;
+  color: #8ab4f8;
+}
+
 @media (max-width: 768px) {
   .note-modal {
     max-width: 100%;

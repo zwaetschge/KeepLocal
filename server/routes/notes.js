@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 const { fetchLinkPreview } = require('../utils/linkPreview');
 const { notesService } = require('../services');
 const { httpStatus } = require('../constants');
@@ -191,6 +192,72 @@ router.post('/link-preview', async (req, res, next) => {
     res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
       error: 'Fehler beim Abrufen der Link-Vorschau'
     });
+  }
+});
+
+/**
+ * POST /api/notes/:id/images - Upload images to a note
+ * Supports multiple files (max 5 images per request)
+ */
+router.post('/:id/images', upload.array('images', 5), async (req, res, next) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Bilder hochgeladen' });
+    }
+
+    const imageData = req.files.map(file => ({
+      url: `/uploads/images/${file.filename}`,
+      filename: file.filename,
+      uploadedAt: new Date()
+    }));
+
+    const note = await notesService.addImages(req.params.id, req.user._id, imageData);
+    res.json(note);
+  } catch (error) {
+    // Clean up uploaded files if database operation fails
+    if (req.files) {
+      const fs = require('fs');
+      const path = require('path');
+      req.files.forEach(file => {
+        const filepath = path.join(__dirname, '../uploads/images', file.filename);
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+      });
+    }
+
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/notes/:id/images/:filename - Delete an image from a note
+ */
+router.delete('/:id/images/:filename', async (req, res, next) => {
+  try {
+    const note = await notesService.removeImage(
+      req.params.id,
+      req.user._id,
+      req.params.filename
+    );
+
+    // Delete file from filesystem
+    const fs = require('fs');
+    const path = require('path');
+    const filepath = path.join(__dirname, '../uploads/images', req.params.filename);
+    if (fs.existsSync(filepath)) {
+      fs.unlinkSync(filepath);
+    }
+
+    res.json(note);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    next(error);
   }
 });
 
