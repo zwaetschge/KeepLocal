@@ -15,7 +15,7 @@ async function checkSetupNeeded() {
   const userCount = await User.countDocuments();
   return {
     setupNeeded: userCount === 0,
-    message: userCount === 0 ? 'Initial setup required' : 'System already configured'
+    message: userCount === 0 ? errorMessages.AUTH.INITIAL_SETUP_REQUIRED : errorMessages.AUTH.SYSTEM_ALREADY_CONFIGURED
   };
 }
 
@@ -62,7 +62,7 @@ async function registerUser(userData) {
     }
 
     if (!settings.registrationEnabled) {
-      const error = new Error('Registrierung ist deaktiviert');
+      const error = new Error(errorMessages.AUTH.REGISTRATION_DISABLED);
       error.statusCode = 403;
       throw error;
     }

@@ -227,6 +227,7 @@ export const en = {
   noteUnshared: 'Sharing removed',
   collaboratorRemoved: 'Collaborator removed',
   sharedWithCount: 'Shared with {count}',
+  unknownUser: 'Unknown User',
 
   // Friends
   friends: 'Friends',
