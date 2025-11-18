@@ -184,22 +184,22 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
             </svg>
             <span className="collaborators-text">
               {note.sharedWith.length === 1
-                ? note.sharedWith[0].username || note.sharedWith[0].email
-                : t('sharedWithCount').replace('{count}', note.sharedWith.length)}
+                ? (note.sharedWith[0]?.username || note.sharedWith[0]?.email || t('unknownUser'))
+                : t('sharedWithCount').replace('{count}', note.sharedWith.filter(u => u).length)}
             </span>
             <div className="collaborator-avatars">
-              {note.sharedWith.slice(0, 3).map((user, index) => (
+              {note.sharedWith.filter(user => user).slice(0, 3).map((user, index) => (
                 <div
                   key={user._id || index}
                   className="collaborator-avatar"
-                  title={user.username || user.email}
+                  title={user?.username || user?.email || t('unknownUser')}
                 >
-                  {(user.username || user.email || '?').charAt(0).toUpperCase()}
+                  {(user?.username || user?.email || '?').charAt(0).toUpperCase()}
                 </div>
               ))}
-              {note.sharedWith.length > 3 && (
-                <div className="collaborator-avatar more" title={`+${note.sharedWith.length - 3} ${t('collaborators')}`}>
-                  +{note.sharedWith.length - 3}
+              {note.sharedWith.filter(u => u).length > 3 && (
+                <div className="collaborator-avatar more" title={`+${note.sharedWith.filter(u => u).length - 3} ${t('collaborators')}`}>
+                  +{note.sharedWith.filter(u => u).length - 3}
                 </div>
               )}
             </div>

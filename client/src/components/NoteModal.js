@@ -6,7 +6,7 @@ import LinkPreview from './LinkPreview';
 import { getColorVar } from '../utils/colorMapper';
 import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 
-function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }) {
+function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onTogglePin, onDelete }) {
   const { t } = useLanguage();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
@@ -265,6 +265,40 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate }
                   <circle cx="9" cy="7" r="4"/>
                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </button>
+            )}
+            {note && onTogglePin && (
+              <button
+                type="button"
+                className={`btn-modal-pin ${note.isPinned ? 'pinned' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin(note._id);
+                  onClose();
+                }}
+                title={note.isPinned ? t('unpin') : t('pin')}
+                aria-label={note.isPinned ? t('unpin') : t('pin')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
+                </svg>
+              </button>
+            )}
+            {note && onDelete && (
+              <button
+                type="button"
+                className="btn-modal-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(note._id);
+                  onClose();
+                }}
+                title={t('delete')}
+                aria-label={t('delete')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
                 </svg>
               </button>
             )}

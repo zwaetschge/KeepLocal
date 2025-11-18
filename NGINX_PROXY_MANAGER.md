@@ -67,7 +67,7 @@ Logge dich in NPM ein und gehe zu **Hosts → Proxy Hosts → Add Proxy Host**
 - **Forward Port:** `80`
 - ✅ **Cache Assets** (aktivieren)
 - ✅ **Block Common Exploits** (aktivieren)
-- ✅ **Websockets Support** (WICHTIG für KeepLocal!)
+- ✅ **Websockets Support** (optional, für zukünftige Features)
 
 #### Tab: SSL
 - ✅ **SSL Certificate:** Wähle ein bestehendes oder erstelle ein neues Let's Encrypt Zertifikat
@@ -88,7 +88,7 @@ proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-Host $host;
 proxy_set_header X-Forwarded-Port $server_port;
 
-# WebSocket Support (KRITISCH für KeepLocal!)
+# WebSocket Support (optional, vorbereitet für zukünftige Real-Time Features)
 proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection "upgrade";
@@ -134,10 +134,12 @@ docker-compose -f docker-compose.npm.yml up -d
 
 ### Problem: WebSocket-Verbindungen schlagen fehl
 
-**Lösung:** Stelle sicher, dass:
-1. ✅ **Websockets Support** in NPM aktiviert ist
-2. Die Custom Nginx Config die WebSocket-Header enthält
-3. `proxy_http_version 1.1` gesetzt ist
+**Hinweis:** KeepLocal nutzt aktuell keine WebSocket-Verbindungen. Die WebSocket-Konfiguration ist optional und für zukünftige Real-Time-Features vorbereitet (z.B. Live-Collaboration, Cursor-Sharing).
+
+Falls du WebSocket-Support für andere Anwendungen benötigst:
+1. ✅ **Websockets Support** in NPM aktivieren
+2. Die Custom Nginx Config sollte die WebSocket-Header enthalten
+3. `proxy_http_version 1.1` muss gesetzt sein
 
 ### Problem: 502 Bad Gateway
 

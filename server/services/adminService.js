@@ -67,15 +67,36 @@ async function deleteUser(userId, currentUserId) {
     throw error;
   }
 
-  const user = await User.findByIdAndDelete(userId);
+  const user = await User.findById(userId);
   if (!user) {
     const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
     error.statusCode = 404;
     throw error;
   }
 
-  // Also delete all notes owned by this user
-  await Note.deleteMany({ userId });
+  // Clean up all references to this user to prevent dangling references
+  await Promise.all([
+    // Remove user from all friends lists
+    User.updateMany(
+      { friends: userId },
+      { $pull: { friends: userId } }
+    ),
+    // Remove user from all friend request lists
+    User.updateMany(
+      { friendRequests: userId },
+      { $pull: { friendRequests: userId } }
+    ),
+    // Remove user from all sharedWith arrays in notes
+    Note.updateMany(
+      { sharedWith: userId },
+      { $pull: { sharedWith: userId } }
+    ),
+    // Delete all notes owned by this user
+    Note.deleteMany({ userId })
+  ]);
+
+  // Finally delete the user
+  await User.findByIdAndDelete(userId);
 
   return user;
 }

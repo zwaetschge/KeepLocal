@@ -16,6 +16,9 @@ module.exports = {
     UNAUTHORIZED: 'Nicht autorisiert',
     ADMIN_REQUIRED: 'Administrator-Rechte erforderlich',
     SETUP_COMPLETE: 'Setup wurde bereits abgeschlossen',
+    REGISTRATION_DISABLED: 'Registrierung ist deaktiviert',
+    INITIAL_SETUP_REQUIRED: 'Initial setup required',
+    SYSTEM_ALREADY_CONFIGURED: 'System already configured',
   },
 
   // Note errors

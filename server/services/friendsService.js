@@ -3,6 +3,7 @@
  * Business logic for friend relationships and requests
  */
 
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { errorMessages } = require('../constants');
 
@@ -76,29 +77,49 @@ async function sendFriendRequest(userId, targetUsername) {
  * @returns {Promise<Object>} Result
  */
 async function acceptFriendRequest(userId, requestId) {
-  const user = await User.findById(userId);
-  const requester = await User.findById(requestId);
+  // Start a MongoDB session for transaction
+  const session = await mongoose.startSession();
 
-  if (!requester) {
-    const error = new Error(errorMessages.FRIENDS.REQUEST_NOT_FOUND);
-    error.statusCode = 404;
+  try {
+    // Start transaction
+    await session.startTransaction();
+
+    const user = await User.findById(userId).session(session);
+    const requester = await User.findById(requestId).session(session);
+
+    if (!requester) {
+      const error = new Error(errorMessages.FRIENDS.REQUEST_NOT_FOUND);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Remove from friend requests
+    user.friendRequests = user.friendRequests.filter(id => id.toString() !== requestId);
+
+    // Add to friends
+    if (!user.friends.includes(requestId)) {
+      user.friends.push(requestId);
+    }
+    if (!requester.friends.includes(userId)) {
+      requester.friends.push(userId);
+    }
+
+    // Save both users atomically within transaction
+    await user.save({ session });
+    await requester.save({ session });
+
+    // Commit transaction
+    await session.commitTransaction();
+
+    return { message: 'Freundschaftsanfrage akzeptiert' };
+  } catch (error) {
+    // Rollback transaction on error
+    await session.abortTransaction();
     throw error;
+  } finally {
+    // End session
+    session.endSession();
   }
-
-  // Remove from friend requests
-  user.friendRequests = user.friendRequests.filter(id => id.toString() !== requestId);
-
-  // Add to friends
-  if (!user.friends.includes(requestId)) {
-    user.friends.push(requestId);
-  }
-  if (!requester.friends.includes(userId)) {
-    requester.friends.push(userId);
-  }
-
-  await Promise.all([user.save(), requester.save()]);
-
-  return { message: 'Freundschaftsanfrage akzeptiert' };
 }
 
 /**
@@ -123,22 +144,42 @@ async function rejectFriendRequest(userId, requestId) {
  * @returns {Promise<Object>} Result
  */
 async function removeFriend(userId, friendId) {
-  const user = await User.findById(userId);
-  const friend = await User.findById(friendId);
+  // Start a MongoDB session for transaction
+  const session = await mongoose.startSession();
 
-  if (!friend) {
-    const error = new Error(errorMessages.FRIENDS.NOT_FOUND);
-    error.statusCode = 404;
+  try {
+    // Start transaction
+    await session.startTransaction();
+
+    const user = await User.findById(userId).session(session);
+    const friend = await User.findById(friendId).session(session);
+
+    if (!friend) {
+      const error = new Error(errorMessages.FRIENDS.NOT_FOUND);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Remove from both users
+    user.friends = user.friends.filter(id => id.toString() !== friendId);
+    friend.friends = friend.friends.filter(id => id.toString() !== userId);
+
+    // Save both users atomically within transaction
+    await user.save({ session });
+    await friend.save({ session });
+
+    // Commit transaction
+    await session.commitTransaction();
+
+    return { message: 'Freund entfernt' };
+  } catch (error) {
+    // Rollback transaction on error
+    await session.abortTransaction();
     throw error;
+  } finally {
+    // End session
+    session.endSession();
   }
-
-  // Remove from both users
-  user.friends = user.friends.filter(id => id.toString() !== friendId);
-  friend.friends = friend.friends.filter(id => id.toString() !== userId);
-
-  await Promise.all([user.save(), friend.save()]);
-
-  return { message: 'Freund entfernt' };
 }
 
 /**
