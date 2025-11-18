@@ -168,7 +168,11 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
           <div className="note-images">
             {note.images.slice(0, 4).map((image, index) => (
               <div key={index} className="note-image-preview">
-                <img src={image.url} alt={image.filename} />
+                <img
+                  src={image.thumbnailUrl || image.url}
+                  alt={image.filename}
+                  loading="lazy"
+                />
               </div>
             ))}
             {note.images.length > 4 && (
