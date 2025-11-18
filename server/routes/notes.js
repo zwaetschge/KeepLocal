@@ -10,6 +10,7 @@ const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { fetchLinkPreview } = require('../utils/linkPreview');
+const { validateImageFiles } = require('../utils/magicNumberValidator');
 const { notesService } = require('../services');
 const { httpStatus } = require('../constants');
 
@@ -205,11 +206,45 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Bilder hochgeladen' });
     }
 
-    const imageData = req.files.map(file => ({
-      url: `/uploads/images/${file.filename}`,
-      filename: file.filename,
-      uploadedAt: new Date()
-    }));
+    const path = require('path');
+    const fs = require('fs');
+
+    // Validate all uploaded files using magic number checking
+    // This prevents malicious files with fake extensions from being uploaded
+    const filepaths = req.files.map(file => path.join(__dirname, '../uploads/images', file.filename));
+    const validationResult = await validateImageFiles(filepaths);
+
+    if (validationResult.invalid.length > 0) {
+      // Clean up ALL uploaded files (including valid ones for security)
+      req.files.forEach(file => {
+        const filepath = path.join(__dirname, '../uploads/images', file.filename);
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+      });
+
+      return res.status(httpStatus.BAD_REQUEST).json({
+        error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
+      });
+    }
+
+    // Generate thumbnails for all uploaded images
+    const imageDataPromises = req.files.map(async file => {
+      const filepath = path.join(__dirname, '../uploads/images', file.filename);
+
+      // Generate thumbnail
+      const thumbnailFilename = await notesService.generateThumbnail(file.filename, filepath);
+
+      return {
+        url: `/uploads/images/${file.filename}`,
+        filename: file.filename,
+        thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
+        thumbnailFilename: thumbnailFilename,
+        uploadedAt: new Date()
+      };
+    });
+
+    const imageData = await Promise.all(imageDataPromises);
 
     const note = await notesService.addImages(req.params.id, req.user._id, imageData);
     res.json(note);
@@ -222,6 +257,13 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
         const filepath = path.join(__dirname, '../uploads/images', file.filename);
         if (fs.existsSync(filepath)) {
           fs.unlinkSync(filepath);
+        }
+        // Also try to clean up thumbnail
+        const ext = path.extname(file.filename);
+        const nameWithoutExt = path.basename(file.filename, ext);
+        const thumbpath = path.join(__dirname, '../uploads/images', `${nameWithoutExt}-thumb.webp`);
+        if (fs.existsSync(thumbpath)) {
+          fs.unlinkSync(thumbpath);
         }
       });
     }

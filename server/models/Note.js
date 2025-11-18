@@ -47,6 +47,8 @@ const noteSchema = new mongoose.Schema({
   images: [{
     url: String,
     filename: String,
+    thumbnailUrl: String,
+    thumbnailFilename: String,
     uploadedAt: Date
   }],
   isTodoList: {

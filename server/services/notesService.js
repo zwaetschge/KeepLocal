@@ -8,6 +8,36 @@ const Note = require('../models/Note');
 const { errorMessages } = require('../constants');
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
+
+/**
+ * Helper function: Generate thumbnail for an uploaded image
+ * @param {string} filename - Original image filename
+ * @param {string} filepath - Full path to the original image
+ * @returns {Promise<string>} Thumbnail filename
+ */
+async function generateThumbnail(filename, filepath) {
+  try {
+    const ext = path.extname(filename);
+    const nameWithoutExt = path.basename(filename, ext);
+    const thumbnailFilename = `${nameWithoutExt}-thumb.webp`;
+    const thumbnailPath = path.join(path.dirname(filepath), thumbnailFilename);
+
+    await sharp(filepath)
+      .resize(300, 300, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .webp({ quality: 80 })
+      .toFile(thumbnailPath);
+
+    return thumbnailFilename;
+  } catch (error) {
+    console.error(`Error generating thumbnail for ${filename}:`, error);
+    // Return empty string if thumbnail generation fails - we'll use original
+    return '';
+  }
+}
 
 /**
  * Helper function: Delete all images associated with a note from the filesystem
@@ -19,18 +49,35 @@ async function deleteNoteImages(note) {
     return; // No images to delete
   }
 
-  // Delete all images from filesystem
-  const deletePromises = note.images.map(image => {
-    return new Promise((resolve) => {
+  // Delete all images and thumbnails from filesystem
+  const deletePromises = note.images.flatMap(image => {
+    const promises = [];
+
+    // Delete original image
+    promises.push(new Promise((resolve) => {
       const filepath = path.join(__dirname, '../uploads/images', image.filename);
       fs.unlink(filepath, (err) => {
         if (err) {
-          // Log error but don't fail - file might already be deleted
           console.warn(`Warning: Could not delete image file ${image.filename}:`, err.message);
         }
-        resolve(); // Always resolve, never reject
+        resolve();
       });
-    });
+    }));
+
+    // Delete thumbnail if it exists
+    if (image.thumbnailFilename) {
+      promises.push(new Promise((resolve) => {
+        const thumbpath = path.join(__dirname, '../uploads/images', image.thumbnailFilename);
+        fs.unlink(thumbpath, (err) => {
+          if (err) {
+            console.warn(`Warning: Could not delete thumbnail ${image.thumbnailFilename}:`, err.message);
+          }
+          resolve();
+        });
+      }));
+    }
+
+    return promises;
   });
 
   await Promise.all(deletePromises);
@@ -414,6 +461,7 @@ module.exports = {
   unshareNote,
   addImages,
   removeImage,
+  generateThumbnail, // Export for use in routes
   deleteNoteImages, // Export for use in adminService
   buildNotesQuery, // Export for testing
 };

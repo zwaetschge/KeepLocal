@@ -3,6 +3,7 @@
  * Business logic for admin operations
  */
 
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Note = require('../models/Note');
 const Settings = require('../models/Settings');
@@ -68,44 +69,69 @@ async function deleteUser(userId, currentUserId) {
     throw error;
   }
 
-  const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
-    error.statusCode = 404;
-    throw error;
-  }
-
   // First, get all notes owned by this user to delete their images
+  // This must be done before starting the transaction since filesystem operations
+  // are not part of the transaction
   const userNotes = await Note.find({ userId });
 
   // Delete all images from filesystem for each note
+  // This happens outside the transaction as it's a filesystem operation
   await Promise.all(userNotes.map(note => deleteNoteImages(note)));
 
-  // Clean up all references to this user to prevent dangling references
-  await Promise.all([
-    // Remove user from all friends lists
-    User.updateMany(
-      { friends: userId },
-      { $pull: { friends: userId } }
-    ),
-    // Remove user from all friend request lists
-    User.updateMany(
-      { friendRequests: userId },
-      { $pull: { friendRequests: userId } }
-    ),
-    // Remove user from all sharedWith arrays in notes
-    Note.updateMany(
-      { sharedWith: userId },
-      { $pull: { sharedWith: userId } }
-    ),
-    // Delete all notes owned by this user (after images are deleted)
-    Note.deleteMany({ userId })
-  ]);
+  // Start a MongoDB session for transaction
+  const session = await mongoose.startSession();
 
-  // Finally delete the user
-  await User.findByIdAndDelete(userId);
+  try {
+    // Start transaction - ensures atomic deletion of user and all references
+    await session.startTransaction();
 
-  return user;
+    const user = await User.findById(userId).session(session);
+    if (!user) {
+      const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Clean up all references to this user to prevent dangling references
+    // All operations happen atomically within the transaction
+    await Promise.all([
+      // Remove user from all friends lists
+      User.updateMany(
+        { friends: userId },
+        { $pull: { friends: userId } },
+        { session }
+      ),
+      // Remove user from all friend request lists
+      User.updateMany(
+        { friendRequests: userId },
+        { $pull: { friendRequests: userId } },
+        { session }
+      ),
+      // Remove user from all sharedWith arrays in notes
+      Note.updateMany(
+        { sharedWith: userId },
+        { $pull: { sharedWith: userId } },
+        { session }
+      ),
+      // Delete all notes owned by this user (after images are deleted)
+      Note.deleteMany({ userId }, { session })
+    ]);
+
+    // Finally delete the user
+    await User.findByIdAndDelete(userId, { session });
+
+    // Commit transaction
+    await session.commitTransaction();
+
+    return user;
+  } catch (error) {
+    // Rollback transaction on error
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    // End session
+    session.endSession();
+  }
 }
 
 /**

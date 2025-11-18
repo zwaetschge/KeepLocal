@@ -33,7 +33,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production-please-use-long-random-string}
       - JWT_EXPIRES_IN=7d
     volumes:
-      - uploads_data:/app/uploads
+      - uploads_data:/app/server/uploads
     depends_on:
       mongodb:
         condition: service_healthy

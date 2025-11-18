@@ -1,5 +1,8 @@
 import { API_BASE_URL, API_ENDPOINTS, CSRF_METHODS, ERROR_MESSAGES } from '../../constants/api';
 
+// Re-export API_BASE_URL for use in other API modules
+export { API_BASE_URL };
+
 // Store CSRF token in memory (not in cookie!)
 let csrfToken = null;
 
