@@ -57,14 +57,23 @@ RUN apt-get update && apt-get install -y \
 # Create application directory structure
 WORKDIR /app
 
+# Create node user for running the Node.js application (security best practice)
+RUN groupadd -r node && useradd -r -g node node
+
 # Create MongoDB data directory
 RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db
+
+# Create uploads directory for images
+RUN mkdir -p /app/server/uploads/images
 
 # Copy server from builder
 COPY --from=server-builder /app/server /app/server
 
 # Copy built client from builder
 COPY --from=client-builder /app/client/build /app/client/build
+
+# Set ownership of application files to node user
+RUN chown -R node:node /app/server
 
 # Copy and configure Nginx
 COPY nginx-allinone.conf /etc/nginx/sites-available/default
@@ -85,6 +94,9 @@ RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal
 # 80: Nginx (Web UI + API proxy)
 # 27017: MongoDB (for debugging/backup purposes)
 EXPOSE 80 27017
+
+# Persist data in volumes
+VOLUME ["/data/db", "/app/server/uploads"]
 
 # Environment variables with defaults
 ENV NODE_ENV=production \

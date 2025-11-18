@@ -1,5 +1,5 @@
 import { API_ENDPOINTS } from '../../constants/api';
-import { fetchWithAuth, buildQueryString } from './apiUtils';
+import { fetchWithAuth, buildQueryString, getCsrfToken, getAuthToken, API_BASE_URL } from './apiUtils';
 
 /**
  * Notes API module
@@ -121,14 +121,14 @@ const notesAPI = {
     Array.from(files).forEach((file) => formData.append('images', file));
 
     // Manual fetch for multipart/form-data (don't set Content-Type, browser will set it with boundary)
-    const token = localStorage.getItem('token');
-    const csrfToken = sessionStorage.getItem('csrfToken') || localStorage.getItem('csrfToken');
+    const token = getAuthToken();
+    const csrfToken = getCsrfToken();
 
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
-    const response = await fetch(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images`, {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/images`, {
       method: 'POST',
       headers,
       body: formData,
