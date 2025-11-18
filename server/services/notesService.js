@@ -6,6 +6,35 @@
 
 const Note = require('../models/Note');
 const { errorMessages } = require('../constants');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Helper function: Delete all images associated with a note from the filesystem
+ * @param {Object} note - Note object with images array
+ * @returns {Promise<void>}
+ */
+async function deleteNoteImages(note) {
+  if (!note.images || note.images.length === 0) {
+    return; // No images to delete
+  }
+
+  // Delete all images from filesystem
+  const deletePromises = note.images.map(image => {
+    return new Promise((resolve) => {
+      const filepath = path.join(__dirname, '../uploads/images', image.filename);
+      fs.unlink(filepath, (err) => {
+        if (err) {
+          // Log error but don't fail - file might already be deleted
+          console.warn(`Warning: Could not delete image file ${image.filename}:`, err.message);
+        }
+        resolve(); // Always resolve, never reject
+      });
+    });
+  });
+
+  await Promise.all(deletePromises);
+}
 
 /**
  * Build query for fetching notes
@@ -169,18 +198,28 @@ async function updateNote(noteId, noteData, userId) {
  * @throws {Error} If note not found or no access
  */
 async function deleteNote(noteId, userId) {
-  const deletedNote = await Note.findOneAndDelete({
+  // First, find the note to get image information
+  const note = await Note.findOne({
     _id: noteId,
     userId: userId
   });
 
-  if (!deletedNote) {
+  if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
   }
 
-  return deletedNote;
+  // Delete all associated images from filesystem
+  await deleteNoteImages(note);
+
+  // Now delete the note from database
+  await Note.findOneAndDelete({
+    _id: noteId,
+    userId: userId
+  });
+
+  return note;
 }
 
 /**
@@ -375,5 +414,6 @@ module.exports = {
   unshareNote,
   addImages,
   removeImage,
+  deleteNoteImages, // Export for use in adminService
   buildNotesQuery, // Export for testing
 };

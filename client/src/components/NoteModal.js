@@ -17,6 +17,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const [images, setImages] = useState(note?.images || []);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null); // {index, url}
   const contentTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -153,6 +154,47 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     setNewImageFiles(newImageFiles.filter((_, i) => i !== index));
   };
 
+  // Lightbox handlers
+  const openLightbox = (index) => {
+    setLightboxImage({ index, url: images[index].url });
+  };
+
+  const closeLightbox = () => {
+    setLightboxImage(null);
+  };
+
+  const nextImage = () => {
+    if (lightboxImage && images.length > 0) {
+      const nextIndex = (lightboxImage.index + 1) % images.length;
+      setLightboxImage({ index: nextIndex, url: images[nextIndex].url });
+    }
+  };
+
+  const prevImage = () => {
+    if (lightboxImage && images.length > 0) {
+      const prevIndex = (lightboxImage.index - 1 + images.length) % images.length;
+      setLightboxImage({ index: prevIndex, url: images[prevIndex].url });
+    }
+  };
+
+  // Keyboard shortcuts for lightbox
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (lightboxImage) {
+        if (e.key === 'Escape') {
+          closeLightbox();
+        } else if (e.key === 'ArrowRight') {
+          nextImage();
+        } else if (e.key === 'ArrowLeft') {
+          prevImage();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxImage, images]);
+
   // Keyboard shortcuts for modal
   useModalShortcuts(onClose, handleSave, [title, content, tags, color]);
 
@@ -258,12 +300,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               {images && images.length > 0 && (
                 <div className="uploaded-images">
                   {images.map((image, index) => (
-                    <div key={index} className="image-preview">
+                    <div key={index} className="image-preview" onClick={() => openLightbox(index)}>
                       <img src={image.url} alt={image.filename} />
                       <button
                         type="button"
                         className="image-delete-btn"
-                        onClick={() => handleImageDelete(image.filename)}
+                        onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
                         title="Bild löschen"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -446,6 +488,42 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
           </div>
         </div>
       </div>
+
+      {/* Lightbox for viewing images */}
+      {lightboxImage && (
+        <div className="lightbox-overlay" onClick={closeLightbox}>
+          <button className="lightbox-close" onClick={closeLightbox} aria-label="Schließen">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          {images.length > 1 && (
+            <>
+              <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); prevImage(); }} aria-label="Vorheriges Bild">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); nextImage(); }} aria-label="Nächstes Bild">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </>
+          )}
+
+          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <img src={lightboxImage.url} alt={`Bild ${lightboxImage.index + 1}`} />
+            {images.length > 1 && (
+              <div className="lightbox-counter">
+                {lightboxImage.index + 1} / {images.length}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

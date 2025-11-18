@@ -24,6 +24,25 @@ fi
 # Fix log directory permissions
 chown -R mongodb:mongodb /var/log/mongodb
 
+# Fix uploads directory permissions
+echo "Checking /app/server/uploads permissions..."
+if [ -d "/app/server/uploads" ]; then
+    echo "Setting correct permissions for uploads directory..."
+    chown -R node:node /app/server/uploads
+    chmod -R 755 /app/server/uploads
+    echo "✓ Permissions fixed"
+else
+    echo "Creating /app/server/uploads directory..."
+    mkdir -p /app/server/uploads/images
+    chown -R node:node /app/server/uploads
+    chmod -R 755 /app/server/uploads
+    echo "✓ Directory created with correct permissions"
+fi
+
+# Ensure node user has access to server directory
+chown -R node:node /app/server
+chmod -R 755 /app/server
+
 echo "=== Starting Supervisor ==="
 echo ""
 

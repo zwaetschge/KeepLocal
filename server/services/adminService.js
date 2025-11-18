@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Note = require('../models/Note');
 const Settings = require('../models/Settings');
 const { errorMessages } = require('../constants');
+const { deleteNoteImages } = require('./notesService');
 
 /**
  * Get all users
@@ -74,6 +75,12 @@ async function deleteUser(userId, currentUserId) {
     throw error;
   }
 
+  // First, get all notes owned by this user to delete their images
+  const userNotes = await Note.find({ userId });
+
+  // Delete all images from filesystem for each note
+  await Promise.all(userNotes.map(note => deleteNoteImages(note)));
+
   // Clean up all references to this user to prevent dangling references
   await Promise.all([
     // Remove user from all friends lists
@@ -91,7 +98,7 @@ async function deleteUser(userId, currentUserId) {
       { sharedWith: userId },
       { $pull: { sharedWith: userId } }
     ),
-    // Delete all notes owned by this user
+    // Delete all notes owned by this user (after images are deleted)
     Note.deleteMany({ userId })
   ]);
 
