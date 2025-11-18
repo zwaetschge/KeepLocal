@@ -8,15 +8,6 @@ const Note = require('../models/Note');
 const { errorMessages } = require('../constants');
 
 /**
- * Escape regex special characters to prevent NoSQL injection
- * @param {string} string - String to escape
- * @returns {string} Escaped string
- */
-function escapeRegex(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
  * Build query for fetching notes
  * @param {Object} params - Query parameters
  * @param {string} params.userId - User ID
@@ -35,20 +26,11 @@ function buildNotesQuery({ userId, search, tag, isArchived = false }) {
     isArchived: isArchived
   };
 
-  // Full-text search in title, content, and todo items
+  // Full-text search using MongoDB text index (more performant than regex)
   if (search && search.trim() !== '') {
-    const escapedSearch = escapeRegex(search.trim());
-    query.$and = [
-      { $or: query.$or },
-      {
-        $or: [
-          { title: { $regex: escapedSearch, $options: 'i' } },
-          { content: { $regex: escapedSearch, $options: 'i' } },
-          { 'todoItems.text': { $regex: escapedSearch, $options: 'i' } }
-        ]
-      }
-    ];
-    delete query.$or;
+    // MongoDB $text search is indexed and much faster than regex
+    // It searches in title, content, and todoItems.text (as defined in the model)
+    query.$text = { $search: search.trim() };
   }
 
   // Filter by tag
@@ -257,10 +239,22 @@ async function toggleArchiveNote(noteId, userId) {
  * @returns {Promise<Object>} Updated note
  */
 async function shareNote(noteId, userId, targetUserId) {
-  const note = await Note.findOne({
-    _id: noteId,
-    userId: userId
-  });
+  // Use atomic operation to prevent race conditions
+  // $addToSet ensures no duplicates even with concurrent requests
+  const note = await Note.findOneAndUpdate(
+    {
+      _id: noteId,
+      userId: userId
+    },
+    {
+      $addToSet: { sharedWith: targetUserId }
+    },
+    {
+      new: true, // Return updated document
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
@@ -268,14 +262,6 @@ async function shareNote(noteId, userId, targetUserId) {
     throw error;
   }
 
-  // Add user to sharedWith if not already shared
-  if (!note.sharedWith.includes(targetUserId)) {
-    note.sharedWith.push(targetUserId);
-    await note.save();
-  }
-
-  // Populate and return
-  await note.populate('sharedWith', 'username email');
   return note;
 }
 
@@ -287,10 +273,22 @@ async function shareNote(noteId, userId, targetUserId) {
  * @returns {Promise<Object>} Updated note
  */
 async function unshareNote(noteId, userId, targetUserId) {
-  const note = await Note.findOne({
-    _id: noteId,
-    userId: userId
-  });
+  // Use atomic operation to prevent race conditions
+  // $pull removes the user ID from the array
+  const note = await Note.findOneAndUpdate(
+    {
+      _id: noteId,
+      userId: userId
+    },
+    {
+      $pull: { sharedWith: targetUserId }
+    },
+    {
+      new: true, // Return updated document
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
@@ -298,11 +296,6 @@ async function unshareNote(noteId, userId, targetUserId) {
     throw error;
   }
 
-  // Remove user from sharedWith
-  note.sharedWith = note.sharedWith.filter(id => id.toString() !== targetUserId);
-  await note.save();
-
-  await note.populate('sharedWith', 'username email');
   return note;
 }
 
@@ -316,6 +309,5 @@ module.exports = {
   toggleArchiveNote,
   shareNote,
   unshareNote,
-  escapeRegex, // Export for testing
   buildNotesQuery, // Export for testing
 };

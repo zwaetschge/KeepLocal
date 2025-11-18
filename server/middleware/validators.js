@@ -4,10 +4,8 @@ const { body, param, query, validationResult } = require('express-validator');
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    console.log('=== VALIDATION ERRORS ===');
-    console.log('Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('Validation Errors:', JSON.stringify(errors.array(), null, 2));
-    console.log('========================');
+    // Only log validation errors, not the full request body (which may contain sensitive data)
+    console.log('Validation errors:', JSON.stringify(errors.array().map(e => e.msg), null, 2));
     return res.status(400).json({
       error: 'Validierungsfehler',
       details: errors.array()
