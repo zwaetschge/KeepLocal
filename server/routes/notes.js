@@ -201,62 +201,67 @@ router.post('/link-preview', async (req, res, next) => {
  * Supports multiple files (max 5 images per request)
  */
 router.post('/:id/images', upload.array('images', 5), async (req, res, next) => {
+  const path = require('path');
+  const fs = require('fs');
+  const { tempUploadDir, finalUploadDir } = require('../middleware/upload');
+  const tempFiles = []; // Track temp files for cleanup
+
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Bilder hochgeladen' });
     }
 
-    const path = require('path');
-    const fs = require('fs');
-
     console.log(`[IMAGE UPLOAD] Received ${req.files.length} files for note ${req.params.id}`);
+
+    // Files are currently in TEMP directory (security measure)
+    const tempFilePaths = req.files.map(file => file.path);
+    tempFiles.push(...tempFilePaths);
+
     req.files.forEach(file => {
-      console.log(`[IMAGE UPLOAD] File: ${file.filename}, Size: ${file.size} bytes, Path: ${file.path}`);
-      console.log(`[IMAGE UPLOAD] File exists: ${fs.existsSync(file.path)}`);
+      console.log(`[IMAGE UPLOAD] Temp file: ${file.filename}, Size: ${file.size} bytes, Path: ${file.path}`);
     });
 
-    // Validate all uploaded files using magic number checking
-    // This prevents malicious files with fake extensions from being uploaded
-    const filepaths = req.files.map(file => path.join(__dirname, '../uploads/images', file.filename));
+    // SECURITY: Validate files in temp directory BEFORE moving to final location
+    console.log('[IMAGE UPLOAD] Validating files with magic number checking...');
+    const filepaths = tempFilePaths;
 
-    try {
-      const validationResult = await validateImageFiles(filepaths);
+    const validationResult = await validateImageFiles(filepaths);
 
-      if (validationResult.invalid.length > 0) {
-        console.warn('[IMAGE UPLOAD] Magic number validation failed for files:', validationResult.invalid);
-        // Clean up ALL uploaded files (including valid ones for security)
-        req.files.forEach(file => {
-          const filepath = path.join(__dirname, '../uploads/images', file.filename);
-          if (fs.existsSync(filepath)) {
-            fs.unlinkSync(filepath);
-            console.log(`[IMAGE UPLOAD] Deleted invalid file: ${file.filename}`);
-          }
-        });
+    if (validationResult.invalid.length > 0) {
+      console.warn('[IMAGE UPLOAD] ✗ Magic number validation FAILED:', validationResult.invalid);
+      // SECURITY: Delete ALL temp files (reject entire batch if one is invalid)
+      tempFilePaths.forEach(filepath => {
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+          console.log(`[IMAGE UPLOAD] Deleted invalid temp file: ${filepath}`);
+        }
+      });
 
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
-        });
-      }
-      console.log('[IMAGE UPLOAD] All files passed magic number validation');
-    } catch (validationError) {
-      console.error('[IMAGE UPLOAD] Magic number validation error (continuing anyway):', validationError);
-      // Continue with upload even if validation fails - better UX
+      return res.status(httpStatus.BAD_REQUEST).json({
+        error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
+      });
     }
 
-    // Generate thumbnails for all uploaded images
-    const imageDataPromises = req.files.map(async file => {
-      const filepath = path.join(__dirname, '../uploads/images', file.filename);
+    console.log('[IMAGE UPLOAD] ✓ All files passed magic number validation');
 
+    // Move validated files from temp to final directory and generate thumbnails
+    const imageDataPromises = req.files.map(async file => {
+      const tempPath = file.path;
+      const finalPath = path.join(finalUploadDir, file.filename);
+
+      // ATOMIC MOVE: Move file from temp to final directory
+      console.log(`[IMAGE UPLOAD] Moving ${file.filename} from temp to final directory`);
+      fs.renameSync(tempPath, finalPath);
+      console.log(`[IMAGE UPLOAD] ✓ File moved to production directory`);
+
+      // Generate thumbnail in final directory
       console.log(`[IMAGE UPLOAD] Generating thumbnail for: ${file.filename}`);
-      // Generate thumbnail
-      const thumbnailFilename = await notesService.generateThumbnail(file.filename, filepath);
+      const thumbnailFilename = await notesService.generateThumbnail(file.filename, finalPath);
 
       if (thumbnailFilename) {
-        console.log(`[IMAGE UPLOAD] Thumbnail created: ${thumbnailFilename}`);
-        const thumbPath = path.join(__dirname, '../uploads/images', thumbnailFilename);
-        console.log(`[IMAGE UPLOAD] Thumbnail exists: ${fs.existsSync(thumbPath)}`);
+        console.log(`[IMAGE UPLOAD] ✓ Thumbnail created: ${thumbnailFilename}`);
       } else {
-        console.warn(`[IMAGE UPLOAD] Thumbnail generation failed for: ${file.filename}`);
+        console.warn(`[IMAGE UPLOAD] ⚠ Thumbnail generation failed for: ${file.filename}`);
       }
 
       return {
@@ -280,26 +285,35 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
     });
     res.json(note);
   } catch (error) {
-    // Clean up uploaded files if database operation fails
+    console.error('[IMAGE UPLOAD] ✗ Error during upload:', error);
+
+    // Clean up: Delete files from temp directory (if still there)
+    tempFiles.forEach(filepath => {
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+        console.log(`[IMAGE UPLOAD] Cleaned up temp file after error: ${filepath}`);
+      }
+    });
+
+    // Clean up: Delete files from final directory and thumbnails (if already moved)
     if (req.files) {
-      const fs = require('fs');
-      const path = require('path');
       req.files.forEach(file => {
-        const filepath = path.join(__dirname, '../uploads/images', file.filename);
-        if (fs.existsSync(filepath)) {
-          fs.unlinkSync(filepath);
+        const finalPath = path.join(finalUploadDir, file.filename);
+        if (fs.existsSync(finalPath)) {
+          fs.unlinkSync(finalPath);
+          console.log(`[IMAGE UPLOAD] Cleaned up final file after error: ${file.filename}`);
         }
-        // Also try to clean up thumbnail
+
+        // Clean up thumbnail if exists
         const ext = path.extname(file.filename);
         const nameWithoutExt = path.basename(file.filename, ext);
-        const thumbpath = path.join(__dirname, '../uploads/images', `${nameWithoutExt}-thumb.webp`);
+        const thumbpath = path.join(finalUploadDir, `${nameWithoutExt}-thumb.webp`);
         if (fs.existsSync(thumbpath)) {
           fs.unlinkSync(thumbpath);
+          console.log(`[IMAGE UPLOAD] Cleaned up thumbnail after error: ${nameWithoutExt}-thumb.webp`);
         }
       });
     }
-
-    console.error('Error uploading images:', error);
 
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });

@@ -7,16 +7,22 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure upload directory exists
-const uploadDir = path.join(__dirname, '../uploads/images');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Temporary upload directory for initial uploads (before validation)
+const tempUploadDir = path.join(__dirname, '../uploads/temp');
+if (!fs.existsSync(tempUploadDir)) {
+  fs.mkdirSync(tempUploadDir, { recursive: true });
 }
 
-// Configure storage
+// Final upload directory (after validation)
+const finalUploadDir = path.join(__dirname, '../uploads/images');
+if (!fs.existsSync(finalUploadDir)) {
+  fs.mkdirSync(finalUploadDir, { recursive: true });
+}
+
+// Configure storage - uploads go to temp directory first
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    cb(null, tempUploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename: timestamp-randomstring-originalname
@@ -51,4 +57,7 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
+// Export upload middleware and directory paths
 module.exports = upload;
+module.exports.tempUploadDir = tempUploadDir;
+module.exports.finalUploadDir = finalUploadDir;
