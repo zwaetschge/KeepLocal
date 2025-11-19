@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  keeplocal:
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    image: keeplocal-allinone:latest
+    container_name: keeplocal-allinone
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://localhost:27017/keeplocal
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-to-a-secure-random-string}
+      - ALLOWED_ORIGINS=*
+    volumes:
+      # CRITICAL: Map uploads directory to persist images across container restarts
+      - uploads_data:/app/server/uploads
+      # CRITICAL: Map MongoDB data directory to persist database across container restarts
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  # Persistent volume for uploaded images and thumbnails
+  uploads_data:
+    driver: local
+  # Persistent volume for MongoDB database
+  mongodb_data:
+    driver: local
