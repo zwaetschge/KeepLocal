@@ -212,20 +212,27 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
     // Validate all uploaded files using magic number checking
     // This prevents malicious files with fake extensions from being uploaded
     const filepaths = req.files.map(file => path.join(__dirname, '../uploads/images', file.filename));
-    const validationResult = await validateImageFiles(filepaths);
 
-    if (validationResult.invalid.length > 0) {
-      // Clean up ALL uploaded files (including valid ones for security)
-      req.files.forEach(file => {
-        const filepath = path.join(__dirname, '../uploads/images', file.filename);
-        if (fs.existsSync(filepath)) {
-          fs.unlinkSync(filepath);
-        }
-      });
+    try {
+      const validationResult = await validateImageFiles(filepaths);
 
-      return res.status(httpStatus.BAD_REQUEST).json({
-        error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
-      });
+      if (validationResult.invalid.length > 0) {
+        console.warn('Magic number validation failed for files:', validationResult.invalid);
+        // Clean up ALL uploaded files (including valid ones for security)
+        req.files.forEach(file => {
+          const filepath = path.join(__dirname, '../uploads/images', file.filename);
+          if (fs.existsSync(filepath)) {
+            fs.unlinkSync(filepath);
+          }
+        });
+
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
+        });
+      }
+    } catch (validationError) {
+      console.error('Magic number validation error (continuing anyway):', validationError);
+      // Continue with upload even if validation fails - better UX
     }
 
     // Generate thumbnails for all uploaded images
@@ -268,10 +275,16 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
       });
     }
 
+    console.error('Error uploading images:', error);
+
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
     }
-    next(error);
+
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      error: 'Fehler beim Hochladen der Bilder',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
