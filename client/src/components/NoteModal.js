@@ -260,10 +260,23 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
       const transcription = await notesAPI.transcribeAudio(note._id, audioBlob, transcriptionOptions);
 
-      // Append transcribed text to content
+      // Append transcribed text to content using functional setState to ensure latest state
       if (transcription && transcription.text) {
-        const separator = content.trim() ? '\n\n' : '';
-        setContent(content + separator + transcription.text);
+        setContent(prevContent => {
+          const separator = prevContent.trim() ? '\n\n' : '';
+          return prevContent + separator + transcription.text;
+        });
+
+        // Force textarea to resize after content update
+        setTimeout(() => {
+          if (contentTextareaRef.current) {
+            const textarea = contentTextareaRef.current;
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+            // Scroll to bottom to show new content
+            textarea.scrollTop = textarea.scrollHeight;
+          }
+        }, 0);
       }
     } catch (error) {
       console.error('Fehler bei der Transkription:', error);
