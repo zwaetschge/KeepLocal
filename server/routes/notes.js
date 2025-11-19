@@ -363,6 +363,8 @@ router.get('/debug/uploads', async (req, res) => {
  */
 router.delete('/:id/images/:filename', async (req, res, next) => {
   try {
+    console.log(`[IMAGE DELETE] Deleting image ${req.params.filename} from note ${req.params.id}`);
+
     const note = await notesService.removeImage(
       req.params.id,
       req.user._id,
@@ -373,16 +375,38 @@ router.delete('/:id/images/:filename', async (req, res, next) => {
     const fs = require('fs');
     const path = require('path');
     const filepath = path.join(__dirname, '../uploads/images', req.params.filename);
+
     if (fs.existsSync(filepath)) {
       fs.unlinkSync(filepath);
+      console.log(`[IMAGE DELETE] Deleted original file: ${req.params.filename}`);
+    } else {
+      console.warn(`[IMAGE DELETE] Original file not found: ${filepath}`);
     }
 
+    // Also delete thumbnail if it exists
+    const ext = path.extname(req.params.filename);
+    const nameWithoutExt = path.basename(req.params.filename, ext);
+    const thumbnailFilename = `${nameWithoutExt}-thumb.webp`;
+    const thumbpath = path.join(__dirname, '../uploads/images', thumbnailFilename);
+
+    if (fs.existsSync(thumbpath)) {
+      fs.unlinkSync(thumbpath);
+      console.log(`[IMAGE DELETE] Deleted thumbnail: ${thumbnailFilename}`);
+    } else {
+      console.log(`[IMAGE DELETE] No thumbnail found: ${thumbnailFilename}`);
+    }
+
+    console.log(`[IMAGE DELETE] Successfully deleted image from note ${req.params.id}`);
     res.json(note);
   } catch (error) {
+    console.error('[IMAGE DELETE] Error:', error);
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
     }
-    next(error);
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      error: 'Fehler beim Löschen des Bildes',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
