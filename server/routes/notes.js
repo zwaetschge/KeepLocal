@@ -456,27 +456,12 @@ router.post('/:id/transcribe', uploadAudio.single('audio'), async (req, res, nex
 
     console.log(`[TRANSCRIPTION] ✓ Transcribed (${result.language}): "${result.text.substring(0, 100)}..."`);
 
-    // 3. Update note with transcribed text
-    const note = await notesService.getNoteById(req.params.id, req.user._id);
-
-    // Formatting: If note already has content, add new line
-    const newContent = note.content
-      ? `${note.content}\n\n📝 [Transkription]: ${result.text}`
-      : result.text;
-
-    const updatedNote = await notesService.updateNote(
-      req.params.id,
-      { content: newContent },
-      req.user._id
-    );
-
-    console.log(`[TRANSCRIPTION] ✓ Note updated successfully`);
-
+    // 3. Return transcription result (frontend will handle appending to note)
     res.json({
       message: 'Transkription erfolgreich',
-      transcription: result.text,
+      text: result.text,
       language: result.language,
-      note: updatedNote
+      probability: result.probability
     });
 
   } catch (error) {

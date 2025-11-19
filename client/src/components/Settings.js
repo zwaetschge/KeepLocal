@@ -74,6 +74,52 @@ function Settings({ onClose }) {
             )}
           </section>
 
+          {/* AI Service Configuration Section */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+              </svg>
+              AI-Service Konfiguration
+            </h3>
+            <p className="settings-section-description">
+              Konfiguration des Transkriptionsservers (Whisper AI)
+            </p>
+
+            <div className="settings-config-box">
+              <h4 style={{ marginBottom: '8px', fontSize: '0.9rem' }}>Transkriptionsserver-URL</h4>
+              <p style={{ marginBottom: '8px' }}>Der Backend-Server verwendet die folgende Umgebungsvariable:</p>
+              <code className="settings-code">AI_SERVICE_URL</code>
+
+              <p style={{ marginTop: '12px', marginBottom: '8px' }}>Standard: <code className="settings-code-inline">http://ai:5000</code> (Docker-Netzwerk)</p>
+
+              <div className="settings-instructions">
+                <strong>So ändern Sie die URL:</strong>
+                <ol>
+                  <li>Öffnen Sie <code className="settings-code-inline">docker-compose.yml</code></li>
+                  <li>Unter <code className="settings-code-inline">server</code> → <code className="settings-code-inline">environment</code> finden Sie:
+                    <pre className="settings-code-block">- AI_SERVICE_URL=http://ai:5000</pre>
+                  </li>
+                  <li>Ändern Sie die URL nach Bedarf (z.B. <code className="settings-code-inline">http://localhost:9000</code> wenn lokal)</li>
+                  <li>Starten Sie die Container neu: <code className="settings-code-inline">docker-compose restart server</code></li>
+                </ol>
+              </div>
+
+              <div className="settings-warning-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div>
+                  <strong>Wichtig:</strong> Stellen Sie sicher, dass der AI-Service läuft und erreichbar ist.
+                  Bei Problemen prüfen Sie die Logs: <code className="settings-code-inline">docker-compose logs ai</code>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Future sections can go here */}
         </div>
 
