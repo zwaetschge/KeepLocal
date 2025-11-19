@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   aiFeatures: {
     voiceTranscription: false,  // Opt-in for Whisper voice-to-text
   },
+  transcriptionLanguage: 'auto',  // Language for transcription (auto = auto-detect)
 };
 
 export function SettingsProvider({ children }) {
@@ -55,10 +56,18 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  const setTranscriptionLanguage = (language) => {
+    setSettings((prev) => ({
+      ...prev,
+      transcriptionLanguage: language,
+    }));
+  };
+
   const value = {
     settings,
     updateSettings,
     toggleAIFeature,
+    setTranscriptionLanguage,
   };
 
   return (

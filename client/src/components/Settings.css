@@ -342,6 +342,56 @@ input:checked + .toggle-slider:before {
   color: #ff9800;
 }
 
+/* Input Groups */
+.settings-input-group {
+  margin-bottom: 1.5rem;
+}
+
+.settings-input-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+.settings-input::placeholder {
+  color: var(--text-muted);
+}
+
+.dark-mode .settings-input:focus {
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.15);
+}
+
+.oled-mode .settings-input:focus {
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.2);
+}
+
+.settings-input-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0.5rem 0 0;
+  line-height: 1.4;
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .settings-modal {

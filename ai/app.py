@@ -26,13 +26,23 @@ def transcribe():
 
     audio_file = request.files['audio']
 
+    # Get optional language parameter
+    language = request.form.get('language', None)
+    if language:
+        print(f"Language hint provided: {language}")
+
     # faster-whisper needs a file path
     with tempfile.NamedTemporaryFile(suffix=".tmp", delete=True) as temp:
         audio_file.save(temp.name)
 
         try:
             # Beam size 5 is standard for accuracy
-            segments, info = model.transcribe(temp.name, beam_size=5)
+            # Pass language as a hint if provided
+            transcribe_options = {'beam_size': 5}
+            if language:
+                transcribe_options['language'] = language
+
+            segments, info = model.transcribe(temp.name, **transcribe_options)
 
             # Convert generator to list to get full text
             # This blocks until transcription is done

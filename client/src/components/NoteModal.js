@@ -253,7 +253,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
     setIsTranscribing(true);
     try {
-      const transcription = await notesAPI.transcribeAudio(note._id, audioBlob);
+      // Use language setting from Settings
+      const transcriptionOptions = {
+        language: settings.transcriptionLanguage || 'auto'
+      };
+
+      const transcription = await notesAPI.transcribeAudio(note._id, audioBlob, transcriptionOptions);
 
       // Append transcribed text to content
       if (transcription && transcription.text) {

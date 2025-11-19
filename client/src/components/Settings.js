@@ -9,7 +9,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import './Settings.css';
 
 function Settings({ onClose }) {
-  const { settings, toggleAIFeature } = useSettings();
+  const { settings, toggleAIFeature, setTranscriptionLanguage } = useSettings();
   const { t } = useLanguage();
 
   return (
@@ -81,41 +81,53 @@ function Settings({ onClose }) {
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
               </svg>
-              AI-Service Konfiguration
+              Transkriptions-Konfiguration
             </h3>
             <p className="settings-section-description">
-              Konfiguration des Transkriptionsservers (Whisper AI)
+              Whisper AI Service Einstellungen
             </p>
 
-            <div className="settings-config-box">
-              <h4 style={{ marginBottom: '8px', fontSize: '0.9rem' }}>Transkriptionsserver-URL</h4>
-              <p style={{ marginBottom: '8px' }}>Der Backend-Server verwendet die folgende Umgebungsvariable:</p>
-              <code className="settings-code">AI_SERVICE_URL</code>
+            <div className="settings-input-group">
+              <label htmlFor="transcription-language" className="settings-input-label">
+                Eingabesprache
+              </label>
+              <select
+                id="transcription-language"
+                className="settings-input"
+                value={settings.transcriptionLanguage}
+                onChange={(e) => setTranscriptionLanguage(e.target.value)}
+              >
+                <option value="auto">Automatisch erkennen</option>
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+                <option value="es">Spanisch</option>
+                <option value="fr">Französisch</option>
+                <option value="it">Italienisch</option>
+                <option value="pt">Portugiesisch</option>
+                <option value="nl">Niederländisch</option>
+                <option value="pl">Polnisch</option>
+                <option value="ru">Russisch</option>
+                <option value="zh">Chinesisch</option>
+                <option value="ja">Japanisch</option>
+                <option value="ko">Koreanisch</option>
+                <option value="ar">Arabisch</option>
+                <option value="tr">Türkisch</option>
+              </select>
+              <p className="settings-input-hint">
+                Wählen Sie die Sprache Ihrer Aufnahmen für bessere Genauigkeit.
+              </p>
+            </div>
 
-              <p style={{ marginTop: '12px', marginBottom: '8px' }}>Standard: <code className="settings-code-inline">http://ai:5000</code> (Docker-Netzwerk)</p>
-
-              <div className="settings-instructions">
-                <strong>So ändern Sie die URL:</strong>
-                <ol>
-                  <li>Öffnen Sie <code className="settings-code-inline">docker-compose.yml</code></li>
-                  <li>Unter <code className="settings-code-inline">server</code> → <code className="settings-code-inline">environment</code> finden Sie:
-                    <pre className="settings-code-block">- AI_SERVICE_URL=http://ai:5000</pre>
-                  </li>
-                  <li>Ändern Sie die URL nach Bedarf (z.B. <code className="settings-code-inline">http://localhost:9000</code> wenn lokal)</li>
-                  <li>Starten Sie die Container neu: <code className="settings-code-inline">docker-compose restart server</code></li>
-                </ol>
-              </div>
-
-              <div className="settings-warning-box">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                <div>
-                  <strong>Wichtig:</strong> Stellen Sie sicher, dass der AI-Service läuft und erreichbar ist.
-                  Bei Problemen prüfen Sie die Logs: <code className="settings-code-inline">docker-compose logs ai</code>
-                </div>
+            <div className="settings-info-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4M12 8h.01"/>
+              </svg>
+              <div>
+                <strong>Server-Konfiguration:</strong> Die Transkriptionsserver-URL wird in
+                <code className="settings-code-inline">docker-compose.yml</code> unter
+                <code className="settings-code-inline">AI_SERVICE_URL</code> konfiguriert (Standard: <code className="settings-code-inline">http://ai:5000</code>).
+                Für externe Setups, ändern Sie diese Umgebungsvariable.
               </div>
             </div>
           </section>
