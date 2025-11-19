@@ -5,6 +5,7 @@
  */
 
 const Note = require('../models/Note');
+const User = require('../models/User');
 const { errorMessages } = require('../constants');
 const fs = require('fs');
 const path = require('path');
@@ -325,6 +326,15 @@ async function toggleArchiveNote(noteId, userId) {
  * @returns {Promise<Object>} Updated note
  */
 async function shareNote(noteId, userId, targetUserId) {
+  // SECURITY/DATA INTEGRITY: Verify target user exists before sharing
+  // This prevents creating dangling references to deleted users
+  const targetUser = await User.findById(targetUserId);
+  if (!targetUser) {
+    const error = new Error('Benutzer nicht gefunden');
+    error.statusCode = 404;
+    throw error;
+  }
+
   // Use atomic operation to prevent race conditions
   // $addToSet ensures no duplicates even with concurrent requests
   const note = await Note.findOneAndUpdate(
