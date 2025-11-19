@@ -8,10 +8,10 @@ const express = require('express');
 const router = express.Router();
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const { upload, uploadAudio } = require('../middleware/upload');
 const { fetchLinkPreview } = require('../utils/linkPreview');
 const { validateImageFiles } = require('../utils/magicNumberValidator');
-const { notesService } = require('../services');
+const { notesService, aiService } = require('../services');
 const { httpStatus } = require('../constants');
 
 // All routes require authentication
@@ -419,6 +419,86 @@ router.delete('/:id/images/:filename', async (req, res, next) => {
     }
     return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
       error: 'Fehler beim Löschen des Bildes',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * POST /api/notes/:id/transcribe - Upload audio and append transcription to note
+ * Uses Whisper AI service to convert speech to text
+ */
+router.post('/:id/transcribe', uploadAudio.single('audio'), async (req, res, next) => {
+  const path = require('path');
+  const fs = require('fs');
+
+  try {
+    if (!req.file) {
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Audio-Datei gesendet' });
+    }
+
+    console.log(`[TRANSCRIPTION] Processing file ${req.file.filename} for note ${req.params.id}`);
+    console.log(`[TRANSCRIPTION] File path: ${req.file.path}, Size: ${req.file.size} bytes`);
+
+    // 1. Call AI Service for transcription
+    const result = await aiService.transcribeAudio(req.file.path);
+
+    // 2. Delete temp audio file (we don't store audio permanently, only the text)
+    // If you want to keep audio, move it like images to finalUploadDir
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error('[TRANSCRIPTION] Failed to delete temp audio:', err);
+      else console.log(`[TRANSCRIPTION] ✓ Deleted temp file: ${req.file.filename}`);
+    });
+
+    if (!result || !result.text) {
+      throw new Error('Keine Transkription erhalten');
+    }
+
+    console.log(`[TRANSCRIPTION] ✓ Transcribed (${result.language}): "${result.text.substring(0, 100)}..."`);
+
+    // 3. Update note with transcribed text
+    const note = await notesService.getNoteById(req.params.id, req.user._id);
+
+    // Formatting: If note already has content, add new line
+    const newContent = note.content
+      ? `${note.content}\n\n📝 [Transkription]: ${result.text}`
+      : result.text;
+
+    const updatedNote = await notesService.updateNote(
+      req.params.id,
+      { content: newContent },
+      req.user._id
+    );
+
+    console.log(`[TRANSCRIPTION] ✓ Note updated successfully`);
+
+    res.json({
+      message: 'Transkription erfolgreich',
+      transcription: result.text,
+      language: result.language,
+      note: updatedNote
+    });
+
+  } catch (error) {
+    // Cleanup temp file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+      console.log(`[TRANSCRIPTION] Cleaned up temp file after error: ${req.file.filename}`);
+    }
+
+    console.error('[TRANSCRIPTION ERROR]', error);
+
+    // 503 if AI service is down
+    if (error.message.includes('nicht erreichbar')) {
+      return res.status(httpStatus.SERVICE_UNAVAILABLE).json({ error: error.message });
+    }
+
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      error: 'Fehler bei der Transkription',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

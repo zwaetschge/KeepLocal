@@ -153,6 +153,39 @@ const notesAPI = {
     fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${filename}`, {
       method: 'DELETE',
     }),
+
+  /**
+   * Transcribe audio to text using AI service
+   * @param {string} id - Note ID
+   * @param {Blob} audioBlob - Audio blob to transcribe
+   * @returns {Promise<Object>} Transcription result {text, language, probability}
+   */
+  transcribeAudio: async (id, audioBlob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+
+    // Manual fetch for multipart/form-data
+    const token = getAuthToken();
+    const csrfToken = getCsrfToken();
+
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/transcribe`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Transkription fehlgeschlagen');
+    }
+
+    return response.json();
+  },
 };
 
 export default notesAPI;

@@ -18,6 +18,23 @@ services:
       timeout: 5s
       retries: 5
 
+  # AI Service (Whisper Transcription)
+  ai:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile
+    container_name: keeplocal-ai
+    restart: unless-stopped
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}  # tiny, base, small, medium, large
+    networks:
+      - keeplocal-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Backend Server
   server:
     build:
@@ -32,10 +49,13 @@ services:
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production-please-use-long-random-string}
       - JWT_EXPIRES_IN=7d
+      - AI_SERVICE_URL=http://ai:5000  # AI service endpoint
     volumes:
       - uploads_data:/app/server/uploads
     depends_on:
       mongodb:
+        condition: service_healthy
+      ai:
         condition: service_healthy
     networks:
       - keeplocal-network

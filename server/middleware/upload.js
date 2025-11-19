@@ -1,6 +1,6 @@
 /**
  * File Upload Middleware
- * Handles image uploads using multer
+ * Handles image and audio uploads using multer
  */
 
 const multer = require('multer');
@@ -48,7 +48,17 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Create multer instance
+// Audio filter - only allow audio files
+const audioFileFilter = (req, file, cb) => {
+  const allowedTypes = /audio\/mpeg|audio\/wav|audio\/ogg|audio\/m4a|audio\/mp4|video\/mp4|audio\/webm/;
+  // Simple mime-type check (magic number validation for audio is more complex)
+  if (allowedTypes.test(file.mimetype)) {
+    return cb(null, true);
+  }
+  cb(new Error('Ungültiges Audio-Format. Erlaubt: mp3, wav, ogg, m4a, webm'));
+};
+
+// Create multer instance for images
 const upload = multer({
   storage: storage,
   limits: {
@@ -57,7 +67,19 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
+// Create separate multer instance for audio
+const uploadAudio = multer({
+  storage: storage, // Uses same temp directory
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB for audio files
+  },
+  fileFilter: audioFileFilter
+});
+
 // Export upload middleware and directory paths
-module.exports = upload;
-module.exports.tempUploadDir = tempUploadDir;
-module.exports.finalUploadDir = finalUploadDir;
+module.exports = {
+  upload,           // Image upload (default)
+  uploadAudio,      // Audio upload (NEW)
+  tempUploadDir,
+  finalUploadDir
+};

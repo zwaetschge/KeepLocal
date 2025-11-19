@@ -15,8 +15,10 @@ import Logo from './components/Logo';
 import NoteModal from './components/NoteModal';
 import FriendsModal from './components/FriendsModal';
 import CollaborateModal from './components/CollaborateModal';
+import Settings from './components/Settings';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
 
@@ -43,6 +45,7 @@ function AppContent() {
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showCollaborateModal, setShowCollaborateModal] = useState(false);
   const [collaborateNote, setCollaborateNote] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
@@ -482,6 +485,7 @@ function AppContent() {
           showArchived={showArchived}
           onShowArchivedToggle={() => setShowArchived(!showArchived)}
           onOpenFriends={() => setShowFriendsModal(true)}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         <main className="App-main" role="main">
@@ -628,6 +632,10 @@ function AppContent() {
         note={collaborateNote}
         onNoteUpdate={handleNoteShared}
       />
+
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
@@ -637,7 +645,9 @@ function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
-        <AppContent />
+        <SettingsProvider>
+          <AppContent />
+        </SettingsProvider>
       </AuthProvider>
     </LanguageProvider>
   );
