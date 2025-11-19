@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
@@ -15,6 +14,8 @@ const adminRouter = require('./routes/admin');
 const friendsRouter = require('./routes/friends');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
+const { authenticateToken } = require('./middleware/auth');
+const secureFileServe = require('./middleware/secureFileServe');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -38,12 +39,13 @@ const corsOptions = {
     }
 
     // Erlaube lokale IPs und localhost für Entwicklung/private Deployments
+    // Regex validates proper IP octets (0-255) for private network ranges
     if (origin && (
       origin.match(/^http:\/\/localhost(:\d+)?$/) ||
       origin.match(/^http:\/\/127\.0\.0\.1(:\d+)?$/) ||
-      origin.match(/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/) ||
-      origin.match(/^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/) ||
-      origin.match(/^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+(:\d+)?$/)
+      origin.match(/^http:\/\/192\.168\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(:\d+)?$/) ||
+      origin.match(/^http:\/\/10\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(:\d+)?$/) ||
+      origin.match(/^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(:\d+)?$/)
     )) {
       return callback(null, true);
     }
@@ -61,7 +63,7 @@ const corsOptions = {
 // Rate Limiting - Schutz vor Brute-Force-Angriffen
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 Minuten
-  max: 100, // Maximal 100 Requests pro IP in 15 Minuten
+  max: 500, // Maximal 500 Requests pro IP in 15 Minuten (~33/min für normale Nutzung)
   message: 'Zu viele Anfragen von dieser IP, bitte versuchen Sie es später erneut.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -88,16 +90,17 @@ app.use(helmet({
 
 app.use(compression()); // Gzip-Komprimierung für Responses
 app.use(cors(corsOptions));
-app.use(bodyParser.json({ limit: '10mb' })); // Limit für JSON payload
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' })); // Built-in Express body parser (seit 4.16.0)
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(limiter); // Rate Limiting anwenden
 
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);
 
-// Static file serving for uploaded images
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Secure file serving for uploaded images - requires authentication and authorization
+// Users can only access files from notes they own or have access to
+app.get('/uploads/*', authenticateToken, secureFileServe);
 
 // CSRF-Schutz (nach cookieParser, vor Routen)
 // Auth-Routen sind ausgenommen, da sie keine CSRF-Token benötigen
