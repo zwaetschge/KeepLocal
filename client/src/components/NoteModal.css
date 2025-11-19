@@ -808,6 +808,115 @@
   border-color: #8ab4f8;
 }
 
+/* Voice recording button */
+.btn-modal-voice {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.71);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.btn-modal-voice:hover {
+  background: rgba(95, 99, 104, 0.157);
+}
+
+.btn-modal-voice:active {
+  background: rgba(95, 99, 104, 0.22);
+}
+
+.btn-modal-voice.recording {
+  background: rgba(234, 67, 53, 0.1);
+  color: #ea4335;
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.btn-modal-voice.recording:hover {
+  background: rgba(234, 67, 53, 0.2);
+}
+
+.btn-modal-voice.transcribing {
+  background: rgba(26, 115, 232, 0.1);
+  color: var(--accent-color);
+  cursor: wait;
+}
+
+.btn-modal-voice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes pulse-recording {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+/* Dark mode voice button */
+.dark-mode .btn-modal-voice {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark-mode .btn-modal-voice:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .btn-modal-voice:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dark-mode .btn-modal-voice.recording {
+  background: rgba(234, 67, 53, 0.2);
+  color: #f28b82;
+}
+
+.dark-mode .btn-modal-voice.recording:hover {
+  background: rgba(234, 67, 53, 0.3);
+}
+
+.dark-mode .btn-modal-voice.transcribing {
+  background: rgba(26, 115, 232, 0.2);
+  color: #8ab4f8;
+}
+
+/* OLED mode voice button */
+.oled-mode .btn-modal-voice {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.oled-mode .btn-modal-voice:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.oled-mode .btn-modal-voice:active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.oled-mode .btn-modal-voice.recording {
+  background: rgba(242, 139, 130, 0.2);
+  color: #f28b82;
+}
+
+.oled-mode .btn-modal-voice.recording:hover {
+  background: rgba(242, 139, 130, 0.3);
+}
+
+.oled-mode .btn-modal-voice.transcribing {
+  background: rgba(138, 180, 248, 0.2);
+  color: #8ab4f8;
+}
+
 /* Lightbox styles */
 .lightbox-overlay {
   position: fixed;
