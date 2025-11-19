@@ -107,7 +107,10 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
   return (
     <div
       className={`note ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
-      style={{ backgroundColor: getColorVar(note.color) }}
+      style={{
+        backgroundColor: getColorVar(note.color),
+        '--note-bg-color': getColorVar(note.color)
+      }}
       onClick={() => onOpenModal(note)}
       draggable="true"
       onDragStart={handleDragStart}
