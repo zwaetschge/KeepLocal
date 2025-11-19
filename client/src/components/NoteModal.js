@@ -64,6 +64,20 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   }, [content, isTodoList]);
 
+  // Initial resize when note is loaded (handles case where content is set before textarea is rendered)
+  useEffect(() => {
+    if (note && contentTextareaRef.current && !isTodoList) {
+      // Small delay to ensure textarea is fully rendered
+      setTimeout(() => {
+        if (contentTextareaRef.current) {
+          const textarea = contentTextareaRef.current;
+          textarea.style.height = 'auto';
+          textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+      }, 0);
+    }
+  }, [note, isTodoList]);
+
   const handleSave = () => {
     // Validate based on mode
     if (isTodoList) {
@@ -354,7 +368,6 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               placeholder={t('enterNote')}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              rows={12}
             />
           )}
 
