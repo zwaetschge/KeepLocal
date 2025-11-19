@@ -72,7 +72,7 @@
   --accent-hover: #aecbfa;
 
   /* Note Colors - OLED Mode (very dark variants) */
-  --note-white: #0a0a0a;
+  --note-white: #1a1a1a;
   --note-red: #3d1a18;
   --note-orange: #3d2f0f;
   --note-yellow: #3d3a0f;
@@ -83,7 +83,7 @@
   --note-purple: #241535;
   --note-pink: #35142a;
   --note-brown: #291e0f;
-  --note-gray: #1a1a1a;
+  --note-gray: #252525;
 }
 
 * {

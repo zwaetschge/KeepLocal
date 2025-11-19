@@ -79,6 +79,18 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   max-height: 9em;
+  position: relative;
+}
+
+.note-content::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2em;
+  background: linear-gradient(to bottom, transparent, var(--note-bg-color, var(--bg-primary)));
+  pointer-events: none;
 }
 
 .note-todo-list {
@@ -99,7 +111,7 @@
   left: 0;
   right: 0;
   height: 2em;
-  background: linear-gradient(to bottom, transparent, var(--bg-primary));
+  background: linear-gradient(to bottom, transparent, var(--note-bg-color, var(--bg-primary)));
   pointer-events: none;
 }
 
@@ -140,9 +152,6 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
-.dark-mode .note-todo-list::after {
-  background: linear-gradient(to bottom, transparent, #202124);
-}
 
 .note-link-previews {
   margin-top: 0.75rem;
@@ -726,9 +735,6 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
-.oled-mode .note-todo-list::after {
-  background: linear-gradient(to bottom, transparent, #0a0a0a);
-}
 
 .oled-mode .note-link {
   color: #8ab4f8;

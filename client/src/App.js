@@ -441,20 +441,14 @@ function AppContent() {
           <div className="user-info">
             <LanguageSelector />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            {user?.isAdmin ? (
-              <button
-                className="user-name clickable"
-                onClick={() => setShowAdminConsole(true)}
-                title={`${user?.email} (${t('admin')} - ${t('openAdminPanel')})`}
-                aria-label={t('openAdminPanel')}
-              >
-                👤 {user?.username}
-              </button>
-            ) : (
-              <span className="user-name" title={user?.email}>
-                👤 {user?.username}
-              </span>
-            )}
+            <button
+              className="user-name clickable"
+              onClick={() => setShowSettings(true)}
+              title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
+              aria-label={t('settings') || 'Einstellungen'}
+            >
+              👤 {user?.username}
+            </button>
             <button
               onClick={handleLogout}
               className="btn-logout"
@@ -485,7 +479,6 @@ function AppContent() {
           showArchived={showArchived}
           onShowArchivedToggle={() => setShowArchived(!showArchived)}
           onOpenFriends={() => setShowFriendsModal(true)}
-          onOpenSettings={() => setShowSettings(true)}
         />
 
         <main className="App-main" role="main">
