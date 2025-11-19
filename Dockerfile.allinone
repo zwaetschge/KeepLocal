@@ -20,16 +20,12 @@ ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build
 
-# Stage 2: Build Node.js Backend
+# Stage 2: Prepare Node.js Backend (just copy source, no install yet)
 FROM node:18-alpine AS server-builder
 
 WORKDIR /app/server
 
-# Copy server package files
-COPY server/package*.json ./
-RUN npm install --production
-
-# Copy server source
+# Copy server source (no npm install here - will install in final stage)
 COPY server/ ./
 
 # Stage 3: Final All-in-One Image
@@ -68,13 +64,12 @@ RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db
 # Create uploads directory for images
 RUN mkdir -p /app/server/uploads/images
 
-# Copy server from builder
+# Copy server source from builder (without node_modules)
 COPY --from=server-builder /app/server /app/server
 
-# Rebuild Sharp for Ubuntu platform (Alpine binaries won't work)
-# Sharp requires native dependencies that differ between Alpine and Ubuntu
+# Install server dependencies directly in Ubuntu (avoids Alpine/Ubuntu compatibility issues)
 WORKDIR /app/server
-RUN npm rebuild sharp --verbose
+RUN npm install --production && npm cache clean --force
 
 # Copy built client from builder
 COPY --from=client-builder /app/client/build /app/client/build
