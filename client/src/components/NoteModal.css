@@ -8,11 +8,12 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 2000;
   padding: 2rem;
   animation: fadeIn 0.2s ease;
+  overflow-y: auto;
 }
 
 @keyframes fadeIn {
@@ -29,13 +30,13 @@
   border-radius: 16px;
   width: 100%;
   max-width: 800px;
-  max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transition: all 0.3s ease;
   position: relative;
+  margin: 2rem 0;
 }
 
 @keyframes slideUp {
@@ -87,9 +88,6 @@
 
 .note-modal-body {
   padding: 2rem;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -948,9 +946,9 @@
 @media (max-width: 768px) {
   .note-modal {
     max-width: 100%;
-    max-height: 100vh;
     border-radius: 0;
     padding: 0;
+    margin: 0;
   }
 
   .note-modal-overlay {
