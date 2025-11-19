@@ -47,6 +47,17 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   }, [note, setTodoItems, setLinkPreviews]);
 
+  // Auto-resize textarea to fit content
+  useEffect(() => {
+    if (contentTextareaRef.current && !isTodoList) {
+      const textarea = contentTextareaRef.current;
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Set height to scrollHeight to fit all content
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+  }, [content, isTodoList]);
+
   const handleSave = () => {
     // Validate based on mode
     if (isTodoList) {
