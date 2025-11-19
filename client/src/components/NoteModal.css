@@ -29,14 +29,13 @@
   border-radius: 16px;
   width: 100%;
   max-width: 800px;
-  max-height: 95vh;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transition: all 0.3s ease;
   position: relative;
-  overflow-y: auto;
 }
 
 @keyframes slideUp {
@@ -88,7 +87,9 @@
 
 .note-modal-body {
   padding: 2rem;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
