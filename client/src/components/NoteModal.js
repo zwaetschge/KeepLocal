@@ -295,81 +295,62 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             </div>
           )}
 
-          {note && (
+          {note && images && images.length > 0 && (
             <div className="note-modal-images">
-              {images && images.length > 0 && (
-                <div className="uploaded-images">
-                  {images.map((image, index) => (
-                    <div key={index} className="image-preview" onClick={() => openLightbox(index)}>
-                      <img src={image.url} alt={image.filename} />
-                      <button
-                        type="button"
-                        className="image-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
-                        title="Bild löschen"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18"/>
-                          <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {newImageFiles.length > 0 && (
-                <div className="new-images-preview">
-                  {newImageFiles.map((file, index) => (
-                    <div key={index} className="image-preview new">
-                      <img src={URL.createObjectURL(file)} alt={file.name} />
-                      <button
-                        type="button"
-                        className="image-delete-btn"
-                        onClick={() => removeNewImageFile(index)}
-                        title="Entfernen"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18"/>
-                          <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                      <span className="new-badge">Neu</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="image-upload-controls">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageSelect}
-                  style={{ display: 'none' }}
-                  id="image-upload-input"
-                />
-                <label htmlFor="image-upload-input" className="btn-select-images">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                  Bilder auswählen
-                </label>
-                {newImageFiles.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn-upload-images"
-                    onClick={handleImageUpload}
-                    disabled={uploadingImages}
-                  >
-                    {uploadingImages ? 'Hochladen...' : `${newImageFiles.length} Bild(er) hochladen`}
-                  </button>
-                )}
+              <div className="uploaded-images">
+                {images.map((image, index) => (
+                  <div key={index} className="image-preview" onClick={() => openLightbox(index)}>
+                    <img src={image.url} alt={image.filename} />
+                    <button
+                      type="button"
+                      className="image-delete-btn"
+                      onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
+                      title="Bild löschen"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
+          )}
+
+          {note && newImageFiles.length > 0 && (
+            <div className="new-images-preview">
+              {newImageFiles.map((file, index) => (
+                <div key={index} className="image-preview new">
+                  <img src={URL.createObjectURL(file)} alt={file.name} />
+                  <button
+                    type="button"
+                    className="image-delete-btn"
+                    onClick={() => removeNewImageFile(index)}
+                    title="Entfernen"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                  <span className="new-badge">Neu</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Hidden file input for image selection */}
+          {note && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+              id="image-upload-input"
+            />
           )}
 
           <input
@@ -452,6 +433,40 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                   <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
                 </svg>
               </button>
+            )}
+            {note && (
+              <>
+                <label
+                  htmlFor="image-upload-input"
+                  className="btn-modal-image-select"
+                  title="Bilder auswählen"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </label>
+                {newImageFiles.length > 0 && (
+                  <button
+                    type="button"
+                    className={`btn-modal-image-upload ${uploadingImages ? 'uploading' : ''}`}
+                    onClick={handleImageUpload}
+                    disabled={uploadingImages}
+                    title={uploadingImages ? 'Hochladen...' : `${newImageFiles.length} Bild(er) hochladen`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    {newImageFiles.length > 0 && (
+                      <span className="image-count-badge">{newImageFiles.length}</span>
+                    )}
+                  </button>
+                )}
+              </>
             )}
             {note && onDelete && (
               <button
