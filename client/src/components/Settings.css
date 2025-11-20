@@ -392,6 +392,60 @@ input:checked + .toggle-slider:before {
   line-height: 1.4;
 }
 
+/* Admin Console Button */
+.btn-admin-console {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-admin-console:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.5);
+}
+
+.btn-admin-console:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-admin-console svg {
+  flex-shrink: 0;
+}
+
+.dark-mode .btn-admin-console {
+  background: linear-gradient(135deg, #8ab4f8 0%, #aecbfa 100%);
+  color: #000000;
+  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.3);
+}
+
+.dark-mode .btn-admin-console:hover {
+  box-shadow: 0 4px 16px rgba(138, 180, 248, 0.5);
+}
+
+.oled-mode .btn-admin-console {
+  background: linear-gradient(135deg, #8ab4f8 0%, #aecbfa 100%);
+  color: #000000;
+  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.4);
+}
+
+.oled-mode .btn-admin-console:hover {
+  box-shadow: 0 4px 16px rgba(138, 180, 248, 0.6);
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .settings-modal {

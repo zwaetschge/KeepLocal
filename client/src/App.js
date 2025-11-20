@@ -469,6 +469,7 @@ function AppContent() {
           noteCount={notes.length}
           isAdmin={user?.isAdmin}
           onAdminClick={() => setShowAdminConsole(true)}
+          onSettingsClick={() => setShowSettings(true)}
           user={user}
           onLogout={handleLogout}
           theme={theme}
@@ -627,7 +628,11 @@ function AppContent() {
       />
 
       {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} />
+        <Settings
+          onClose={() => setShowSettings(false)}
+          isAdmin={user?.isAdmin}
+          onAdminClick={() => setShowAdminConsole(true)}
+        />
       )}
     </div>
   );
