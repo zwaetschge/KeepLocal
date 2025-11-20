@@ -255,6 +255,23 @@
     background: rgba(135, 206, 235, 0.2);
     border-radius: 12px;
     border: 1px solid rgba(135, 206, 235, 0.3);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+  }
+
+  .sidebar-mobile-user:hover {
+    background: rgba(135, 206, 235, 0.3);
+    border: 1px solid rgba(135, 206, 235, 0.4);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(135, 206, 235, 0.3);
+  }
+
+  .sidebar-mobile-user:active {
+    transform: translateY(0);
+    box-shadow: none;
   }
 
   .dark-mode .sidebar-mobile-user {
@@ -262,9 +279,21 @@
     border: 1px solid rgba(135, 206, 235, 0.2);
   }
 
+  .dark-mode .sidebar-mobile-user:hover {
+    background: rgba(135, 206, 235, 0.25);
+    border: 1px solid rgba(135, 206, 235, 0.3);
+    box-shadow: 0 2px 8px rgba(135, 206, 235, 0.2);
+  }
+
   .oled-mode .sidebar-mobile-user {
     background: rgba(135, 206, 235, 0.2);
     border: 1px solid rgba(135, 206, 235, 0.25);
+  }
+
+  .oled-mode .sidebar-mobile-user:hover {
+    background: rgba(135, 206, 235, 0.3);
+    border: 1px solid rgba(135, 206, 235, 0.35);
+    box-shadow: 0 2px 8px rgba(135, 206, 235, 0.25);
   }
 
   .mobile-user-icon {

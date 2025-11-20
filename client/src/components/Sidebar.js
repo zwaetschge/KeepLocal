@@ -16,6 +16,7 @@ function Sidebar({
   onOpenFriends,
   isAdmin,
   onAdminClick,
+  onSettingsClick,
   user,
   onLogout,
   theme,
@@ -55,10 +56,17 @@ function Sidebar({
           <Logo size={28} />
         </div>
 
-        <div className="sidebar-mobile-user">
+        <button
+          className="sidebar-mobile-user"
+          onClick={() => {
+            onSettingsClick();
+            onMobileClose();
+          }}
+          aria-label="Einstellungen"
+        >
           <span className="mobile-user-icon">👤</span>
           <span className="mobile-user-name">{user?.username}</span>
-        </div>
+        </button>
 
         <div className="sidebar-mobile-actions">
           <LanguageSelector />

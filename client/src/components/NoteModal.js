@@ -13,7 +13,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const { settings } = useSettings();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
-  const [tags, setTags] = useState(note?.tags?.join(', ') || '');
+  const [tags, setTags] = useState(note?.tags || []);
+  const [tagInput, setTagInput] = useState('');
   const [color, setColor] = useState(note?.color || '#ffffff');
   const [isTodoList, setIsTodoList] = useState(note?.isTodoList || false);
   const [images, setImages] = useState(note?.images || []);
@@ -44,7 +45,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     if (note) {
       setTitle(note.title || '');
       setContent(note.content || '');
-      setTags(note.tags?.join(', ') || '');
+      setTags(note.tags || []);
+      setTagInput('');
       setColor(note.color || '#ffffff');
       setIsTodoList(note.isTodoList || false);
       setTodoItems(note.todoItems || []);
@@ -90,15 +92,20 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       }
     }
 
-    const tagArray = tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag !== '');
+    // Add any pending tag from input
+    let finalTags = [...tags];
+    if (tagInput.trim()) {
+      const newTags = tagInput
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag !== '' && !finalTags.includes(tag));
+      finalTags = [...finalTags, ...newTags];
+    }
 
     const noteData = {
       title: title.trim(),
       content: isTodoList ? '' : content.trim(),
-      tags: tagArray,
+      tags: finalTags,
       color: color,
       isTodoList: isTodoList,
       todoItems: isTodoList ? getCleanedItems() : [],
@@ -107,6 +114,33 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
     onSave(noteData);
     onClose();
+  };
+
+  // Handle tag input
+  const handleTagInputKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTagFromInput();
+    } else if (e.key === 'Backspace' && tagInput === '' && tags.length > 0) {
+      // Remove last tag if backspace is pressed on empty input
+      removeTag(tags.length - 1);
+    }
+  };
+
+  const addTagFromInput = () => {
+    const newTags = tagInput
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== '' && !tags.includes(tag));
+
+    if (newTags.length > 0) {
+      setTags([...tags, ...newTags]);
+      setTagInput('');
+    }
+  };
+
+  const removeTag = (index) => {
+    setTags(tags.filter((_, i) => i !== index));
   };
 
   const handleToggleTodoMode = () => {
@@ -461,13 +495,36 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             />
           )}
 
-          <input
-            type="text"
-            className="note-modal-tags"
-            placeholder={t('tagsPlaceholder')}
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-          />
+          <div className="note-modal-tags-container">
+            {tags.length > 0 && (
+              <div className="note-modal-tags-pills">
+                {tags.map((tag, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className="tag-pill"
+                    onClick={() => removeTag(index)}
+                    title={`${tag} entfernen`}
+                  >
+                    <span className="tag-pill-text">{tag}</span>
+                    <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              className="note-modal-tags-input"
+              placeholder={tags.length > 0 ? t('addMoreTags') || 'Weitere Tags...' : t('tagsPlaceholder')}
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleTagInputKeyDown}
+              onBlur={addTagFromInput}
+            />
+          </div>
         </div>
 
         <div className="note-modal-footer">
