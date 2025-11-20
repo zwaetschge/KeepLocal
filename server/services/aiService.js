@@ -12,9 +12,10 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:5000';
 /**
  * Transcribe audio file using Whisper AI service
  * @param {string} filePath - Path to audio file
+ * @param {string} language - Language code (optional, e.g., 'de', 'en')
  * @returns {Promise<Object>} Transcription result with text, language, and probability
  */
-async function transcribeAudio(filePath) {
+async function transcribeAudio(filePath, language = null) {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error('Audio file not found on disk');
@@ -23,7 +24,16 @@ async function transcribeAudio(filePath) {
     const form = new FormData();
     form.append('audio', fs.createReadStream(filePath));
 
+    // Add language parameter if specified
+    if (language) {
+      form.append('language', language);
+    }
+
     console.log(`[AI] Sending audio to ${AI_SERVICE_URL}/transcribe...`);
+    if (language) {
+      console.log(`[AI] With language hint: ${language}`);
+    }
+
     const response = await axios.post(`${AI_SERVICE_URL}/transcribe`, form, {
       headers: {
         ...form.getHeaders(),

@@ -230,6 +230,168 @@ input:checked + .toggle-slider:before {
   box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
 }
 
+/* Configuration Box */
+.settings-config-box {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.settings-code {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #d63384;
+  margin: 0.5rem 0;
+}
+
+.dark-mode .settings-code {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f685b9;
+}
+
+.settings-code-inline {
+  padding: 0.125rem 0.375rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: #d63384;
+}
+
+.dark-mode .settings-code-inline {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f685b9;
+}
+
+.settings-code-block {
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: #d63384;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.dark-mode .settings-code-block {
+  background: rgba(255, 255, 255, 0.03);
+  color: #f685b9;
+}
+
+.settings-instructions {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .settings-instructions {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-instructions strong {
+  display: block;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.settings-instructions ol {
+  margin: 0;
+  padding-left: 1.5rem;
+  line-height: 1.8;
+}
+
+.settings-instructions li {
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.settings-warning-box {
+  padding: 1rem;
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 4px solid #ff9800;
+  border-radius: 4px;
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.dark-mode .settings-warning-box {
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.settings-warning-box svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #ff9800;
+}
+
+/* Input Groups */
+.settings-input-group {
+  margin-bottom: 1.5rem;
+}
+
+.settings-input-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+.settings-input::placeholder {
+  color: var(--text-muted);
+}
+
+.dark-mode .settings-input:focus {
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.15);
+}
+
+.oled-mode .settings-input:focus {
+  box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.2);
+}
+
+.settings-input-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0.5rem 0 0;
+  line-height: 1.4;
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .settings-modal {
@@ -249,5 +411,13 @@ input:checked + .toggle-slider:before {
 
   .settings-item-control {
     align-self: flex-end;
+  }
+
+  .settings-instructions ol {
+    padding-left: 1.25rem;
+  }
+
+  .settings-code-block {
+    font-size: 0.75rem;
   }
 }

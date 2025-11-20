@@ -158,11 +158,17 @@ const notesAPI = {
    * Transcribe audio to text using AI service
    * @param {string} id - Note ID
    * @param {Blob} audioBlob - Audio blob to transcribe
+   * @param {Object} options - Transcription options (language)
    * @returns {Promise<Object>} Transcription result {text, language, probability}
    */
-  transcribeAudio: async (id, audioBlob) => {
+  transcribeAudio: async (id, audioBlob, options = {}) => {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.webm');
+
+    // Add language parameter if specified
+    if (options.language && options.language !== 'auto') {
+      formData.append('language', options.language);
+    }
 
     // Manual fetch for multipart/form-data
     const token = getAuthToken();

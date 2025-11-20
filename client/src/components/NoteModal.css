@@ -1069,17 +1069,29 @@
     padding: 1.5rem;
   }
 
-  .note-modal-footer,
-  .note-modal-close {
+  .note-modal-footer {
     padding: 1rem 1.5rem;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .note-modal-toolbar {
+    order: 2;
+    justify-content: center;
   }
 
   .note-modal-actions {
+    order: 1;
     width: 100%;
   }
 
   .btn-modal-cancel,
   .btn-modal-save {
     flex: 1;
+  }
+
+  .note-modal-close {
+    padding: 8px;
   }
 }

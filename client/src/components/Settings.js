@@ -9,7 +9,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import './Settings.css';
 
 function Settings({ onClose }) {
-  const { settings, toggleAIFeature } = useSettings();
+  const { settings, toggleAIFeature, setTranscriptionLanguage } = useSettings();
   const { t } = useLanguage();
 
   return (
@@ -72,6 +72,64 @@ function Settings({ onClose }) {
                 </div>
               </div>
             )}
+          </section>
+
+          {/* AI Service Configuration Section */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+              </svg>
+              Transkriptions-Konfiguration
+            </h3>
+            <p className="settings-section-description">
+              Whisper AI Service Einstellungen
+            </p>
+
+            <div className="settings-input-group">
+              <label htmlFor="transcription-language" className="settings-input-label">
+                Eingabesprache
+              </label>
+              <select
+                id="transcription-language"
+                className="settings-input"
+                value={settings.transcriptionLanguage}
+                onChange={(e) => setTranscriptionLanguage(e.target.value)}
+              >
+                <option value="auto">Automatisch erkennen</option>
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+                <option value="es">Spanisch</option>
+                <option value="fr">Französisch</option>
+                <option value="it">Italienisch</option>
+                <option value="pt">Portugiesisch</option>
+                <option value="nl">Niederländisch</option>
+                <option value="pl">Polnisch</option>
+                <option value="ru">Russisch</option>
+                <option value="zh">Chinesisch</option>
+                <option value="ja">Japanisch</option>
+                <option value="ko">Koreanisch</option>
+                <option value="ar">Arabisch</option>
+                <option value="tr">Türkisch</option>
+              </select>
+              <p className="settings-input-hint">
+                Wählen Sie die Sprache Ihrer Aufnahmen für bessere Genauigkeit.
+              </p>
+            </div>
+
+            <div className="settings-info-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4M12 8h.01"/>
+              </svg>
+              <div>
+                <strong>Server-Konfiguration:</strong> Die Transkriptionsserver-URL wird in
+                <code className="settings-code-inline">docker-compose.yml</code> unter
+                <code className="settings-code-inline">AI_SERVICE_URL</code> konfiguriert (Standard: <code className="settings-code-inline">http://ai:5000</code>).
+                Für externe Setups, ändern Sie diese Umgebungsvariable.
+              </div>
+            </div>
           </section>
 
           {/* Future sections can go here */}

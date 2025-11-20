@@ -440,8 +440,14 @@ router.post('/:id/transcribe', uploadAudio.single('audio'), async (req, res, nex
     console.log(`[TRANSCRIPTION] Processing file ${req.file.filename} for note ${req.params.id}`);
     console.log(`[TRANSCRIPTION] File path: ${req.file.path}, Size: ${req.file.size} bytes`);
 
+    // Get language parameter from request body (optional)
+    const language = req.body.language || null;
+    if (language) {
+      console.log(`[TRANSCRIPTION] Language specified: ${language}`);
+    }
+
     // 1. Call AI Service for transcription
-    const result = await aiService.transcribeAudio(req.file.path);
+    const result = await aiService.transcribeAudio(req.file.path, language);
 
     // 2. Delete temp audio file (we don't store audio permanently, only the text)
     // If you want to keep audio, move it like images to finalUploadDir
@@ -456,27 +462,12 @@ router.post('/:id/transcribe', uploadAudio.single('audio'), async (req, res, nex
 
     console.log(`[TRANSCRIPTION] ✓ Transcribed (${result.language}): "${result.text.substring(0, 100)}..."`);
 
-    // 3. Update note with transcribed text
-    const note = await notesService.getNoteById(req.params.id, req.user._id);
-
-    // Formatting: If note already has content, add new line
-    const newContent = note.content
-      ? `${note.content}\n\n📝 [Transkription]: ${result.text}`
-      : result.text;
-
-    const updatedNote = await notesService.updateNote(
-      req.params.id,
-      { content: newContent },
-      req.user._id
-    );
-
-    console.log(`[TRANSCRIPTION] ✓ Note updated successfully`);
-
+    // 3. Return transcription result (frontend will handle appending to note)
     res.json({
       message: 'Transkription erfolgreich',
-      transcription: result.text,
+      text: result.text,
       language: result.language,
-      note: updatedNote
+      probability: result.probability
     });
 
   } catch (error) {
