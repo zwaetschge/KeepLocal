@@ -250,4 +250,16 @@ export const de = {
   friendsList: 'Freundesliste',
   requests: 'Anfragen',
   addFriendTab: 'Freund hinzufügen',
+
+  // Settings
+  settings: 'Einstellungen',
+  administration: 'Administration',
+  administrationDescription: 'Erweiterte Verwaltungsfunktionen',
+  openAdminConsole: 'Admin-Konsole öffnen',
+  adminConsoleNote: 'Die Admin-Konsole ermöglicht die Verwaltung von Benutzern und System-Einstellungen.',
+  note: 'Hinweis',
+
+  // Tags
+  removeTag: '{tag} entfernen',
+  addMoreTags: 'Weitere Tags...',
 };

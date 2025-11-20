@@ -504,7 +504,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                     type="button"
                     className="tag-pill"
                     onClick={() => removeTag(index)}
-                    title={`${tag} entfernen`}
+                    title={t('removeTag').replace('{tag}', tag)}
                   >
                     <span className="tag-pill-text">{tag}</span>
                     <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -518,7 +518,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             <input
               type="text"
               className="note-modal-tags-input"
-              placeholder={tags.length > 0 ? t('addMoreTags') || 'Weitere Tags...' : t('tagsPlaceholder')}
+              placeholder={tags.length > 0 ? t('addMoreTags') : t('tagsPlaceholder')}
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleTagInputKeyDown}

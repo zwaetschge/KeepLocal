@@ -250,4 +250,16 @@ export const en = {
   friendsList: 'Friends list',
   requests: 'Requests',
   addFriendTab: 'Add friend',
+
+  // Settings
+  settings: 'Settings',
+  administration: 'Administration',
+  administrationDescription: 'Advanced administration functions',
+  openAdminConsole: 'Open Admin Console',
+  adminConsoleNote: 'The Admin Console allows you to manage users and system settings.',
+  note: 'Note',
+
+  // Tags
+  removeTag: 'Remove {tag}',
+  addMoreTags: 'Add more tags...',
 };
