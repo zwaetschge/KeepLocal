@@ -145,6 +145,7 @@ export const en = {
   switchToLightMode: 'Switch to light mode',
   switchToDarkMode: 'Switch to dark mode',
   switchToOledMode: 'Switch to OLED mode',
+  switchToEinkMode: 'Switch to E-Ink mode',
   switchToNote: 'Switch to note',
   switchToList: 'Switch to list',
 

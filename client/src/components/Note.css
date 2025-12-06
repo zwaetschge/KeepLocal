@@ -763,6 +763,129 @@
   background: rgba(91, 185, 116, 0.15);
 }
 
+/* E-Ink mode */
+.eink-mode .note {
+  box-shadow: none;
+  border: 2px solid #000000;
+  background: #ffffff;
+}
+
+.eink-mode .note:hover {
+  box-shadow: none;
+  background: #f5f5f5;
+}
+
+.eink-mode .note-title,
+.eink-mode .note-content,
+.eink-mode .note-edit-title,
+.eink-mode .note-edit-content {
+  color: #000000;
+}
+
+.eink-mode .note-tag {
+  background: #e0e0e0;
+  color: #000000;
+  border: 1px solid #000000;
+}
+
+.eink-mode .note-edit-tags {
+  color: #333333;
+  border-top-color: #000000;
+}
+
+.eink-mode .action-btn,
+.eink-mode .toolbar-btn {
+  color: #000000;
+}
+
+.eink-mode .action-btn:hover,
+.eink-mode .toolbar-btn:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .action-btn:active,
+.eink-mode .toolbar-btn:active {
+  background: #cccccc;
+}
+
+.eink-mode .btn-text {
+  color: #000000;
+}
+
+.eink-mode .btn-text:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .btn-text:active {
+  background: #cccccc;
+}
+
+.eink-mode .pin-btn.pinned {
+  color: #000000;
+  background: #cccccc;
+}
+
+.eink-mode .pin-btn.pinned svg {
+  fill: #000000;
+}
+
+.eink-mode .note-todo-text {
+  color: #000000;
+}
+
+.eink-mode .note-todo-text.completed {
+  color: #666666;
+}
+
+.eink-mode .note-link {
+  color: #000000;
+  text-decoration: underline;
+}
+
+.eink-mode .todo-checkbox {
+  background: #ffffff;
+  border-color: #000000;
+  border-width: 2px;
+}
+
+.eink-mode .todo-checkbox:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .todo-checkbox:checked {
+  background: #000000;
+  border-color: #000000;
+}
+
+.eink-mode .note.drag-over-tag {
+  border: 2px dashed #000000;
+  background: #e0e0e0;
+}
+
+.eink-mode .note-collaborators {
+  color: #333333;
+}
+
+.eink-mode .collaborator-avatar {
+  background: #000000;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+}
+
+.eink-mode .collaborator-avatar.more {
+  background: #666666;
+}
+
+.eink-mode .note-image-preview {
+  background: #f0f0f0;
+  border: 1px solid #000000;
+}
+
+.eink-mode .note-content::after,
+.eink-mode .note-todo-list::after {
+  background: linear-gradient(to bottom, transparent, #ffffff);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .note {

@@ -9,12 +9,14 @@ function ThemeToggle({ theme, onToggle }) {
   const getThemeIcon = () => {
     if (theme === 'light') return '☀️'; // Currently light mode
     if (theme === 'dark') return '🌙'; // Currently dark mode
-    return '⚫'; // Currently OLED mode
+    if (theme === 'oled') return '⚫'; // Currently OLED mode
+    return '📰'; // Currently E-Ink mode
   };
 
   const getThemeTitle = () => {
     if (theme === 'light') return t('switchToDarkMode');
     if (theme === 'dark') return t('switchToOledMode');
+    if (theme === 'oled') return t('switchToEinkMode');
     return t('switchToLightMode');
   };
 

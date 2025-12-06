@@ -1020,6 +1020,233 @@
   color: #8ab4f8;
 }
 
+/* E-Ink mode */
+.eink-mode .note-modal {
+  background: #ffffff;
+  box-shadow: none;
+  border: 2px solid #000000;
+}
+
+.eink-mode .note-modal-close {
+  color: #000000;
+  border: 1px solid #000000;
+}
+
+.eink-mode .note-modal-close:hover {
+  background: #e0e0e0;
+  color: #000000;
+}
+
+.eink-mode .note-modal-title {
+  color: #000000;
+  border-bottom-color: #000000;
+}
+
+.eink-mode .note-modal-title::placeholder {
+  color: #666666;
+}
+
+.eink-mode .note-modal-content {
+  color: #000000;
+}
+
+.eink-mode .note-modal-content::placeholder {
+  color: #666666;
+}
+
+.eink-mode .note-modal-tags {
+  color: #333333;
+}
+
+.eink-mode .note-modal-tags::placeholder {
+  color: #666666;
+}
+
+.eink-mode .note-modal-tags-input {
+  color: #333333;
+}
+
+.eink-mode .note-modal-tags-input::placeholder {
+  color: #666666;
+}
+
+.eink-mode .tag-pill {
+  background: #e0e0e0;
+  border: 1px solid #000000;
+  color: #000000;
+}
+
+.eink-mode .tag-pill:hover {
+  background: #cccccc;
+  border-color: #000000;
+  box-shadow: none;
+  transform: none;
+}
+
+.eink-mode .btn-modal-cancel {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+}
+
+.eink-mode .btn-modal-cancel:hover {
+  background: #e0e0e0;
+  border-color: #000000;
+}
+
+.eink-mode .btn-modal-save {
+  background: #000000;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.eink-mode .btn-modal-save:hover:not(:disabled) {
+  background: #333333;
+  transform: none;
+  box-shadow: none;
+}
+
+.eink-mode .btn-modal-checkbox {
+  color: #000000;
+}
+
+.eink-mode .btn-modal-checkbox:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .btn-modal-checkbox:active {
+  background: #cccccc;
+}
+
+.eink-mode .btn-modal-checkbox.active {
+  background: #cccccc;
+  color: #000000;
+}
+
+.eink-mode .btn-modal-archive,
+.eink-mode .btn-modal-collaborate,
+.eink-mode .btn-modal-pin,
+.eink-mode .btn-modal-delete {
+  color: #000000;
+}
+
+.eink-mode .btn-modal-archive:hover,
+.eink-mode .btn-modal-collaborate:hover,
+.eink-mode .btn-modal-pin:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .btn-modal-archive:active,
+.eink-mode .btn-modal-collaborate:active,
+.eink-mode .btn-modal-pin:active {
+  background: #cccccc;
+}
+
+.eink-mode .btn-modal-archive.archived {
+  background: #cccccc;
+  color: #000000;
+}
+
+.eink-mode .btn-modal-pin.pinned {
+  background: #cccccc;
+  color: #000000;
+}
+
+.eink-mode .btn-modal-delete:hover {
+  background: #e0e0e0;
+  color: #000000;
+}
+
+.eink-mode .todo-item:hover {
+  border-bottom-color: #000000;
+  background: #f5f5f5;
+}
+
+.eink-mode .todo-item-input {
+  color: #000000;
+}
+
+.eink-mode .todo-item-input.completed {
+  color: #666666;
+}
+
+.eink-mode .todo-item-input::placeholder {
+  color: #666666;
+}
+
+.eink-mode .todo-item-delete {
+  color: #666666;
+}
+
+.eink-mode .todo-item-delete:hover {
+  background: #e0e0e0;
+  color: #000000;
+}
+
+.eink-mode .todo-add-item {
+  color: #666666;
+}
+
+.eink-mode .todo-add-item:hover {
+  background: #e0e0e0;
+  color: #000000;
+}
+
+.eink-mode .btn-modal-image-select,
+.eink-mode .btn-modal-image-upload {
+  color: #000000;
+}
+
+.eink-mode .btn-modal-image-select:hover,
+.eink-mode .btn-modal-image-upload:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .btn-modal-image-select:active,
+.eink-mode .btn-modal-image-upload:active {
+  background: #cccccc;
+}
+
+.eink-mode .btn-modal-image-upload.uploading {
+  background: #cccccc;
+  color: #000000;
+}
+
+.eink-mode .image-preview {
+  border-color: #000000;
+}
+
+.eink-mode .image-preview:hover {
+  border-color: #000000;
+  border-width: 2px;
+}
+
+.eink-mode .btn-modal-voice {
+  color: #000000;
+}
+
+.eink-mode .btn-modal-voice:hover {
+  background: #e0e0e0;
+}
+
+.eink-mode .btn-modal-voice:active {
+  background: #cccccc;
+}
+
+.eink-mode .btn-modal-voice.recording {
+  background: #cccccc;
+  color: #000000;
+}
+
+.eink-mode .btn-modal-voice.recording:hover {
+  background: #b0b0b0;
+}
+
+.eink-mode .btn-modal-voice.transcribing {
+  background: #e0e0e0;
+  color: #000000;
+}
+
 /* Lightbox styles */
 .lightbox-overlay {
   position: fixed;
