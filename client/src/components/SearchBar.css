@@ -62,6 +62,22 @@
   color: #333;
 }
 
+/* E-Ink mode */
+.eink-mode .search-input {
+  border: 2px solid #000000;
+  background: #ffffff;
+}
+
+.eink-mode .search-input:focus {
+  border-color: #000000;
+  box-shadow: none;
+}
+
+.eink-mode .search-clear:hover {
+  background: #e0e0e0;
+  color: #000000;
+}
+
 @media (max-width: 768px) {
   .search-bar {
     max-width: 100%;

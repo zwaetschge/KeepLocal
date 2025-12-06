@@ -86,6 +86,43 @@
   --note-gray: #252525;
 }
 
+/* E-Ink Mode - High contrast black & white, no gradients, no animations */
+.eink-mode {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-muted: #666666;
+  --border-color: #000000;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --accent-color: #000000;
+  --accent-hover: #333333;
+
+  /* Note Colors - E-Ink Mode (grayscale only) */
+  --note-white: #ffffff;
+  --note-red: #e0e0e0;
+  --note-orange: #d5d5d5;
+  --note-yellow: #ebebeb;
+  --note-green: #e8e8e8;
+  --note-teal: #e5e5e5;
+  --note-cyan: #e2e2e2;
+  --note-blue: #e0e0e0;
+  --note-purple: #d8d8d8;
+  --note-pink: #e5e5e5;
+  --note-brown: #d0d0d0;
+  --note-gray: #cccccc;
+}
+
+/* Disable all animations and transitions in E-Ink mode */
+.eink-mode,
+.eink-mode *,
+.eink-mode *::before,
+.eink-mode *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -122,6 +159,11 @@ body.oled-mode {
   background-attachment: fixed;
 }
 
+body.eink-mode {
+  background: #ffffff;
+  background-attachment: fixed;
+}
+
 .App {
   height: 100vh !important;
   background: transparent;
@@ -151,6 +193,13 @@ body.oled-mode {
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.eink-mode .App-header {
+  background: #ffffff;
+  color: #000000;
+  border-bottom: 2px solid #000000;
+  box-shadow: none;
 }
 
 .header-content {
@@ -258,6 +307,17 @@ body.oled-mode {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
+.eink-mode .user-name {
+  background: #f0f0f0;
+  color: #000000;
+  border: 1px solid #000000;
+}
+
+.eink-mode .user-name.clickable:hover {
+  background: #e0e0e0;
+  box-shadow: none;
+}
+
 .btn-logout {
   padding: 8px 24px;
   background: transparent;
@@ -331,6 +391,24 @@ body.oled-mode {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.6);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.eink-mode .btn-logout {
+  border: 2px solid #000000;
+  color: #000000;
+  background: #ffffff;
+}
+
+.eink-mode .btn-logout::before {
+  display: none;
+}
+
+.eink-mode .btn-logout:hover {
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
+  box-shadow: none;
+  transform: none;
 }
 
 .App-container {
@@ -632,6 +710,15 @@ body.oled-mode {
 
 .oled-mode .mobile-menu-toggle:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.eink-mode .mobile-menu-toggle {
+  color: #000000;
+  border: 1px solid #000000;
+}
+
+.eink-mode .mobile-menu-toggle:hover {
+  background: #e0e0e0;
 }
 
 @media (max-width: 768px) {

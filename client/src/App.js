@@ -37,7 +37,7 @@ function AppContent() {
   const [operationLoading, setOperationLoading] = useState({});
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    return savedTheme || 'light'; // 'light', 'dark', or 'oled'
+    return savedTheme || 'light'; // 'light', 'dark', 'oled', or 'eink'
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -63,13 +63,15 @@ function AppContent() {
   // Theme anwenden
   useEffect(() => {
     // Remove all theme classes
-    document.body.classList.remove('dark-mode', 'oled-mode');
+    document.body.classList.remove('dark-mode', 'oled-mode', 'eink-mode');
 
     // Add appropriate theme class
     if (theme === 'dark') {
       document.body.classList.add('dark-mode');
     } else if (theme === 'oled') {
       document.body.classList.add('oled-mode');
+    } else if (theme === 'eink') {
+      document.body.classList.add('eink-mode');
     }
 
     localStorage.setItem('theme', theme);
@@ -279,10 +281,11 @@ function AppContent() {
 
   // Theme umschalten
   const toggleTheme = () => {
-    // Cycle through themes: light -> dark -> oled -> light
+    // Cycle through themes: light -> dark -> oled -> eink -> light
     setTheme(prevTheme => {
       if (prevTheme === 'light') return 'dark';
       if (prevTheme === 'dark') return 'oled';
+      if (prevTheme === 'oled') return 'eink';
       return 'light';
     });
   };
