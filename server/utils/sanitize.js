@@ -29,6 +29,18 @@ const sanitizeInput = (input) => {
 };
 
 /**
+ * Escapes user-provided input for safe use inside regular expressions
+ * @param {string} input - The raw user input
+ * @returns {string} - Escaped input
+ */
+const escapeRegex = (input) => {
+  if (typeof input !== 'string') {
+    return '';
+  }
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+/**
  * Bereinigt ein ganzes Objekt rekursiv
  * @param {Object} obj - Das zu bereinigende Objekt
  * @returns {Object} - Das bereinigte Objekt
@@ -59,5 +71,6 @@ const sanitizeObject = (obj) => {
 
 module.exports = {
   sanitizeInput,
-  sanitizeObject
+  sanitizeObject,
+  escapeRegex
 };
