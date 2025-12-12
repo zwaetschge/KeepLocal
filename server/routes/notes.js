@@ -190,8 +190,11 @@ router.post('/link-preview', async (req, res, next) => {
     res.json(preview);
   } catch (error) {
     console.error('Error fetching link preview:', error);
-    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
-      error: 'Fehler beim Abrufen der Link-Vorschau'
+    const status = error.statusCode || httpStatus.INTERNAL_SERVER_ERROR;
+    res.status(status).json({
+      error: status === httpStatus.INTERNAL_SERVER_ERROR
+        ? 'Fehler beim Abrufen der Link-Vorschau'
+        : error.message
     });
   }
 });
@@ -331,6 +334,10 @@ router.post('/:id/images', upload.array('images', 5), async (req, res, next) => 
  */
 router.get('/debug/uploads', async (req, res) => {
   try {
+    if (!req.user?.isAdmin) {
+      return res.status(httpStatus.FORBIDDEN).json({ error: 'Nur für Admins zugänglich' });
+    }
+
     const path = require('path');
     const fs = require('fs');
     const uploadsDir = path.join(__dirname, '../uploads/images');

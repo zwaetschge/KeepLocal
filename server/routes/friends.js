@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
+const { escapeRegex } = require('../utils/sanitize');
 
 // Alle Routen erfordern Authentifizierung
 router.use(authenticateToken);
@@ -167,18 +168,22 @@ router.delete('/:friendId', async (req, res, next) => {
 router.get('/search', async (req, res, next) => {
   try {
     const { query } = req.query;
+    const trimmedQuery = (query || '').trim();
+    const safeQuery = escapeRegex(trimmedQuery);
 
-    if (!query || query.trim() === '') {
+    if (!safeQuery) {
       return res.json([]);
     }
+
+    const regexQuery = { $regex: safeQuery, $options: 'i' };
 
     // Admin kann alle Benutzer suchen, normale Benutzer nur Freunde
     let users;
     if (req.user.isAdmin) {
       users = await User.find({
         $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } }
+          { username: regexQuery },
+          { email: regexQuery }
         ],
         _id: { $ne: req.user._id } // Nicht sich selbst
       }).select('username email').limit(10);
@@ -186,8 +191,8 @@ router.get('/search', async (req, res, next) => {
       users = await User.find({
         _id: { $in: req.user.friends, $ne: req.user._id },
         $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } }
+          { username: regexQuery },
+          { email: regexQuery }
         ]
       }).select('username email').limit(10);
     }

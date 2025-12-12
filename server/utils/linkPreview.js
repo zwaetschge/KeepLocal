@@ -1,33 +1,116 @@
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
+const dns = require('dns').promises;
+const net = require('net');
+
+const MAX_REDIRECTS = 3;
+
+const createValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const isPrivateIp = (ip) => {
+  const type = net.isIP(ip);
+  if (type === 4) {
+    const parts = ip.split('.').map(Number);
+    if (parts[0] === 10) return true;
+    if (parts[0] === 127) return true;
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+    return false;
+  }
+
+  if (type === 6) {
+    const normalized = ip.toLowerCase();
+    if (normalized === '::1') return true;
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // Unique local
+    if (normalized.startsWith('fe80')) return true; // Link-local
+    return false;
+  }
+
+  return false;
+};
+
+async function validateUrlSafety(parsedUrl) {
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw createValidationError('Nur HTTP/HTTPS URLs sind erlaubt');
+  }
+
+  if (!parsedUrl.hostname) {
+    throw createValidationError('Ungültige URL');
+  }
+
+  if (parsedUrl.hostname === 'localhost') {
+    throw createValidationError('Lokale Adressen sind nicht erlaubt');
+  }
+
+  const hostIsIp = net.isIP(parsedUrl.hostname);
+  if (hostIsIp) {
+    if (isPrivateIp(parsedUrl.hostname)) {
+      throw createValidationError('Private IP-Adressen sind nicht erlaubt');
+    }
+    return;
+  }
+
+  try {
+    const addresses = await dns.lookup(parsedUrl.hostname, { all: true });
+    if (!addresses.length) {
+      throw createValidationError('Host konnte nicht aufgelöst werden');
+    }
+
+    if (addresses.some(addr => isPrivateIp(addr.address))) {
+      throw createValidationError('Private IP-Adressen sind nicht erlaubt');
+    }
+  } catch (error) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw createValidationError('Host konnte nicht aufgelöst werden');
+  }
+}
 
 /**
  * Fetch Open Graph metadata from a URL
  * @param {string} url - The URL to fetch metadata from
  * @returns {Promise<Object>} - Open Graph metadata
  */
-async function fetchLinkPreview(url) {
-  return new Promise((resolve, reject) => {
-    try {
-      const parsedUrl = new URL(url);
-      const protocol = parsedUrl.protocol === 'https:' ? https : http;
+async function fetchLinkPreview(url, redirectCount = 0) {
+  try {
+    const parsedUrl = new URL(url);
+    await validateUrlSafety(parsedUrl);
 
-      const options = {
-        method: 'GET',
-        timeout: 5000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; KeepLocalBot/1.0; +http://localhost:3000)',
-          'Accept': 'text/html,application/xhtml+xml'
-        }
-      };
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
-      const request = protocol.get(url, options, (response) => {
-        // Handle redirects
+    const options = {
+      method: 'GET',
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; KeepLocalBot/1.0; +http://localhost:3000)',
+        'Accept': 'text/html,application/xhtml+xml'
+      }
+    };
+
+    return await new Promise((resolve, reject) => {
+      const request = protocol.get(parsedUrl, options, (response) => {
+        // Handle redirects securely and with a limit
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          return fetchLinkPreview(response.headers.location)
-            .then(resolve)
-            .catch(reject);
+          if (redirectCount >= MAX_REDIRECTS) {
+            return reject(createValidationError('Zu viele Weiterleitungen'));
+          }
+
+          try {
+            const redirectUrl = new URL(response.headers.location, parsedUrl);
+            return fetchLinkPreview(redirectUrl.toString(), redirectCount + 1)
+              .then(resolve)
+              .catch(reject);
+          } catch (redirectError) {
+            return reject(createValidationError('Ungültige Weiterleitungs-URL'));
+          }
         }
 
         if (response.statusCode !== 200) {
@@ -62,11 +145,10 @@ async function fetchLinkPreview(url) {
         request.destroy();
         reject(new Error('Request timeout'));
       });
-
-    } catch (error) {
-      reject(error);
-    }
-  });
+    });
+  } catch (error) {
+    throw error;
+  }
 }
 
 /**
