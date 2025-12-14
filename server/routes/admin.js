@@ -156,7 +156,7 @@ router.delete('/users/:id', async (req, res) => {
     }
 
     // Delete all notes belonging to this user
-    await Note.deleteMany({ user: id });
+    await Note.deleteMany({ userId: id });
 
     // Delete the user
     await User.findByIdAndDelete(id);

@@ -6,6 +6,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const { errorMessages } = require('../constants');
+const { escapeRegex } = require('../utils/sanitize');
 
 /**
  * Get all friends for a user
@@ -189,8 +190,14 @@ async function removeFriend(userId, friendId) {
  * @returns {Promise<Array>} Matching users
  */
 async function searchUsers(query, userId) {
+  const safeQuery = escapeRegex((query || '').trim());
+
+  if (!safeQuery) {
+    return [];
+  }
+
   const users = await User.find({
-    username: { $regex: query, $options: 'i' },
+    username: { $regex: safeQuery, $options: 'i' },
     _id: { $ne: userId }
   }).select('username email').limit(10);
 
