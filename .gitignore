@@ -26,8 +26,15 @@ Thumbs.db
 # Testing
 coverage/
 
-# Uploads (user-generated content)
-uploads/
+# Uploads (user-generated content) - keep directory structure via .gitkeep
+server/uploads/*
+!server/uploads/.gitkeep
+!server/uploads/temp/
+!server/uploads/images/
+server/uploads/temp/*
+!server/uploads/temp/.gitkeep
+server/uploads/images/*
+!server/uploads/images/.gitkeep
 *.upload.*
 
 # Cache

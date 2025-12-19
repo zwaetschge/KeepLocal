@@ -9,14 +9,26 @@ const fs = require('fs');
 
 // Temporary upload directory for initial uploads (before validation)
 const tempUploadDir = path.join(__dirname, '../uploads/temp');
-if (!fs.existsSync(tempUploadDir)) {
-  fs.mkdirSync(tempUploadDir, { recursive: true });
+try {
+  if (!fs.existsSync(tempUploadDir)) {
+    fs.mkdirSync(tempUploadDir, { recursive: true });
+    console.log('[Upload] Created temp upload directory:', tempUploadDir);
+  }
+} catch (error) {
+  console.error('[Upload] CRITICAL: Failed to create temp upload directory:', error.message);
+  console.error('[Upload] Image uploads will fail. Please create the directory manually:', tempUploadDir);
 }
 
 // Final upload directory (after validation)
 const finalUploadDir = path.join(__dirname, '../uploads/images');
-if (!fs.existsSync(finalUploadDir)) {
-  fs.mkdirSync(finalUploadDir, { recursive: true });
+try {
+  if (!fs.existsSync(finalUploadDir)) {
+    fs.mkdirSync(finalUploadDir, { recursive: true });
+    console.log('[Upload] Created final upload directory:', finalUploadDir);
+  }
+} catch (error) {
+  console.error('[Upload] CRITICAL: Failed to create final upload directory:', error.message);
+  console.error('[Upload] Image uploads will fail. Please create the directory manually:', finalUploadDir);
 }
 
 // Configure storage - uploads go to temp directory first
