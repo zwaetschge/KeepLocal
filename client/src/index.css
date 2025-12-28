@@ -1,6 +1,10 @@
 /* ============================================
    KeepLocal Design System
+   "Warm Paper Studio" Aesthetic
    ============================================ */
+
+/* Google Fonts - Distinctive Typography */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
 
 * {
   margin: 0;
@@ -9,10 +13,15 @@
 }
 
 /* ============================================
-   Design Tokens - Spacing Scale (4px base)
+   Design Tokens
    ============================================ */
 :root {
-  /* Spacing */
+  /* Typography */
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Monaco, monospace;
+
+  /* Spacing Scale (4px base) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -23,207 +32,293 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+  --space-20: 80px;
 
-  /* Border Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 24px;
+  /* Border Radius - Softer, organic */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
   --radius-full: 9999px;
 
   /* Typography Scale */
-  --font-size-xs: 0.75rem;     /* 12px */
-  --font-size-sm: 0.875rem;    /* 14px */
-  --font-size-base: 1rem;      /* 16px */
-  --font-size-lg: 1.125rem;    /* 18px */
-  --font-size-xl: 1.25rem;     /* 20px */
-  --font-size-2xl: 1.5rem;     /* 24px */
-  --font-size-3xl: 1.875rem;   /* 30px */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 2rem;
+  --font-size-4xl: 2.5rem;
 
   /* Font Weights */
+  --font-light: 300;
   --font-normal: 400;
   --font-medium: 500;
   --font-semibold: 600;
   --font-bold: 700;
 
   /* Line Heights */
-  --leading-tight: 1.25;
-  --leading-snug: 1.375;
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
   --leading-normal: 1.5;
-  --leading-relaxed: 1.625;
+  --leading-relaxed: 1.65;
 
-  /* Transition Durations */
-  --duration-fast: 150ms;
-  --duration-normal: 200ms;
-  --duration-slow: 300ms;
+  /* Transitions - Organic feeling */
+  --duration-instant: 100ms;
+  --duration-fast: 180ms;
+  --duration-normal: 280ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
 
-  /* Transition Easings */
+  /* Easings - Natural, organic movement */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-out: cubic-bezier(0, 0.55, 0.45, 1);
   --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-elastic: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
   /* Z-Index Scale */
+  --z-base: 0;
   --z-dropdown: 100;
   --z-sticky: 500;
   --z-header: 1000;
+  --z-overlay: 1500;
   --z-modal: 2000;
   --z-lightbox: 3000;
   --z-tooltip: 4000;
 }
 
 /* ============================================
-   Light Theme (Default)
+   Light Theme - Warm Paper
    ============================================ */
 :root {
-  /* Background Colors */
-  --bg-primary: #f5f5f5;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #fafafa;
-  --bg-elevated: #ffffff;
-  --bg-overlay: rgba(0, 0, 0, 0.5);
+  /* Paper-like Backgrounds */
+  --bg-primary: #FAF7F2;
+  --bg-secondary: #FFFCF7;
+  --bg-tertiary: #F5F1EA;
+  --bg-elevated: #FFFFFF;
+  --bg-overlay: rgba(44, 36, 22, 0.4);
+  --bg-paper: #FDF9F3;
+  --bg-canvas: #F0EBE3;
 
-  /* Text Colors */
-  --text-primary: rgba(0, 0, 0, 0.87);
-  --text-secondary: rgba(0, 0, 0, 0.6);
-  --text-tertiary: rgba(0, 0, 0, 0.54);
-  --text-muted: rgba(0, 0, 0, 0.38);
-  --text-inverse: #ffffff;
+  /* Ink-like Text Colors */
+  --text-primary: #2C2416;
+  --text-secondary: #5C4A32;
+  --text-tertiary: #7D6B52;
+  --text-muted: #A89880;
+  --text-inverse: #FFFCF7;
 
-  /* Border Colors */
-  --border-color: rgba(0, 0, 0, 0.12);
-  --border-color-strong: rgba(0, 0, 0, 0.24);
-  --border-focus: #1a73e8;
+  /* Border Colors - Subtle, warm */
+  --border-color: rgba(92, 74, 50, 0.12);
+  --border-color-strong: rgba(92, 74, 50, 0.25);
+  --border-focus: #C4785D;
 
-  /* Accent Colors */
-  --accent-color: #1a73e8;
-  --accent-hover: #1557b0;
-  --accent-active: #104491;
-  --accent-light: rgba(26, 115, 232, 0.08);
-  --accent-lighter: rgba(26, 115, 232, 0.04);
+  /* Accent - Terracotta */
+  --accent-color: #C4785D;
+  --accent-hover: #B0684D;
+  --accent-active: #9C5840;
+  --accent-light: rgba(196, 120, 93, 0.12);
+  --accent-lighter: rgba(196, 120, 93, 0.06);
 
-  /* Status Colors */
-  --success-color: #34a853;
-  --success-light: rgba(52, 168, 83, 0.1);
-  --warning-color: #fbbc04;
-  --warning-light: rgba(251, 188, 4, 0.1);
-  --error-color: #ea4335;
-  --error-light: rgba(234, 67, 53, 0.1);
-  --info-color: #4285f4;
-  --info-light: rgba(66, 133, 244, 0.1);
+  /* Secondary Accent - Amber */
+  --accent-secondary: #E8A844;
+  --accent-secondary-light: rgba(232, 168, 68, 0.15);
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.1);
-  --shadow-md: 0 4px 6px rgba(60, 64, 67, 0.1), 0 2px 4px rgba(60, 64, 67, 0.08);
-  --shadow-lg: 0 10px 15px rgba(60, 64, 67, 0.1), 0 4px 6px rgba(60, 64, 67, 0.08);
-  --shadow-xl: 0 20px 25px rgba(60, 64, 67, 0.1), 0 10px 10px rgba(60, 64, 67, 0.08);
-  --shadow-2xl: 0 25px 50px rgba(60, 64, 67, 0.25);
-  --shadow-focus: 0 0 0 3px rgba(26, 115, 232, 0.25);
+  /* Status Colors - Muted, organic */
+  --success-color: #7D9B76;
+  --success-light: rgba(125, 155, 118, 0.15);
+  --warning-color: #D4A84B;
+  --warning-light: rgba(212, 168, 75, 0.15);
+  --error-color: #C17B7B;
+  --error-light: rgba(193, 123, 123, 0.15);
+  --info-color: #7B9BB5;
+  --info-light: rgba(123, 155, 181, 0.15);
+
+  /* Shadows - Warm, layered paper effect */
+  --shadow-xs: 0 1px 2px rgba(44, 36, 22, 0.06);
+  --shadow-sm: 0 2px 4px rgba(44, 36, 22, 0.08), 0 1px 2px rgba(44, 36, 22, 0.04);
+  --shadow-md: 0 4px 8px rgba(44, 36, 22, 0.08), 0 2px 4px rgba(44, 36, 22, 0.04);
+  --shadow-lg: 0 8px 16px rgba(44, 36, 22, 0.1), 0 4px 8px rgba(44, 36, 22, 0.06);
+  --shadow-xl: 0 16px 32px rgba(44, 36, 22, 0.12), 0 8px 16px rgba(44, 36, 22, 0.08);
+  --shadow-2xl: 0 24px 48px rgba(44, 36, 22, 0.16), 0 12px 24px rgba(44, 36, 22, 0.1);
+  --shadow-focus: 0 0 0 3px rgba(196, 120, 93, 0.3);
+  --shadow-paper: 0 1px 3px rgba(44, 36, 22, 0.1), 0 0 0 1px rgba(44, 36, 22, 0.05);
+  --shadow-lifted: 0 12px 24px rgba(44, 36, 22, 0.15), 0 4px 8px rgba(44, 36, 22, 0.1);
 
   /* Interactive States */
-  --hover-overlay: rgba(0, 0, 0, 0.04);
-  --active-overlay: rgba(0, 0, 0, 0.08);
-  --selected-overlay: rgba(26, 115, 232, 0.08);
+  --hover-overlay: rgba(44, 36, 22, 0.04);
+  --active-overlay: rgba(44, 36, 22, 0.08);
+  --selected-overlay: rgba(196, 120, 93, 0.1);
+
+  /* Header - Warm cream */
+  --header-bg: #E8DFD0;
+  --header-text: #2C2416;
+
+  /* Note Colors - Warm, paper-like */
+  --note-white: #FFFCF7;
+  --note-red: #F2D4CF;
+  --note-orange: #F5DFC4;
+  --note-yellow: #F7EBC4;
+  --note-green: #D4E8D0;
+  --note-teal: #C9E5E0;
+  --note-cyan: #C9DFE8;
+  --note-blue: #D0DBE8;
+  --note-purple: #E0D4E8;
+  --note-pink: #F0D4E0;
+  --note-brown: #E0D4C4;
+  --note-gray: #E5E0D8;
 }
 
 /* ============================================
-   Dark Theme
+   Dark Theme - Warm Night
    ============================================ */
 body.dark-mode {
-  /* Background Colors */
-  --bg-primary: #121212;
-  --bg-secondary: #1e1e1e;
-  --bg-tertiary: #2d2d2d;
-  --bg-elevated: #2d2d2d;
-  --bg-overlay: rgba(0, 0, 0, 0.7);
+  --bg-primary: #1A1814;
+  --bg-secondary: #242019;
+  --bg-tertiary: #2E2A22;
+  --bg-elevated: #302B23;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --bg-paper: #282420;
+  --bg-canvas: #1E1B17;
 
-  /* Text Colors */
-  --text-primary: rgba(255, 255, 255, 0.87);
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --text-tertiary: rgba(255, 255, 255, 0.54);
-  --text-muted: rgba(255, 255, 255, 0.38);
-  --text-inverse: #121212;
+  --text-primary: #F5F1EA;
+  --text-secondary: #C9C0B0;
+  --text-tertiary: #9E9484;
+  --text-muted: #6E6458;
+  --text-inverse: #1A1814;
 
-  /* Border Colors */
-  --border-color: rgba(255, 255, 255, 0.12);
-  --border-color-strong: rgba(255, 255, 255, 0.24);
-  --border-focus: #8ab4f8;
+  --border-color: rgba(245, 241, 234, 0.1);
+  --border-color-strong: rgba(245, 241, 234, 0.2);
+  --border-focus: #D4906E;
 
-  /* Accent Colors */
-  --accent-color: #8ab4f8;
-  --accent-hover: #aecbfa;
-  --accent-active: #c6dbfc;
-  --accent-light: rgba(138, 180, 248, 0.12);
-  --accent-lighter: rgba(138, 180, 248, 0.06);
+  --accent-color: #D4906E;
+  --accent-hover: #E0A080;
+  --accent-active: #EBB090;
+  --accent-light: rgba(212, 144, 110, 0.15);
+  --accent-lighter: rgba(212, 144, 110, 0.08);
 
-  /* Status Colors */
-  --success-color: #81c995;
-  --success-light: rgba(129, 201, 149, 0.15);
-  --warning-color: #fdd663;
-  --warning-light: rgba(253, 214, 99, 0.15);
-  --error-color: #f28b82;
-  --error-light: rgba(242, 139, 130, 0.15);
-  --info-color: #8ab4f8;
-  --info-light: rgba(138, 180, 248, 0.15);
+  --accent-secondary: #F0B850;
+  --accent-secondary-light: rgba(240, 184, 80, 0.18);
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.35), 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.35), 0 10px 10px rgba(0, 0, 0, 0.3);
-  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.5);
-  --shadow-focus: 0 0 0 3px rgba(138, 180, 248, 0.35);
+  --success-color: #8FB085;
+  --success-light: rgba(143, 176, 133, 0.18);
+  --warning-color: #E0B860;
+  --warning-light: rgba(224, 184, 96, 0.18);
+  --error-color: #D09090;
+  --error-light: rgba(208, 144, 144, 0.18);
+  --info-color: #90B0C8;
+  --info-light: rgba(144, 176, 200, 0.18);
 
-  /* Interactive States */
-  --hover-overlay: rgba(255, 255, 255, 0.05);
-  --active-overlay: rgba(255, 255, 255, 0.1);
-  --selected-overlay: rgba(138, 180, 248, 0.12);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.4), 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-2xl: 0 24px 48px rgba(0, 0, 0, 0.5);
+  --shadow-focus: 0 0 0 3px rgba(212, 144, 110, 0.4);
+  --shadow-paper: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-lifted: 0 12px 24px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(0, 0, 0, 0.3);
+
+  --hover-overlay: rgba(255, 255, 255, 0.04);
+  --active-overlay: rgba(255, 255, 255, 0.08);
+  --selected-overlay: rgba(212, 144, 110, 0.12);
+
+  --header-bg: #2E2A22;
+  --header-text: #F5F1EA;
+
+  --note-white: #2A2620;
+  --note-red: #3D2A28;
+  --note-orange: #3D3020;
+  --note-yellow: #3D3820;
+  --note-green: #283D28;
+  --note-teal: #203838;
+  --note-cyan: #203038;
+  --note-blue: #202838;
+  --note-purple: #302838;
+  --note-pink: #382030;
+  --note-brown: #302820;
+  --note-gray: #303028;
+}
+
+/* ============================================
+   OLED Theme - Pure Dark
+   ============================================ */
+body.oled-mode {
+  --bg-primary: #000000;
+  --bg-secondary: #0A0908;
+  --bg-tertiary: #141210;
+  --bg-elevated: #1A1816;
+  --bg-overlay: rgba(0, 0, 0, 0.8);
+  --bg-paper: #0F0E0C;
+  --bg-canvas: #050504;
+
+  --text-primary: #F5F1EA;
+  --text-secondary: #B8AFA0;
+  --text-tertiary: #8A8070;
+  --text-muted: #5C5448;
+  --text-inverse: #000000;
+
+  --border-color: rgba(245, 241, 234, 0.08);
+  --border-color-strong: rgba(245, 241, 234, 0.15);
+  --border-focus: #D4906E;
+
+  --header-bg: #0A0908;
+  --header-text: #F5F1EA;
+
+  --note-white: #141210;
+  --note-red: #2A1A18;
+  --note-orange: #2A2010;
+  --note-yellow: #2A2810;
+  --note-green: #182A18;
+  --note-teal: #102828;
+  --note-cyan: #102028;
+  --note-blue: #101828;
+  --note-purple: #201828;
+  --note-pink: #281020;
+  --note-brown: #201810;
+  --note-gray: #202018;
 }
 
 /* ============================================
    E-Ink Theme
    ============================================ */
 body.eink-mode {
-  /* Background Colors */
   --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #eeeeee;
+  --bg-secondary: #f8f8f8;
+  --bg-tertiary: #f0f0f0;
   --bg-elevated: #ffffff;
   --bg-overlay: rgba(0, 0, 0, 0.3);
+  --bg-paper: #ffffff;
+  --bg-canvas: #f5f5f5;
 
-  /* Text Colors */
   --text-primary: #000000;
   --text-secondary: #333333;
   --text-tertiary: #555555;
-  --text-muted: #666666;
+  --text-muted: #777777;
   --text-inverse: #ffffff;
 
-  /* Border Colors */
   --border-color: #000000;
   --border-color-strong: #000000;
   --border-focus: #000000;
 
-  /* Accent Colors */
   --accent-color: #000000;
   --accent-hover: #333333;
   --accent-active: #000000;
-  --accent-light: #e0e0e0;
+  --accent-light: #e8e8e8;
   --accent-lighter: #f0f0f0;
 
-  /* Status Colors */
   --success-color: #000000;
   --success-light: #e8e8e8;
-  --warning-color: #666666;
+  --warning-color: #555555;
   --warning-light: #e8e8e8;
   --error-color: #000000;
   --error-light: #e8e8e8;
   --info-color: #000000;
   --info-light: #e8e8e8;
 
-  /* Shadows - Disabled for E-Ink */
   --shadow-xs: none;
   --shadow-sm: none;
   --shadow-md: none;
@@ -231,14 +326,30 @@ body.eink-mode {
   --shadow-xl: none;
   --shadow-2xl: none;
   --shadow-focus: none;
+  --shadow-paper: none;
+  --shadow-lifted: none;
 
-  /* Interactive States */
   --hover-overlay: #e0e0e0;
   --active-overlay: #cccccc;
-  --selected-overlay: #d0d0d0;
+  --selected-overlay: #d8d8d8;
+
+  --header-bg: #ffffff;
+  --header-text: #000000;
+
+  --note-white: #ffffff;
+  --note-red: #e8e8e8;
+  --note-orange: #e0e0e0;
+  --note-yellow: #f0f0f0;
+  --note-green: #e8e8e8;
+  --note-teal: #e4e4e4;
+  --note-cyan: #e0e0e0;
+  --note-blue: #e0e0e0;
+  --note-purple: #e4e4e4;
+  --note-pink: #e8e8e8;
+  --note-brown: #d8d8d8;
+  --note-gray: #d0d0d0;
 }
 
-/* Disable animations in E-Ink mode */
 body.eink-mode,
 body.eink-mode *,
 body.eink-mode *::before,
@@ -258,17 +369,17 @@ html {
 body {
   height: 100% !important;
   overflow: hidden !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
+  font-weight: var(--font-normal);
   line-height: var(--leading-normal);
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color var(--duration-slow) var(--ease-default),
-              color var(--duration-normal) var(--ease-default);
+  transition: background-color var(--duration-slow) var(--ease-smooth),
+              color var(--duration-normal) var(--ease-smooth);
 }
 
 #root {
@@ -276,13 +387,20 @@ body {
   overflow: hidden !important;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+/* Display headings use Fraunces */
+h1, h2, h3, .heading {
+  font-family: var(--font-display);
+  font-weight: var(--font-medium);
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
 }
 
 /* ============================================
-   Focus Visible - Enhanced Accessibility
+   Focus Visible - Warm focus states
    ============================================ */
 :focus {
   outline: none;
@@ -293,7 +411,6 @@ code {
   outline-offset: 2px;
 }
 
-/* Custom focus styles for specific elements */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -314,18 +431,31 @@ select:focus-visible {
 .text-xl { font-size: var(--font-size-xl); }
 .text-2xl { font-size: var(--font-size-2xl); }
 .text-3xl { font-size: var(--font-size-3xl); }
+.text-4xl { font-size: var(--font-size-4xl); }
 
+.font-light { font-weight: var(--font-light); }
 .font-normal { font-weight: var(--font-normal); }
 .font-medium { font-weight: var(--font-medium); }
 .font-semibold { font-weight: var(--font-semibold); }
 .font-bold { font-weight: var(--font-bold); }
 
+.font-display { font-family: var(--font-display); }
+.font-body { font-family: var(--font-body); }
+
 /* ============================================
-   Scrollbar Styles
+   Selection - Warm highlight
+   ============================================ */
+::selection {
+  background: var(--accent-light);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Scrollbar - Subtle, refined
    ============================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -335,20 +465,127 @@ select:focus-visible {
 ::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: var(--radius-full);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
-/* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
 }
 
-/* E-Ink mode scrollbar */
 body.eink-mode ::-webkit-scrollbar-thumb {
   background: #666666;
-  border: 1px solid #000000;
+  border: 2px solid #ffffff;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes gentlePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Paper texture overlay (subtle) */
+@keyframes paperGrain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-1%, -1%); }
+  20% { transform: translate(1%, 1%); }
+  30% { transform: translate(-1%, 1%); }
+  40% { transform: translate(1%, -1%); }
+  50% { transform: translate(-1%, 0); }
+  60% { transform: translate(1%, 0); }
+  70% { transform: translate(0, 1%); }
+  80% { transform: translate(0, -1%); }
+  90% { transform: translate(1%, 1%); }
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-texture {
+  position: relative;
+}
+
+.paper-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1;
 }

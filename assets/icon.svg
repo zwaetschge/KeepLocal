@@ -1,37 +1,90 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="noteGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFD54F;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#FFC107;stop-opacity:1" />
+    <!-- Warm paper gradient -->
+    <linearGradient id="paperGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FDF9F3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F5EDE3;stop-opacity:1" />
     </linearGradient>
+
+    <!-- Terracotta accent gradient -->
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D4887D;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C4785D;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Amber secondary gradient -->
+    <linearGradient id="amberGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F0B854;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E8A844;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Subtle shadow -->
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="4" stdDeviation="8" flood-color="#2C2416" flood-opacity="0.15"/>
+    </filter>
   </defs>
 
-  <!-- Background note -->
-  <rect x="80" y="80" width="352" height="400" rx="16"
-        fill="url(#noteGradient)"
-        stroke="#FFA000" stroke-width="4"/>
+  <!-- Main paper note with rounded corners -->
+  <rect x="72" y="56" width="368" height="420" rx="24" ry="24"
+        fill="url(#paperGradient)"
+        stroke="#D9CFC2" stroke-width="2"
+        filter="url(#softShadow)"/>
 
-  <!-- Shadow effect -->
-  <rect x="80" y="80" width="352" height="40" rx="16"
-        fill="#FFA000" opacity="0.2"/>
+  <!-- Paper fold corner effect -->
+  <path d="M 396 56 L 440 56 L 440 100 Q 430 100 420 90 Q 410 80 396 80 Z"
+        fill="#EDE5DB"/>
+  <path d="M 396 56 Q 410 70 410 90 Q 430 90 440 100 L 440 56 Z"
+        fill="#D9CFC2"/>
 
-  <!-- Lines on the note -->
-  <line x1="120" y1="160" x2="392" y2="160"
-        stroke="#FFA000" stroke-width="3" stroke-linecap="round"/>
-  <line x1="120" y1="220" x2="392" y2="220"
-        stroke="#FFA000" stroke-width="3" stroke-linecap="round"/>
-  <line x1="120" y1="280" x2="300" y2="280"
-        stroke="#FFA000" stroke-width="3" stroke-linecap="round"/>
+  <!-- Top accent bar -->
+  <rect x="72" y="56" width="368" height="8" rx="4"
+        fill="url(#accentGradient)"/>
 
-  <!-- Checkmark for todo feature -->
-  <circle cx="140" cy="380" r="24" fill="#4CAF50" stroke="#2E7D32" stroke-width="3"/>
-  <path d="M130 380 L137 387 L150 370"
-        stroke="white" stroke-width="4" stroke-linecap="round"
+  <!-- Decorative ruled lines -->
+  <line x1="112" y1="130" x2="400" y2="130"
+        stroke="#E8DED2" stroke-width="2" stroke-linecap="round"/>
+  <line x1="112" y1="185" x2="400" y2="185"
+        stroke="#E8DED2" stroke-width="2" stroke-linecap="round"/>
+  <line x1="112" y1="240" x2="400" y2="240"
+        stroke="#E8DED2" stroke-width="2" stroke-linecap="round"/>
+  <line x1="112" y1="295" x2="340" y2="295"
+        stroke="#E8DED2" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Written text lines (terracotta) -->
+  <line x1="112" y1="130" x2="360" y2="130"
+        stroke="url(#accentGradient)" stroke-width="3" stroke-linecap="round"
+        stroke-dasharray="40 15 60 25"/>
+  <line x1="112" y1="185" x2="380" y2="185"
+        stroke="url(#accentGradient)" stroke-width="3" stroke-linecap="round"
+        stroke-dasharray="50 20 30 30 45"/>
+  <line x1="112" y1="240" x2="340" y2="240"
+        stroke="url(#accentGradient)" stroke-width="3" stroke-linecap="round"
+        stroke-dasharray="35 25 55 15 40"/>
+
+  <!-- Checkbox completed (terracotta circle with check) -->
+  <circle cx="150" cy="360" r="28"
+          fill="url(#accentGradient)"
+          stroke="#A8604D" stroke-width="2"/>
+  <path d="M 135 360 L 145 370 L 168 345"
+        stroke="#FDF9F3" stroke-width="5" stroke-linecap="round"
         stroke-linejoin="round" fill="none"/>
 
-  <!-- Link icon for link preview feature -->
-  <circle cx="380" cy="380" r="24" fill="#2196F3" stroke="#1565C0" stroke-width="3"/>
-  <path d="M372 373 L372 387 Q372 391 376 391 L384 391 M388 373 L388 387 Q388 391 384 391 L376 391"
-        stroke="white" stroke-width="3" stroke-linecap="round"
-        stroke-linejoin="round" fill="none"/>
+  <!-- Checkbox unchecked (amber outline) -->
+  <circle cx="240" cy="360" r="28"
+          fill="none"
+          stroke="url(#amberGradient)" stroke-width="4"/>
+
+  <!-- Pin icon (amber) -->
+  <g transform="translate(330, 340)">
+    <circle cx="20" cy="20" r="28"
+            fill="url(#amberGradient)"
+            stroke="#D49634" stroke-width="2"/>
+    <path d="M 14 14 L 26 26 M 26 14 L 14 26"
+          stroke="#FDF9F3" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="20" cy="20" r="6" fill="#FDF9F3"/>
+  </g>
+
+  <!-- Bottom decorative wave -->
+  <path d="M 72 440 Q 150 420 256 430 Q 362 440 440 420 L 440 476 L 72 476 Z"
+        fill="#F5EDE3" opacity="0.5"/>
 </svg>
