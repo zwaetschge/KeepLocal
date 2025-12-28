@@ -203,7 +203,32 @@ router.post('/link-preview', async (req, res, next) => {
  * POST /api/notes/:id/images - Upload images to a note
  * Supports multiple files (max 5 images per request)
  */
-router.post('/:id/images', upload.array('images', 5), async (req, res, next) => {
+router.post('/:id/images', (req, res, next) => {
+  // Wrap multer to catch file size and other errors
+  upload.array('images', 5)(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Datei zu groß. Maximale Dateigröße: 10MB'
+        });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Zu viele Dateien. Maximal 5 Bilder pro Upload.'
+        });
+      }
+      if (err.message) {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: err.message
+        });
+      }
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+        error: 'Upload-Fehler'
+      });
+    }
+    next();
+  });
+}, async (req, res, next) => {
   const path = require('path');
   const fs = require('fs');
   const { tempUploadDir, finalUploadDir } = require('../middleware/upload');
