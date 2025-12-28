@@ -50,6 +50,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Skip non-http(s) schemes (chrome-extension, etc.)
+  const url = new URL(event.request.url);
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
   // Skip API calls - always fetch from network
   if (event.request.url.includes('/api/')) {
     event.respondWith(
@@ -76,8 +82,14 @@ self.addEventListener('fetch', event => {
         }
 
         return fetch(event.request).then(response => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === 'error') {
+          // Don't cache non-successful responses or opaque responses
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+
+          // Only cache http/https requests
+          const requestUrl = new URL(event.request.url);
+          if (!requestUrl.protocol.startsWith('http')) {
             return response;
           }
 
@@ -87,6 +99,10 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME)
             .then(cache => {
               cache.put(event.request, responseToCache);
+            })
+            .catch(err => {
+              // Silently ignore cache errors (e.g., for extension requests)
+              console.log('Cache put skipped:', err.message);
             });
 
           return response;
