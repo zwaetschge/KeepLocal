@@ -6,6 +6,23 @@ set -e
 
 echo "=== KeepLocal Container Starting ==="
 
+# Validate JWT_SECRET is set and secure
+echo "Checking JWT_SECRET configuration..."
+if [ -z "$JWT_SECRET" ]; then
+    echo "ERROR: JWT_SECRET environment variable is not set!"
+    echo "Please set a secure JWT_SECRET (minimum 32 characters)."
+    echo "Example: docker run -e JWT_SECRET=\$(openssl rand -base64 32) ..."
+    exit 1
+fi
+
+if [ ${#JWT_SECRET} -lt 32 ]; then
+    echo "ERROR: JWT_SECRET must be at least 32 characters long!"
+    echo "Current length: ${#JWT_SECRET}"
+    echo "Please use a stronger secret. Example: openssl rand -base64 32"
+    exit 1
+fi
+echo "✓ JWT_SECRET is configured correctly"
+
 # Fix MongoDB data directory permissions
 echo "Checking /data/db permissions..."
 if [ -d "/data/db" ]; then

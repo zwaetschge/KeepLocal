@@ -31,7 +31,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/keeplocal
       # WICHTIG: Füge hier deine Domain hinzu!
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost,https://keeplocal.deine-domain.de,https://deine-domain.de
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production-please-use-long-random-string}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET environment variable is required}
       - JWT_EXPIRES_IN=7d
     volumes:
       - uploads_data:/app/server/uploads
