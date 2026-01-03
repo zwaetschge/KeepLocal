@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import './ConfirmDialog.css';
 
@@ -61,7 +62,9 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
 
   if (!isOpen) return null;
 
-  return (
+  // Use Portal to render dialog at document.body level
+  // This prevents stacking context issues from parent transforms
+  return ReactDOM.createPortal(
     <div
       className="confirm-dialog-overlay"
       onClick={onCancel}
@@ -100,7 +103,8 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
