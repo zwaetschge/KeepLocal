@@ -1,9 +1,11 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const User = require('../models/User');
 const Note = require('../models/Note');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
+const { adminService } = require('../services');
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -35,20 +37,45 @@ router.get('/users', async (req, res) => {
 router.post('/users', async (req, res) => {
   try {
     const { username, email, password, isAdmin } = req.body;
+    const isAdminFlag = isAdmin === true || isAdmin === 'true';
+    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedUsername = username?.trim();
 
     // Validation
-    if (!username || !email || !password) {
+    if (!normalizedUsername || !normalizedEmail || !password) {
       return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+    if (normalizedUsername.length < 3 || normalizedUsername.length > 50) {
+      return res.status(400).json({ error: 'Benutzername muss zwischen 3 und 50 Zeichen lang sein' });
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(normalizedUsername)) {
+      return res.status(400).json({
+        error: 'Benutzername darf nur Buchstaben, Zahlen, Bindestriche und Unterstriche enthalten'
+      });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ error: 'Ungültige E-Mail-Adresse' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein' });
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).json({
+        error: 'Passwort muss mindestens einen Kleinbuchstaben, einen Großbuchstaben und eine Zahl enthalten'
+      });
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    const existingUser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { username: normalizedUsername }]
+    });
     if (existingUser) {
-      if (existingUser.email === email) {
+      if (existingUser.email === normalizedEmail) {
         return res.status(400).json({ error: 'E-Mail-Adresse bereits vergeben' });
       }
       return res.status(400).json({ error: 'Benutzername bereits vergeben' });
@@ -56,10 +83,10 @@ router.post('/users', async (req, res) => {
 
     // Create user
     const user = new User({
-      username,
-      email,
+      username: normalizedUsername,
+      email: normalizedEmail,
       password, // Will be hashed by the User model pre-save hook
-      isAdmin: isAdmin || false
+      isAdmin: isAdminFlag
     });
 
     await user.save();
@@ -75,6 +102,11 @@ router.post('/users', async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0];
+      const fieldName = duplicateField === 'email' ? 'E-Mail-Adresse' : 'Benutzername';
+      return res.status(409).json({ error: `${fieldName} bereits vergeben` });
+    }
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Fehler beim Erstellen des Benutzers' });
   }
@@ -96,7 +128,7 @@ router.get('/stats', async (req, res) => {
     const notesPerUser = await Note.aggregate([
       {
         $group: {
-          _id: '$user',
+          _id: '$userId',
           count: { $sum: 1 }
         }
       },
@@ -145,21 +177,16 @@ router.delete('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
+    }
+
     // Prevent admin from deleting themselves
     if (id === req.user._id.toString()) {
       return res.status(400).json({ error: 'Sie können sich nicht selbst löschen' });
     }
 
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ error: 'Benutzer nicht gefunden' });
-    }
-
-    // Delete all notes belonging to this user
-    await Note.deleteMany({ userId: id });
-
-    // Delete the user
-    await User.findByIdAndDelete(id);
+    const user = await adminService.deleteUser(id, req.user._id.toString());
 
     res.json({
       message: 'Benutzer und alle zugehörigen Notizen wurden gelöscht',
@@ -170,6 +197,9 @@ router.delete('/users/:id', async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
     console.error('Error deleting user:', error);
     res.status(500).json({ error: 'Fehler beim Löschen des Benutzers' });
   }
@@ -179,6 +209,10 @@ router.delete('/users/:id', async (req, res) => {
 router.patch('/users/:id/admin', async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
+    }
 
     // Prevent admin from removing their own admin status
     if (id === req.user._id.toString()) {
