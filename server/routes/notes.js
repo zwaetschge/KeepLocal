@@ -18,6 +18,56 @@ const { httpStatus } = require('../constants');
 router.use(authenticateToken);
 
 /**
+ * DEBUG: List uploaded images in the uploads directory
+ */
+router.get('/debug/uploads', async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(httpStatus.FORBIDDEN).json({ error: 'Nur für Admins zugänglich' });
+    }
+
+    const path = require('path');
+    const fs = require('fs');
+    const uploadsDir = path.join(__dirname, '../uploads/images');
+
+    console.log('[DEBUG] Checking uploads directory:', uploadsDir);
+    console.log('[DEBUG] Directory exists:', fs.existsSync(uploadsDir));
+
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({
+        error: 'Uploads directory does not exist',
+        path: uploadsDir,
+        exists: false
+      });
+    }
+
+    const files = fs.readdirSync(uploadsDir);
+    const fileStats = files.map(file => {
+      const filePath = path.join(uploadsDir, file);
+      const stats = fs.statSync(filePath);
+      return {
+        filename: file,
+        size: stats.size,
+        created: stats.birthtime,
+        modified: stats.mtime
+      };
+    });
+
+    res.json({
+      uploadsDir,
+      fileCount: files.length,
+      files: fileStats
+    });
+  } catch (error) {
+    console.error('[DEBUG] Error listing uploads:', error);
+    res.status(500).json({
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
  * GET /api/notes - Get all notes with optional filtering and pagination
  */
 router.get('/', noteValidation.search, async (req, res, next) => {
@@ -83,6 +133,9 @@ router.put('/:id', noteValidation.update, async (req, res, next) => {
   } catch (error) {
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
     }
     if (error.name === 'ValidationError') {
       return res.status(httpStatus.BAD_REQUEST).json({ error: error.message });
@@ -355,56 +408,6 @@ router.post('/:id/images', (req, res, next) => {
 });
 
 /**
- * DEBUG: List uploaded images in the uploads directory
- */
-router.get('/debug/uploads', async (req, res) => {
-  try {
-    if (!req.user?.isAdmin) {
-      return res.status(httpStatus.FORBIDDEN).json({ error: 'Nur für Admins zugänglich' });
-    }
-
-    const path = require('path');
-    const fs = require('fs');
-    const uploadsDir = path.join(__dirname, '../uploads/images');
-
-    console.log('[DEBUG] Checking uploads directory:', uploadsDir);
-    console.log('[DEBUG] Directory exists:', fs.existsSync(uploadsDir));
-
-    if (!fs.existsSync(uploadsDir)) {
-      return res.json({
-        error: 'Uploads directory does not exist',
-        path: uploadsDir,
-        exists: false
-      });
-    }
-
-    const files = fs.readdirSync(uploadsDir);
-    const fileStats = files.map(file => {
-      const filePath = path.join(uploadsDir, file);
-      const stats = fs.statSync(filePath);
-      return {
-        filename: file,
-        size: stats.size,
-        created: stats.birthtime,
-        modified: stats.mtime
-      };
-    });
-
-    res.json({
-      uploadsDir,
-      fileCount: files.length,
-      files: fileStats
-    });
-  } catch (error) {
-    console.error('[DEBUG] Error listing uploads:', error);
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-/**
  * DELETE /api/notes/:id/images/:filename - Delete an image from a note
  */
 router.delete('/:id/images/:filename', async (req, res, next) => {
@@ -460,8 +463,26 @@ router.delete('/:id/images/:filename', async (req, res, next) => {
  * POST /api/notes/:id/transcribe - Upload audio and append transcription to note
  * Uses Whisper AI service to convert speech to text
  */
-router.post('/:id/transcribe', uploadAudio.single('audio'), async (req, res, next) => {
-  const path = require('path');
+router.post('/:id/transcribe', (req, res, next) => {
+  uploadAudio.single('audio')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Datei zu groß. Maximale Dateigröße: 25MB'
+        });
+      }
+      if (err.message) {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: err.message
+        });
+      }
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+        error: 'Upload-Fehler'
+      });
+    }
+    next();
+  });
+}, async (req, res, next) => {
   const fs = require('fs');
 
   try {

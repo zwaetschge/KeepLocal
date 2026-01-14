@@ -211,29 +211,51 @@ async function createNote(noteData, userId) {
 async function updateNote(noteId, noteData, userId) {
   const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = noteData;
 
-  // Build update object with only the provided fields
-  const updateData = {};
-  if (title !== undefined) updateData.title = title;
-  if (content !== undefined) updateData.content = isTodoList ? '' : (content?.trim() || '');
-  if (color !== undefined) updateData.color = color;
-  if (isPinned !== undefined) updateData.isPinned = isPinned;
-  if (tags !== undefined) updateData.tags = tags;
-  if (isTodoList !== undefined) updateData.isTodoList = isTodoList;
-  if (todoItems !== undefined) updateData.todoItems = todoItems;
-  if (linkPreviews !== undefined) updateData.linkPreviews = linkPreviews;
-
-  // Only update own notes
-  const updatedNote = await Note.findOneAndUpdate(
-    { _id: noteId, userId: userId },
-    updateData,
-    { new: true, runValidators: true }
-  );
-
-  if (!updatedNote) {
+  const note = await Note.findOne({ _id: noteId, userId: userId });
+  if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
   }
+
+  const nextIsTodoList = isTodoList !== undefined ? isTodoList : note.isTodoList;
+  const nextTodoItems = todoItems !== undefined ? todoItems : note.todoItems;
+  const nextContent = content !== undefined
+    ? (nextIsTodoList ? '' : (content?.trim() || ''))
+    : (nextIsTodoList ? '' : note.content);
+
+  if (nextIsTodoList) {
+    const hasValidTodoItems = nextTodoItems &&
+      nextTodoItems.length > 0 &&
+      nextTodoItems.some(item => item.text && item.text.trim());
+
+    if (!hasValidTodoItems) {
+      const error = new Error('Todo-Liste muss mindestens ein Element enthalten');
+      error.statusCode = 400;
+      throw error;
+    }
+  } else if (!nextContent || nextContent.trim() === '') {
+    const error = new Error('Inhalt ist erforderlich');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (title !== undefined) note.title = title;
+  if (color !== undefined) note.color = color;
+  if (isPinned !== undefined) note.isPinned = isPinned;
+  if (tags !== undefined) note.tags = tags;
+  if (linkPreviews !== undefined) note.linkPreviews = linkPreviews;
+  if (isTodoList !== undefined) note.isTodoList = isTodoList;
+
+  if (content !== undefined || isTodoList !== undefined) {
+    note.content = nextContent;
+  }
+
+  if (todoItems !== undefined || isTodoList !== undefined) {
+    note.todoItems = nextIsTodoList ? nextTodoItems : [];
+  }
+
+  const updatedNote = await note.save();
 
   return updatedNote;
 }
