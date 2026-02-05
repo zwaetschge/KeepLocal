@@ -63,7 +63,7 @@ router.post('/request', async (req, res, next) => {
 
     // Prüfen ob bereits eine Anfrage existiert
     const existingRequest = targetUser.friendRequests.find(
-      req => req.from.toString() === req.user._id.toString() && req.status === 'pending'
+      fr => fr.from.toString() === req.user._id.toString() && fr.status === 'pending'
     );
 
     if (existingRequest) {
@@ -132,7 +132,7 @@ router.post('/reject/:requestId', async (req, res, next) => {
     }
 
     // Anfrage ablehnen (entfernen)
-    request.remove();
+    user.friendRequests.pull(request._id);
     await user.save();
 
     res.json({ message: 'Freundschaftsanfrage abgelehnt' });

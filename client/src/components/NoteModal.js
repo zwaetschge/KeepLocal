@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import './NoteModal.css';
@@ -320,6 +320,18 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   };
 
+  // Create stable object URLs for new image file previews and revoke them on cleanup
+  const newImagePreviewUrls = useMemo(
+    () => newImageFiles.map(file => URL.createObjectURL(file)),
+    [newImageFiles]
+  );
+
+  useEffect(() => {
+    return () => {
+      newImagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [newImagePreviewUrls]);
+
   // Keyboard shortcuts for lightbox
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -464,7 +476,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             <div className="new-images-preview">
               {newImageFiles.map((file, index) => (
                 <div key={index} className="image-preview new">
-                  <img src={URL.createObjectURL(file)} alt={file.name} />
+                  <img src={newImagePreviewUrls[index]} alt={file.name} />
                   <button
                     type="button"
                     className="image-delete-btn"
