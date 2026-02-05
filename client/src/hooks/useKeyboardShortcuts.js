@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Hook for registering global keyboard shortcuts
@@ -65,22 +65,30 @@ export function useKeyboardShortcuts(shortcuts = {}, enabled = true) {
  * @example
  * useModalShortcuts(handleClose, handleSave, [title, content]);
  */
-export function useModalShortcuts(onClose, onSave, deps = []) {
+export function useModalShortcuts(onClose, onSave) {
+  // Use refs so the event handler always calls the latest callback
+  // without needing to re-register the listener on every render
+  const onCloseRef = useRef(onClose);
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       // ESC to close
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
       }
       // Ctrl/Cmd + Enter to save
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        onSave();
+        onSaveRef.current();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, onSave, ...deps]);
+  }, []);
 }
 
 export default useKeyboardShortcuts;

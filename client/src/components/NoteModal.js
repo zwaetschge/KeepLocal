@@ -351,7 +351,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   }, [lightboxImage, images]);
 
   // Keyboard shortcuts for modal
-  useModalShortcuts(onClose, handleSave, [title, content, tags, color]);
+  useModalShortcuts(onClose, handleSave);
 
   return (
     <div className="note-modal-overlay" onClick={onClose}>

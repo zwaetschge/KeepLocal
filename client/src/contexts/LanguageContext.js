@@ -26,7 +26,7 @@ export function LanguageProvider({ children }) {
   }, [language]);
 
   const t = (key) => {
-    return translations[language][key] || key;
+    return translations[language]?.[key] || translations[defaultLanguage]?.[key] || key;
   };
 
   const changeLanguage = (newLanguage) => {

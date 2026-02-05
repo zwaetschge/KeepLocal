@@ -24,8 +24,9 @@ async function getFriends(userId) {
  * @returns {Promise<Array>} List of friend requests
  */
 async function getFriendRequests(userId) {
-  const user = await User.findById(userId).populate('friendRequests', 'username email');
-  return user ? user.friendRequests : [];
+  const user = await User.findById(userId).populate('friendRequests.from', 'username email');
+  if (!user) return [];
+  return user.friendRequests.filter(fr => fr.status === 'pending');
 }
 
 /**
@@ -57,15 +58,18 @@ async function sendFriendRequest(userId, targetUsername) {
     throw error;
   }
 
-  // Check if request already sent
-  if (target.friendRequests.includes(userId)) {
+  // Check if request already sent (friendRequests is an array of subdocuments {from, status, createdAt})
+  const existingRequest = target.friendRequests.find(
+    fr => fr.from.toString() === userId.toString() && fr.status === 'pending'
+  );
+  if (existingRequest) {
     const error = new Error(errorMessages.FRIENDS.REQUEST_ALREADY_SENT);
     error.statusCode = 400;
     throw error;
   }
 
-  // Add friend request
-  target.friendRequests.push(userId);
+  // Add friend request as subdocument matching the User schema
+  target.friendRequests.push({ from: userId, status: 'pending' });
   await target.save();
 
   return { message: 'Freundschaftsanfrage gesendet', user: target };
@@ -94,14 +98,19 @@ async function acceptFriendRequest(userId, requestId) {
       throw error;
     }
 
-    // Remove from friend requests
-    user.friendRequests = user.friendRequests.filter(id => id.toString() !== requestId);
+    // Find and remove the friend request subdocument by the sender's ID
+    const requestIndex = user.friendRequests.findIndex(
+      fr => fr.from.toString() === requestId
+    );
+    if (requestIndex !== -1) {
+      user.friendRequests.splice(requestIndex, 1);
+    }
 
     // Add to friends
-    if (!user.friends.includes(requestId)) {
+    if (!user.friends.some(id => id.toString() === requestId)) {
       user.friends.push(requestId);
     }
-    if (!requester.friends.includes(userId)) {
+    if (!requester.friends.some(id => id.toString() === userId)) {
       requester.friends.push(userId);
     }
 
@@ -132,7 +141,13 @@ async function acceptFriendRequest(userId, requestId) {
 async function rejectFriendRequest(userId, requestId) {
   const user = await User.findById(userId);
 
-  user.friendRequests = user.friendRequests.filter(id => id.toString() !== requestId);
+  // Remove the friend request subdocument by the sender's ID
+  const requestIndex = user.friendRequests.findIndex(
+    fr => fr.from.toString() === requestId
+  );
+  if (requestIndex !== -1) {
+    user.friendRequests.splice(requestIndex, 1);
+  }
   await user.save();
 
   return { message: 'Freundschaftsanfrage abgelehnt' };

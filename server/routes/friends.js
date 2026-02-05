@@ -28,7 +28,7 @@ router.get('/requests', async (req, res, next) => {
       .select('friendRequests');
 
     // Nur pending requests zurückgeben
-    const pendingRequests = user.friendRequests.filter(req => req.status === 'pending');
+    const pendingRequests = user.friendRequests.filter(fr => fr.status === 'pending');
 
     res.json(pendingRequests);
   } catch (error) {

@@ -110,9 +110,9 @@ function buildNotesQuery({ userId, search, tag, isArchived = false }) {
     query.$text = { $search: search.trim() };
   }
 
-  // Filter by tag
+  // Filter by tag (case-insensitive to match tags regardless of stored casing)
   if (tag && tag.trim() !== '') {
-    query.tags = tag.toLowerCase();
+    query.tags = { $regex: new RegExp(`^${tag.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
   }
 
   return query;
