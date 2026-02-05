@@ -15,6 +15,7 @@
   flex-direction: column;
   break-inside: avoid;
   animation: noteSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
 /* Paper fold effect on corner */
@@ -25,15 +26,24 @@
   right: 0;
   width: 0;
   height: 0;
-  border-style: solid;
-  border-width: 0 20px 20px 0;
-  border-color: transparent var(--bg-secondary) transparent transparent;
+  background: linear-gradient(
+    225deg,
+    var(--bg-secondary) 50%,
+    rgba(196, 120, 93, 0.25) 50%
+  );
+  border-top-right-radius: var(--radius-lg);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .note:hover::before {
   opacity: 1;
+  width: 28px;
+  height: 28px;
 }
 
 @keyframes noteSlideIn {
