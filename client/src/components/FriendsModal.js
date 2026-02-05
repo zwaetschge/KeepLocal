@@ -217,7 +217,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                   placeholder={t('searchUsers')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
                 <button onClick={handleSearch} disabled={loading}>
                   {loading ? t('loading') : t('search')}
@@ -242,7 +242,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                       onClick={() => handleSendRequest(user.username)}
                       disabled={friends.some(f => f._id === user._id)}
                     >
-                      {friends.some(f => f._id === user._id) ? t('noFriends') : `+ ${t('sendFriendRequest')}`}
+                      {friends.some(f => f._id === user._id) ? `✓ ${t('friends')}` : `+ ${t('sendFriendRequest')}`}
                     </button>
                   </div>
                 ))}

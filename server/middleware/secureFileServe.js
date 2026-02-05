@@ -2,24 +2,38 @@ const path = require('path');
 const fs = require('fs');
 const Note = require('../models/Note');
 
+// Resolve uploads directory once at startup
+const uploadsDir = path.resolve(__dirname, '../uploads');
+
 /**
  * Secure file serving middleware for uploaded images
  * Ensures users can only access files from notes they own or have access to
  */
 const secureFileServe = async (req, res, next) => {
   try {
-    // Extract filename from URL (e.g., /uploads/images/filename.jpg -> filename.jpg)
-    const filename = req.params[0]; // Captures everything after /uploads/
+    // Extract full path after /uploads/ (e.g., "images/filename.jpg")
+    const rawPath = req.params[0];
 
-    if (!filename) {
+    if (!rawPath) {
       return res.status(404).json({ error: 'Datei nicht gefunden' });
     }
+
+    // SECURITY: Path traversal protection - resolve the full path and ensure
+    // it stays within the uploads directory
+    const filepath = path.resolve(uploadsDir, rawPath);
+    if (!filepath.startsWith(uploadsDir + path.sep)) {
+      return res.status(403).json({ error: 'Zugriff verweigert' });
+    }
+
+    // Extract just the basename for DB lookup since images are stored
+    // with bare filenames (e.g., "filename.jpg"), not paths like "images/filename.jpg"
+    const basename = path.basename(rawPath);
 
     // Find note that contains this image
     const note = await Note.findOne({
       $or: [
-        { 'images.filename': filename },
-        { 'images.thumbnailFilename': filename }
+        { 'images.filename': basename },
+        { 'images.thumbnailFilename': basename }
       ]
     });
 
@@ -36,9 +50,6 @@ const secureFileServe = async (req, res, next) => {
     if (!hasAccess) {
       return res.status(403).json({ error: 'Zugriff verweigert' });
     }
-
-    // User has access - serve the file
-    const filepath = path.join(__dirname, '../uploads', filename);
 
     // Check if file exists
     if (!fs.existsSync(filepath)) {

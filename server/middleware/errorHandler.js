@@ -2,7 +2,7 @@
 function errorHandler(err, req, res, next) {
   console.error('Error:', err);
 
-  const statusCode = err.statusCode || 500;
+  const statusCode = err.statusCode || err.status || 500;
   const message = err.message || 'Ein Serverfehler ist aufgetreten';
 
   res.status(statusCode).json({

@@ -48,7 +48,7 @@ function AdminConsole({ onClose }) {
     setOperationLoading(prev => ({ ...prev, [userId]: 'delete' }));
     try {
       await adminAPI.deleteUser(userId);
-      setUsers(users.filter(u => u._id !== userId));
+      setUsers(prev => prev.filter(u => u._id !== userId));
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -62,7 +62,7 @@ function AdminConsole({ onClose }) {
     setOperationLoading(prev => ({ ...prev, [userId]: 'admin' }));
     try {
       const response = await adminAPI.toggleUserAdmin(userId);
-      setUsers(users.map(u =>
+      setUsers(prev => prev.map(u =>
         u._id === userId ? { ...u, isAdmin: response.user.isAdmin } : u
       ));
     } catch (error) {
@@ -84,7 +84,7 @@ function AdminConsole({ onClose }) {
     setOperationLoading(prev => ({ ...prev, create: true }));
     try {
       const response = await adminAPI.createUser(newUser);
-      setUsers([...users, response.user]);
+      setUsers(prev => [...prev, response.user]);
       setNewUser({ username: '', email: '', password: '', isAdmin: false });
       setShowCreateUser(false);
       setError(null);

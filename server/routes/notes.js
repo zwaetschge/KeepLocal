@@ -19,8 +19,13 @@ router.use(authenticateToken);
 
 /**
  * DEBUG: List uploaded images in the uploads directory
+ * Only available in development mode
  */
 router.get('/debug/uploads', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(httpStatus.NOT_FOUND).json({ error: 'Not found' });
+  }
+
   try {
     if (!req.user?.isAdmin) {
       return res.status(httpStatus.FORBIDDEN).json({ error: 'Nur für Admins zugänglich' });
@@ -30,13 +35,9 @@ router.get('/debug/uploads', async (req, res) => {
     const fs = require('fs');
     const uploadsDir = path.join(__dirname, '../uploads/images');
 
-    console.log('[DEBUG] Checking uploads directory:', uploadsDir);
-    console.log('[DEBUG] Directory exists:', fs.existsSync(uploadsDir));
-
     if (!fs.existsSync(uploadsDir)) {
       return res.json({
         error: 'Uploads directory does not exist',
-        path: uploadsDir,
         exists: false
       });
     }
@@ -54,7 +55,6 @@ router.get('/debug/uploads', async (req, res) => {
     });
 
     res.json({
-      uploadsDir,
       fileCount: files.length,
       files: fileStats
     });
