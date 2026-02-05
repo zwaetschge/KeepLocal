@@ -18,6 +18,13 @@ export function useLinkPreview(content, enabled = true, debounceMs = 1000) {
   const [fetchingPreview, setFetchingPreview] = useState(false);
   const fetchTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
+  // Use refs to read current state inside the debounced callback without
+  // adding them as dependencies (which would reset the debounce timer on every state change)
+  const linkPreviewsRef = useRef(linkPreviews);
+  const fetchingPreviewRef = useRef(fetchingPreview);
+
+  useEffect(() => { linkPreviewsRef.current = linkPreviews; }, [linkPreviews]);
+  useEffect(() => { fetchingPreviewRef.current = fetchingPreview; }, [fetchingPreview]);
 
   useEffect(() => {
     // Don't fetch if disabled or content is empty
@@ -39,9 +46,9 @@ export function useLinkPreview(content, enabled = true, debounceMs = 1000) {
       if (urls && urls.length > 0) {
         // Only fetch preview for first URL and if it's not already in linkPreviews
         const firstUrl = urls[0];
-        const existingPreview = linkPreviews.find((p) => p.url === firstUrl);
+        const existingPreview = linkPreviewsRef.current.find((p) => p.url === firstUrl);
 
-        if (!existingPreview && !fetchingPreview) {
+        if (!existingPreview && !fetchingPreviewRef.current) {
           setFetchingPreview(true);
           notesAPI
             .fetchLinkPreview(firstUrl)
@@ -69,7 +76,7 @@ export function useLinkPreview(content, enabled = true, debounceMs = 1000) {
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [content, enabled, linkPreviews, fetchingPreview, debounceMs]);
+  }, [content, enabled, debounceMs]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -89,6 +89,7 @@ function AppContent() {
         archived: showArchived ? 'true' : 'false'
       };
       if (search) params.search = search;
+      if (selectedTag) params.tag = selectedTag;
 
       const response = await notesAPI.getAll(params);
       setNotes(response.notes || []);
@@ -99,21 +100,21 @@ function AppContent() {
     } finally {
       setLoading(false);
     }
-  }, [isLoggedIn, showToast, showArchived]);
+  }, [isLoggedIn, showToast, showArchived, selectedTag]);
 
-  // Notizen laden wenn eingeloggt oder showArchived ändert
+  // Notizen laden wenn eingeloggt, showArchived oder selectedTag ändert
   useEffect(() => {
     if (isLoggedIn && !authLoading) {
       fetchNotes();
     }
-  }, [isLoggedIn, authLoading, showArchived, fetchNotes]);
+  }, [isLoggedIn, authLoading, showArchived, selectedTag, fetchNotes]);
 
   // Neue Notiz erstellen
   const createNote = async (noteData) => {
     setOperationLoading(prev => ({ ...prev, create: true }));
     try {
       const response = await notesAPI.create(noteData);
-      setNotes([response, ...notes]);
+      setNotes(prev => [response, ...prev]);
       showToast('Notiz erfolgreich erstellt', 'success');
     } catch (error) {
       console.error('Fehler beim Erstellen der Notiz:', error);
@@ -128,7 +129,7 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
       await notesAPI.delete(id);
-      setNotes(notes.filter(note => note._id !== id));
+      setNotes(prev => prev.filter(note => note._id !== id));
       showToast('Notiz gelöscht', 'success');
     } catch (error) {
       console.error('Fehler beim Löschen der Notiz:', error);
@@ -143,7 +144,7 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
     try {
       const response = await notesAPI.update(id, updatedData);
-      setNotes(notes.map(note => note._id === id ? response : note));
+      setNotes(prev => prev.map(note => note._id === id ? response : note));
       showToast('Notiz aktualisiert', 'success');
     } catch (error) {
       console.error('Fehler beim Aktualisieren der Notiz:', error);
@@ -158,7 +159,7 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'pin' }));
     try {
       const response = await notesAPI.togglePin(id);
-      setNotes(notes.map(note => note._id === id ? response : note));
+      setNotes(prev => prev.map(note => note._id === id ? response : note));
       const message = response.isPinned ? t('notePinned') : t('noteUnpinned');
       showToast(message, 'success');
     } catch (error) {
@@ -180,11 +181,11 @@ function AppContent() {
       // Notiz aus der Liste entfernen wenn sie archiviert/dearchiviert wird
       // und wir nicht in der entsprechenden Ansicht sind
       if (response.isArchived && !showArchived) {
-        setNotes(notes.filter(note => note._id !== id));
+        setNotes(prev => prev.filter(note => note._id !== id));
       } else if (!response.isArchived && showArchived) {
-        setNotes(notes.filter(note => note._id !== id));
+        setNotes(prev => prev.filter(note => note._id !== id));
       } else {
-        setNotes(notes.map(note => note._id === id ? response : note));
+        setNotes(prev => prev.map(note => note._id === id ? response : note));
       }
     } catch (error) {
       console.error('Fehler beim Archivieren der Notiz:', error);
@@ -202,7 +203,7 @@ function AppContent() {
 
   // Wenn eine Notiz geteilt wurde, aktualisieren
   const handleNoteShared = (updatedNote) => {
-    setNotes(notes.map(note => note._id === updatedNote._id ? updatedNote : note));
+    setNotes(prev => prev.map(note => note._id === updatedNote._id ? updatedNote : note));
   };
 
   // Modal handlers
