@@ -6,7 +6,7 @@ import LinkPreview from './LinkPreview';
 import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
   const { t } = useLanguage();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -109,7 +109,8 @@ function Note({ note, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCo
       className={`note ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
       style={{
         backgroundColor: getColorVar(note.color),
-        '--note-bg-color': getColorVar(note.color)
+        '--note-bg-color': getColorVar(note.color),
+        '--note-index': Math.min(index || 0, 15)
       }}
       onClick={() => onOpenModal(note)}
       draggable="true"

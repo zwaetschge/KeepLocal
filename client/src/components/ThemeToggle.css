@@ -7,4 +7,16 @@
 .user-info .theme-toggle,
 .sidebar-mobile-actions .theme-toggle {
   display: flex;
+  transition: transform 0.35s var(--ease-bounce);
+}
+
+.user-info .theme-toggle:hover,
+.sidebar-mobile-actions .theme-toggle:hover {
+  transform: rotate(30deg) scale(1.1);
+}
+
+.user-info .theme-toggle:active,
+.sidebar-mobile-actions .theme-toggle:active {
+  transform: rotate(180deg) scale(0.9);
+  transition-duration: 0.5s;
 }

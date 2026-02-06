@@ -5,10 +5,11 @@ import './NoteList.css';
 function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, operationLoading }) {
   return (
     <div className="note-list">
-      {notes.map((note) => (
+      {notes.map((note, index) => (
         <Note
           key={note._id}
           note={note}
+          index={index}
           onDelete={onDeleteNote}
           onUpdate={onUpdateNote}
           onTogglePin={onTogglePin}
