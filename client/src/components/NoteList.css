@@ -3,6 +3,16 @@
   column-gap: 16px;
   margin-top: 24px;
   padding: 0 16px;
+  animation: listFadeIn 0.3s var(--ease-out) both;
+}
+
+@keyframes listFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1600px) {

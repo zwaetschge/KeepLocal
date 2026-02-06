@@ -69,6 +69,18 @@ body.eink-mode::before {
   transition: all var(--duration-slow) var(--ease-smooth);
   flex-shrink: 0;
   position: relative;
+  animation: headerSlideDown 0.4s var(--ease-out) both;
+}
+
+@keyframes headerSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Decorative header accent line */
@@ -242,14 +254,15 @@ body.eink-mode::before {
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(196, 120, 93, 0.35),
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(196, 120, 93, 0.35),
               inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
   box-shadow: 0 2px 4px rgba(196, 120, 93, 0.2);
+  transition-duration: 0.1s;
 }
 
 .btn-primary:disabled {
@@ -326,12 +339,13 @@ body.eink-mode::before {
 .btn-icon:hover {
   background: var(--hover-overlay);
   color: var(--text-primary);
-  transform: scale(1.08);
+  transform: scale(1.12);
 }
 
 .btn-icon:active {
   background: var(--active-overlay);
-  transform: scale(0.95);
+  transform: scale(0.9);
+  transition-duration: 0.1s;
 }
 
 .btn-icon.active {
@@ -377,7 +391,13 @@ body.eink-mode::before {
   background: var(--error-light);
   border-color: var(--error-color);
   color: var(--error-color);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-logout:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.1s;
 }
 
 .eink-mode .btn-logout {
@@ -410,6 +430,12 @@ body.eink-mode::before {
   width: 100%;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.App-main::-webkit-scrollbar {
+  display: none;
 }
 
 /* ============================================
@@ -557,7 +583,12 @@ body.eink-mode::before {
   border-color: var(--accent-color);
   color: var(--accent-color);
   box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.03);
+}
+
+.pagination button:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.1s;
 }
 
 .pagination button:disabled {
@@ -647,6 +678,7 @@ body.eink-mode::before {
   color: var(--text-muted);
   margin: 0 0 var(--space-4) var(--space-2);
   text-transform: uppercase;
+  animation: slideInRight var(--duration-slow) var(--ease-out) both;
 }
 
 /* ============================================
