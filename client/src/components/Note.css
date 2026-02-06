@@ -18,33 +18,6 @@
   overflow: hidden;
 }
 
-/* Paper fold effect on corner */
-.note::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 0;
-  height: 0;
-  background: linear-gradient(
-    225deg,
-    var(--bg-secondary) 50%,
-    rgba(196, 120, 93, 0.25) 50%
-  );
-  border-top-right-radius: var(--radius-lg);
-  opacity: 0;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.3s ease;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.note:hover::before {
-  opacity: 1;
-  width: 28px;
-  height: 28px;
-}
 
 @keyframes noteSlideIn {
   from {
@@ -841,10 +814,6 @@
   transform: none;
 }
 
-.eink-mode .note::before {
-  display: none;
-}
-
 .eink-mode .note-title,
 .eink-mode .note-content,
 .eink-mode .note-edit-title,
@@ -982,7 +951,4 @@
     transform: none;
   }
 
-  .note:hover::before {
-    display: none;
-  }
 }
