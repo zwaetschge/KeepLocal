@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
-import LanguageSelector from './LanguageSelector';
 import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Sidebar.css';
@@ -14,8 +13,6 @@ function Sidebar({
   showArchived,
   onShowArchivedToggle,
   onOpenFriends,
-  isAdmin,
-  onAdminClick,
   onSettingsClick,
   user,
   onLogout,
@@ -69,7 +66,6 @@ function Sidebar({
         </button>
 
         <div className="sidebar-mobile-actions">
-          <LanguageSelector />
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
         </div>
 
@@ -135,26 +131,6 @@ function Sidebar({
           </svg>
           <span>{t('friends')}</span>
         </button>
-
-        {isAdmin && (
-          <>
-            <div className="sidebar-divider"></div>
-            <button
-              className="sidebar-item sidebar-admin"
-              onClick={() => {
-                onAdminClick();
-                onMobileClose();
-              }}
-              aria-label={t('adminConsole')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-              </svg>
-              <span>{t('admin')}</span>
-            </button>
-          </>
-        )}
 
         {allTags.length > 0 && (
           <>
