@@ -5,7 +5,6 @@ import NoteList from './components/NoteList';
 import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
-import LanguageSelector from './components/LanguageSelector';
 import Toast from './components/Toast';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -378,7 +377,6 @@ function AppContent() {
       <>
         <div className="floating-controls">
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
-          <LanguageSelector />
         </div>
         <Setup onSetup={handleSetup} />
         {toast && (
@@ -398,7 +396,6 @@ function AppContent() {
       <>
         <div className="floating-controls">
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
-          <LanguageSelector />
         </div>
         {showRegister ? (
           <Register
@@ -443,8 +440,7 @@ function AppContent() {
             aria-label={t('searchNotes')}
           />
           <div className="user-info">
-            <LanguageSelector />
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+              <ThemeToggle theme={theme} onToggle={toggleTheme} />
             <button
               className="user-name clickable"
               onClick={() => setShowSettings(true)}
