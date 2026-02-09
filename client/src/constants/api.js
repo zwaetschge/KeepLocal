@@ -34,6 +34,12 @@ export const API_ENDPOINTS = {
     SEARCH: '/api/friends/search',
   },
 
+  // API Keys endpoints
+  API_KEYS: {
+    BASE: '/api/api-keys',
+    BY_ID: (id) => `/api/api-keys/${id}`,
+  },
+
   // Admin endpoints
   ADMIN: {
     USERS: '/api/admin/users',

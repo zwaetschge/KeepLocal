@@ -3,14 +3,74 @@
  * User preferences and feature toggles
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getApiKeys, createApiKey, revokeApiKey } from '../services/api/apiKeysAPI';
 import './Settings.css';
 
 function Settings({ onClose, isAdmin, onAdminClick }) {
   const { settings, toggleAIFeature, setTranscriptionLanguage } = useSettings();
   const { t } = useLanguage();
+
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyExpiry, setNewKeyExpiry] = useState('never');
+  const [createdKey, setCreatedKey] = useState(null);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState('');
+  const [keyCopied, setKeyCopied] = useState(false);
+
+  const loadApiKeys = useCallback(async () => {
+    try {
+      setApiKeysLoading(true);
+      const result = await getApiKeys();
+      setApiKeys(result.data || []);
+    } catch (err) {
+      console.error('Failed to load API keys:', err);
+    } finally {
+      setApiKeysLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApiKeys();
+  }, [loadApiKeys]);
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) {
+      setApiKeyError('Name ist erforderlich');
+      return;
+    }
+    try {
+      setApiKeyError('');
+      const result = await createApiKey(newKeyName.trim(), newKeyExpiry);
+      setCreatedKey(result.data.key);
+      setNewKeyName('');
+      setNewKeyExpiry('never');
+      loadApiKeys();
+    } catch (err) {
+      setApiKeyError(err.message);
+    }
+  };
+
+  const handleRevokeKey = async (id) => {
+    try {
+      await revokeApiKey(id);
+      loadApiKeys();
+    } catch (err) {
+      setApiKeyError(err.message);
+    }
+  };
+
+  const handleCopyKey = async () => {
+    if (createdKey) {
+      await navigator.clipboard.writeText(createdKey);
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 2000);
+    }
+  };
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -25,6 +85,120 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
         </div>
 
         <div className="settings-content">
+          {/* API Keys Section */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              API-Keys
+            </h3>
+            <p className="settings-section-description">
+              Erstelle API-Keys für den externen Zugriff auf deine Notizen.
+              Dokumentation unter <code className="settings-code-inline">/api/docs</code>
+            </p>
+
+            {/* Created key display */}
+            {createdKey && (
+              <div className="settings-warning-box" style={{ marginBottom: '1rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong>Key kopieren - wird nur einmal angezeigt!</strong>
+                  <div className="api-key-created-value">
+                    <code className="settings-code-inline" style={{ wordBreak: 'break-all', display: 'block', marginTop: '0.5rem' }}>
+                      {createdKey}
+                    </code>
+                    <button className="btn-copy-key" onClick={handleCopyKey}>
+                      {keyCopied ? 'Kopiert!' : 'Kopieren'}
+                    </button>
+                  </div>
+                  <button
+                    className="btn-dismiss-key"
+                    onClick={() => setCreatedKey(null)}
+                  >
+                    Verstanden, Key gespeichert
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Create new key */}
+            <div className="api-key-create-form">
+              <div className="api-key-create-inputs">
+                <input
+                  type="text"
+                  className="settings-input"
+                  placeholder="Name (z.B. 'Mein Script')"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateKey()}
+                  maxLength={100}
+                />
+                <select
+                  className="settings-input api-key-expiry-select"
+                  value={newKeyExpiry}
+                  onChange={(e) => setNewKeyExpiry(e.target.value)}
+                >
+                  <option value="never">Kein Ablauf</option>
+                  <option value="30">30 Tage</option>
+                  <option value="90">90 Tage</option>
+                  <option value="365">1 Jahr</option>
+                </select>
+                <button className="btn-create-key" onClick={handleCreateKey}>
+                  Erstellen
+                </button>
+              </div>
+              {apiKeyError && <p className="api-key-error">{apiKeyError}</p>}
+            </div>
+
+            {/* Key list */}
+            {apiKeysLoading ? (
+              <p className="settings-section-description" style={{ textAlign: 'center', padding: '1rem' }}>
+                Lade API-Keys...
+              </p>
+            ) : apiKeys.length > 0 ? (
+              <div className="api-key-list">
+                {apiKeys.map((key) => (
+                  <div key={key._id} className="api-key-item">
+                    <div className="api-key-item-info">
+                      <span className="api-key-item-name">{key.name}</span>
+                      <span className="api-key-item-meta">
+                        {key.prefix}... &middot; Erstellt {new Date(key.createdAt).toLocaleDateString('de-DE')}
+                        {key.lastUsedAt && (
+                          <> &middot; Zuletzt benutzt {new Date(key.lastUsedAt).toLocaleDateString('de-DE')}</>
+                        )}
+                        {key.expiresAt && (
+                          <> &middot; Ablauf {new Date(key.expiresAt).toLocaleDateString('de-DE')}</>
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      className="btn-revoke-key"
+                      onClick={() => handleRevokeKey(key._id)}
+                      title="Key widerrufen"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="settings-info-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <div>
+                  Noch keine API-Keys erstellt. Erstelle einen Key, um extern auf deine Notizen zuzugreifen.
+                </div>
+              </div>
+            )}
+          </section>
+
           {/* AI Features Section */}
           <section className="settings-section">
             <h3 className="settings-section-title">
@@ -40,7 +214,7 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
             <div className="settings-item">
               <div className="settings-item-info">
                 <label htmlFor="voice-transcription" className="settings-item-label">
-                  🎙️ Sprach-zu-Text Transkription
+                  Sprach-zu-Text Transkription
                 </label>
                 <p className="settings-item-description">
                   Aktiviert die Möglichkeit, Sprachaufnahmen direkt in Text umzuwandeln.
@@ -171,8 +345,6 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
               </div>
             </section>
           )}
-
-          {/* Future sections can go here */}
         </div>
 
         <div className="settings-footer">

@@ -12,10 +12,14 @@ const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
 const adminRouter = require('./routes/admin');
 const friendsRouter = require('./routes/friends');
+const apiKeysRouter = require('./routes/apiKeys');
+const v1Router = require('./routes/v1');
 const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -112,7 +116,28 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// Routen (Auth ohne CSRF-Schutz)
+// --- API Documentation (Swagger UI) ---
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'KeepLocal API Docs',
+  swaggerOptions: {
+    persistAuthorization: true
+  }
+}));
+
+// OpenAPI spec as JSON
+app.get('/api/docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
+// --- External API v1 (API-Key auth, no CSRF) ---
+app.use('/api/v1', v1Router);
+
+// --- API Key Management (JWT auth, CSRF-protected from web UI) ---
+app.use('/api/api-keys', csrfProtection, apiKeysRouter);
+
+// --- Internal Routes (Frontend) ---
 app.use('/api/auth', authRouter);
 app.use('/api/notes', csrfProtection, notesRouter);
 app.use('/api/admin', csrfProtection, adminRouter);
@@ -123,8 +148,12 @@ app.get('/', (req, res) => {
   res.json({
     message: 'KeepLocal API Server',
     version: '2.0.0',
-    endpoints: {
-      notes: '/api/notes'
+    documentation: '/api/docs',
+    api: {
+      v1: '/api/v1',
+      notes: '/api/v1/notes',
+      tags: '/api/v1/tags',
+      user: '/api/v1/user/me'
     }
   });
 });
@@ -144,7 +173,8 @@ app.use(errorHandler);
 // Server starten
 app.listen(PORT, () => {
   console.log(`🚀 Server läuft auf Port ${PORT}`);
-  console.log(`📝 API verfügbar unter: http://localhost:${PORT}/api/notes`);
+  console.log(`📝 API verfügbar unter: http://localhost:${PORT}/api/v1`);
+  console.log(`📖 API-Dokumentation: http://localhost:${PORT}/api/docs`);
 });
 
 module.exports = app;
