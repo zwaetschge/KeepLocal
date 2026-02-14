@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Install system dependencies (ffmpeg for audio, curl for healthcheck)
 RUN apt-get update && apt-get install -y \
+    build-essential \
     ffmpeg \
     curl \
     python3\
