@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM ubuntu:22.04
 
 WORKDIR /app
 
@@ -6,11 +6,23 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    python3\
+    python3-pip\
+    python3-dev\
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --upgrade pip setuptools wheel
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application
 COPY . .
