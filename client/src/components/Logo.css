@@ -1,149 +1,26 @@
 .logo-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  animation: logoFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 10px;
+  animation: logoFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* SVG Logo Styles */
 .logo-svg {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
-  animation: logoFloat 3s ease-in-out infinite;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.12));
+  transition: transform 0.2s ease;
 }
 
 .logo-svg:hover {
-  animation: logoFloat 1s ease-in-out infinite, logoPulse 0.6s ease-in-out;
-}
-
-/* Light mode (default) colors */
-.logo-note-back {
-  fill: #E8D5C0;
-  opacity: 0.7;
-}
-
-.logo-note-main {
-  fill: #FFF8F0;
-  stroke: #C4785D;
-  stroke-width: 1.5;
-}
-
-.logo-note-fold {
-  fill: #F0DFD0;
-  stroke: #C4785D;
-  stroke-width: 1;
-}
-
-.logo-note-fold-line {
-  stroke: #C4785D;
-  stroke-width: 1.5;
-  fill: none;
-}
-
-.logo-line {
-  stroke: #C4785D;
-  opacity: 0.45;
-}
-
-.logo-pin-head {
-  fill: #C4785D;
-}
-
-.logo-pin-center {
-  fill: #FFF8F0;
-}
-
-.logo-pin-needle {
-  stroke: #A35E45;
-}
-
-/* Dark mode */
-.dark-mode .logo-note-back {
-  fill: #4A3F35;
-  opacity: 0.6;
-}
-
-.dark-mode .logo-note-main {
-  fill: #3A322A;
-  stroke: #D4906E;
-}
-
-.dark-mode .logo-note-fold {
-  fill: #4A3F35;
-  stroke: #D4906E;
-}
-
-.dark-mode .logo-note-fold-line {
-  stroke: #D4906E;
-}
-
-.dark-mode .logo-line {
-  stroke: #D4906E;
-  opacity: 0.5;
-}
-
-.dark-mode .logo-pin-head {
-  fill: #D4906E;
-}
-
-.dark-mode .logo-pin-center {
-  fill: #3A322A;
-}
-
-.dark-mode .logo-pin-needle {
-  stroke: #C4785D;
-}
-
-.dark-mode .logo-svg {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
-}
-
-/* OLED mode */
-.oled-mode .logo-note-back {
-  fill: #3A2F25;
-  opacity: 0.5;
-}
-
-.oled-mode .logo-note-main {
-  fill: #2A2118;
-  stroke: #D4906E;
-}
-
-.oled-mode .logo-note-fold {
-  fill: #3A2F25;
-  stroke: #D4906E;
-}
-
-.oled-mode .logo-note-fold-line {
-  stroke: #D4906E;
-}
-
-.oled-mode .logo-line {
-  stroke: #D4906E;
-  opacity: 0.5;
-}
-
-.oled-mode .logo-pin-head {
-  fill: #D4906E;
-}
-
-.oled-mode .logo-pin-center {
-  fill: #2A2118;
-}
-
-.oled-mode .logo-pin-needle {
-  stroke: #C4785D;
-}
-
-.oled-mode .logo-svg {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transform: scale(1.06);
 }
 
 /* Logo text */
 .logo-text {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #000000;
+  color: #1a1a1a;
   letter-spacing: -0.02em;
 }
 
@@ -155,35 +32,19 @@
   color: #ffffff;
 }
 
+.dark-mode .logo-svg,
+.oled-mode .logo-svg {
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.3));
+}
+
 /* Animations */
 @keyframes logoFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(-8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes logoFloat {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-3px);
-  }
-}
-
-@keyframes logoPulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
   }
 }

@@ -4,6 +4,12 @@
   "description": "Lokale Notizen-App inspiriert von Google Keep",
   "icons": [
     {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
       "src": "icon-192.png",
       "type": "image/png",
       "sizes": "192x192",
