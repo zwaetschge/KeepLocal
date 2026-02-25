@@ -8,7 +8,7 @@ import { getColorVar } from '../utils/colorMapper';
 import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 import notesAPI from '../services/api/notesAPI';
 
-function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onTogglePin, onDelete }) {
+function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
   const { t } = useLanguage();
   const { settings } = useSettings();
   const [title, setTitle] = useState(note?.title || '');
@@ -17,6 +17,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const [tagInput, setTagInput] = useState('');
   const [color, setColor] = useState(note?.color || '#ffffff');
   const [isTodoList, setIsTodoList] = useState(note?.isTodoList || false);
+  const [isPinned, setIsPinned] = useState(note?.isPinned || false);
   const [images, setImages] = useState(note?.images || []);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -49,6 +50,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       setTagInput('');
       setColor(note.color || '#ffffff');
       setIsTodoList(note.isTodoList || false);
+      setIsPinned(note.isPinned || false);
       setTodoItems(note.todoItems || []);
       setLinkPreviews(note.linkPreviews || []);
       setImages(note.images || []);
@@ -107,6 +109,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       content: isTodoList ? '' : content.trim(),
       tags: finalTags,
       color: color,
+      isPinned: isPinned,
       isTodoList: isTodoList,
       todoItems: isTodoList ? getCleanedItems() : [],
       linkPreviews: linkPreviews || [],
@@ -350,11 +353,24 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxImage, images]);
 
+  // Auto-save when clicking outside the modal
+  const handleOverlayClick = () => {
+    const hasContent = isTodoList
+      ? (todoItems.length > 0 && todoItems.some(item => item.text.trim()))
+      : content.trim();
+
+    if (hasContent) {
+      handleSave();
+    } else {
+      onClose();
+    }
+  };
+
   // Keyboard shortcuts for modal
-  useModalShortcuts(onClose, handleSave);
+  useModalShortcuts(handleOverlayClick, handleSave);
 
   return (
-    <div className="note-modal-overlay" onClick={onClose}>
+    <div className="note-modal-overlay" onClick={handleOverlayClick}>
       <div
         className="note-modal"
         style={{ backgroundColor: getColorVar(color) }}
@@ -362,7 +378,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       >
         <button
           className="note-modal-close"
-          onClick={onClose}
+          onClick={handleOverlayClick}
           aria-label={t('close')}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -594,23 +610,20 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 </svg>
               </button>
             )}
-            {note && onTogglePin && (
-              <button
-                type="button"
-                className={`btn-modal-pin ${note.isPinned ? 'pinned' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePin(note._id);
-                  onClose();
-                }}
-                title={note.isPinned ? t('unpin') : t('pin')}
-                aria-label={note.isPinned ? t('unpin') : t('pin')}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
-                </svg>
-              </button>
-            )}
+            <button
+              type="button"
+              className={`btn-modal-pin ${isPinned ? 'pinned' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPinned(!isPinned);
+              }}
+              title={isPinned ? t('unpin') : t('pin')}
+              aria-label={isPinned ? t('unpin') : t('pin')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
+              </svg>
+            </button>
             {note && (
               <>
                 <label
