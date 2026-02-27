@@ -609,7 +609,6 @@ function AppContent() {
           onClose={closeNoteModal}
           onToggleArchive={toggleArchiveNote}
           onOpenCollaborate={openCollaborateModal}
-          onTogglePin={togglePinNote}
           onDelete={deleteNote}
         />
       )}
