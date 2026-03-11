@@ -16,6 +16,9 @@ export const de = {
   registerNow: 'Jetzt registrieren',
   fillAllFields: 'Bitte füllen Sie alle Felder aus',
   loginFailed: 'Anmeldung fehlgeschlagen',
+  orContinueWith: 'oder weiter mit',
+  oauthFailed: 'OAuth-Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+  backToLogin: 'Zurück zur Anmeldung',
 
   // Setup
   setupTitle: 'KeepLocal Ersteinrichtung',

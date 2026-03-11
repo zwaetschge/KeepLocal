@@ -183,6 +183,89 @@
   outline-offset: 2px;
 }
 
+/* OAuth Section */
+.oauth-section {
+  margin-top: var(--space-6);
+}
+
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.oauth-divider span {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.oauth-buttons {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.oauth-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-default);
+}
+
+.oauth-button:hover:not(:disabled) {
+  border-color: var(--border-color-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.oauth-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.oauth-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.oauth-button:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.oauth-button svg {
+  flex-shrink: 0;
+}
+
+.oauth-google:hover:not(:disabled) {
+  border-color: #4285F4;
+  background: rgba(66, 133, 244, 0.05);
+}
+
+.oauth-github:hover:not(:disabled) {
+  border-color: #333;
+  background: rgba(0, 0, 0, 0.05);
+}
+
 /* Footer */
 .auth-footer {
   margin-top: var(--space-6);
@@ -249,6 +332,22 @@ body.dark-mode .auth-link:hover:not(:disabled) {
   color: #aecbfa;
 }
 
+body.dark-mode .oauth-button {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+body.dark-mode .oauth-google:hover:not(:disabled) {
+  border-color: #8ab4f8;
+  background: rgba(138, 180, 248, 0.1);
+}
+
+body.dark-mode .oauth-github:hover:not(:disabled) {
+  border-color: #aaa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* OLED Mode */
 body.oled-mode .auth-container {
   background: #000000;
@@ -292,6 +391,17 @@ body.eink-mode .auth-error {
 
 body.eink-mode .form-group input:focus {
   border-color: #000000;
+  box-shadow: none;
+}
+
+body.eink-mode .oauth-button {
+  border: 2px solid #000000;
+  background: #ffffff;
+}
+
+body.eink-mode .oauth-button:hover:not(:disabled) {
+  background: #f0f0f0;
+  transform: none;
   box-shadow: none;
 }
 

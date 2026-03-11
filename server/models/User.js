@@ -21,8 +21,23 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Passwort ist erforderlich'],
+    required: function() {
+      return this.provider === 'local';
+    },
     minlength: [8, 'Passwort muss mindestens 8 Zeichen lang sein']
+  },
+  provider: {
+    type: String,
+    enum: ['local', 'google', 'github'],
+    default: 'local'
+  },
+  providerId: {
+    type: String,
+    default: null
+  },
+  avatar: {
+    type: String,
+    default: null
   },
   isAdmin: {
     type: Boolean,
@@ -55,11 +70,12 @@ const userSchema = new mongoose.Schema({
 // Index für schnelle Suche
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
+userSchema.index({ provider: 1, providerId: 1 });
 
 // Passwort vor dem Speichern hashen
 userSchema.pre('save', async function(next) {
-  // Nur hashen wenn Passwort geändert wurde
-  if (!this.isModified('password')) {
+  // Skip hashing for OAuth users without a password
+  if (!this.password || !this.isModified('password')) {
     return next();
   }
 
@@ -74,6 +90,7 @@ userSchema.pre('save', async function(next) {
 
 // Methode zum Passwort-Vergleich
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
 };
 

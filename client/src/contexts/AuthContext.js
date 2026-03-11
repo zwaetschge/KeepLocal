@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI, isAuthenticated } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { authAPI, isAuthenticated, setAuthToken, initializeCSRF } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -83,6 +83,26 @@ export function AuthProvider({ children }) {
     return response;
   };
 
+  /**
+   * Handle OAuth callback — store the token and fetch user data
+   */
+  const loginWithOAuthToken = useCallback(async (token) => {
+    setAuthToken(token);
+    await initializeCSRF();
+    try {
+      const response = await authAPI.getCurrentUser();
+      setUser(response.user);
+      setIsLoggedIn(true);
+      setSetupNeeded(false);
+    } catch (error) {
+      console.error('OAuth token validation failed:', error);
+      authAPI.logout();
+      setUser(null);
+      setIsLoggedIn(false);
+      throw new Error('OAuth login failed');
+    }
+  }, []);
+
   const value = {
     user,
     isLoggedIn,
@@ -92,6 +112,7 @@ export function AuthProvider({ children }) {
     register,
     logout,
     setup,
+    loginWithOAuthToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

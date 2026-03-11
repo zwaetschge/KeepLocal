@@ -18,6 +18,8 @@ const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
+const passport = require('passport');
+const { configurePassport } = require('./config/passport');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 
@@ -98,6 +100,10 @@ app.use(express.json({ limit: '10mb' })); // Built-in Express body parser (seit 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(limiter); // Rate Limiting anwenden
+
+// Passport OAuth initialization (stateless — we use JWT, not sessions)
+app.use(passport.initialize());
+configurePassport();
 
 // Sicherheit: XSS-Schutz durch Input-Sanitization
 app.use(sanitizeInputMiddleware);

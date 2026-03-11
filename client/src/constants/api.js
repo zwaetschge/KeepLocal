@@ -10,6 +10,9 @@ export const API_ENDPOINTS = {
     LOGIN: '/api/auth/login',
     ME: '/api/auth/me',
     CSRF_TOKEN: '/api/csrf-token',
+    PROVIDERS: '/api/auth/providers',
+    GOOGLE: '/api/auth/google',
+    GITHUB: '/api/auth/github',
   },
 
   // Notes endpoints

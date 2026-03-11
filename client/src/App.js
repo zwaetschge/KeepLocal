@@ -15,6 +15,7 @@ import NoteModal from './components/NoteModal';
 import FriendsModal from './components/FriendsModal';
 import CollaborateModal from './components/CollaborateModal';
 import Settings from './components/Settings';
+import OAuthCallback from './components/OAuthCallback';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider } from './contexts/SettingsContext';
@@ -22,7 +23,7 @@ import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
 
 function AppContent() {
-  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup } = useAuth();
+  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup, loginWithOAuthToken } = useAuth();
   const { t } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -360,6 +361,23 @@ function AppContent() {
     await setup(username, email, password);
     showToast('Administrator-Konto erfolgreich erstellt', 'success');
   };
+
+  // Handle OAuth callback route
+  const isOAuthCallback = window.location.pathname === '/oauth/callback';
+  if (isOAuthCallback) {
+    return (
+      <OAuthCallback
+        onOAuthSuccess={async (token) => {
+          try {
+            await loginWithOAuthToken(token);
+            showToast(t('loginSuccess') || 'Logged in successfully', 'success');
+          } catch (err) {
+            showToast(t('oauthFailed') || 'OAuth login failed', 'error');
+          }
+        }}
+      />
+    );
+  }
 
   // Show loading screen while checking auth
   if (authLoading) {

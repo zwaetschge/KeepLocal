@@ -50,6 +50,14 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET environment variable is required}
       - JWT_EXPIRES_IN=7d
       - AI_SERVICE_URL=http://ai:5000  # AI service endpoint
+      # OAuth (optional — leave empty to disable)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-}
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:3000}
     volumes:
       - uploads_data:/app/server/uploads
     depends_on:

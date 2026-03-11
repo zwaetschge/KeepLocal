@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const passport = require('passport');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
@@ -172,6 +173,14 @@ router.post('/login', [
       return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
     }
 
+    // OAuth-only users cannot login with password
+    if (user.provider !== 'local' && !user.password) {
+      const providerName = user.provider.charAt(0).toUpperCase() + user.provider.slice(1);
+      return res.status(401).json({
+        error: `Dieses Konto verwendet ${providerName}-Anmeldung. Bitte nutzen Sie den ${providerName}-Button.`
+      });
+    }
+
     // Passwort prüfen
     const isPasswordValid = await user.comparePassword(password);
 
@@ -205,6 +214,8 @@ router.get('/me', authenticateToken, async (req, res) => {
       username: req.user.username,
       email: req.user.email,
       isAdmin: req.user.isAdmin,
+      provider: req.user.provider || 'local',
+      avatar: req.user.avatar || null,
       createdAt: req.user.createdAt
     }
   });
@@ -215,5 +226,69 @@ router.post('/logout', (req, res) => {
   // Bei Token-basierter Auth muss Client das Token löschen
   res.json({ message: 'Erfolgreich abgemeldet' });
 });
+
+// GET /api/auth/providers - Return which OAuth providers are configured
+router.get('/providers', (req, res) => {
+  res.json({
+    providers: {
+      google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+    }
+  });
+});
+
+// Determine the frontend URL for OAuth redirects
+function getClientURL(req) {
+  // Use explicit env var if set, otherwise derive from the request's Origin/Referer
+  if (process.env.CLIENT_URL) return process.env.CLIENT_URL;
+  const origin = req.headers.origin || req.headers.referer;
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      return url.origin;
+    } catch (_) { /* ignore */ }
+  }
+  return 'http://localhost:3000';
+}
+
+// OAuth callback handler — generates JWT and redirects to frontend
+function handleOAuthCallback(req, res) {
+  const token = generateToken(req.user._id);
+  const clientURL = getClientURL(req);
+  // Redirect to frontend with token as query param; the frontend will store it
+  res.redirect(`${clientURL}/oauth/callback?token=${encodeURIComponent(token)}`);
+}
+
+// --- Google OAuth ---
+router.get('/google',
+  (req, res, next) => {
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      return res.status(404).json({ error: 'Google OAuth is not configured' });
+    }
+    next();
+  },
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+);
+
+router.get('/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/oauth/callback?error=google_auth_failed' }),
+  handleOAuthCallback
+);
+
+// --- GitHub OAuth ---
+router.get('/github',
+  (req, res, next) => {
+    if (!process.env.GITHUB_CLIENT_ID) {
+      return res.status(404).json({ error: 'GitHub OAuth is not configured' });
+    }
+    next();
+  },
+  passport.authenticate('github', { scope: ['user:email'], session: false })
+);
+
+router.get('/github/callback',
+  passport.authenticate('github', { session: false, failureRedirect: '/oauth/callback?error=github_auth_failed' }),
+  handleOAuthCallback
+);
 
 module.exports = router;

@@ -16,6 +16,9 @@ export const en = {
   registerNow: 'Register now',
   fillAllFields: 'Please fill in all fields',
   loginFailed: 'Login failed',
+  orContinueWith: 'or continue with',
+  oauthFailed: 'OAuth login failed. Please try again.',
+  backToLogin: 'Back to Login',
 
   // Setup
   setupTitle: 'KeepLocal Initial Setup',
