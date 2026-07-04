@@ -261,6 +261,11 @@
   color: var(--text-muted);
 }
 
+.note-modal-tags-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .dark-mode .note-modal-tags-input {
   color: rgba(255, 255, 255, 0.7);
 }
@@ -283,6 +288,11 @@
 
 .note-modal-tags::placeholder {
   color: var(--text-muted);
+}
+
+.note-modal-tags:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .dark-mode .note-modal-tags {
@@ -573,6 +583,11 @@
 
 .todo-item-input::placeholder {
   color: var(--text-muted);
+}
+
+.todo-item-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .dark-mode .todo-item-input {

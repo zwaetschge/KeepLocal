@@ -41,3 +41,18 @@ test('note modal content focus-visible does not render the global textarea focus
   assert.match(declarations, /outline:\s*none/);
   assert.match(declarations, /box-shadow:\s*none/);
 });
+
+test('all note modal text entry fields suppress the global focus frame', () => {
+  for (const selector of [
+    '.note-modal-title:focus-visible',
+    '.note-modal-content:focus-visible',
+    '.note-modal-tags-input:focus-visible',
+    '.note-modal-tags:focus-visible',
+    '.todo-item-input:focus-visible',
+  ]) {
+    const declarations = declarationsFor(selector);
+
+    assert.match(declarations, /outline:\s*none/, selector);
+    assert.match(declarations, /box-shadow:\s*none/, selector);
+  }
+});
