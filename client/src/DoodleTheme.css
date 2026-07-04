@@ -1,0 +1,156 @@
+@import url('https://fonts.googleapis.com/css2?family=Delius+Swash+Caps&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ============================================
+   Doodle Theme - Hand-drawn Studio
+   ============================================ */
+body.doodle-mode {
+  --font-display: 'Delius Swash Caps', 'Comic Sans MS', cursive;
+  --font-body: 'Delius Swash Caps', 'Comic Sans MS', cursive;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+
+  --bg-primary: #F8FCFF;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EAF7FD;
+  --bg-elevated: #FFFFFF;
+  --bg-overlay: rgba(17, 24, 39, 0.35);
+  --bg-paper: #FFFFFF;
+  --bg-canvas: #F8FCFF;
+
+  --text-primary: #111827;
+  --text-secondary: #263D5B;
+  --text-tertiary: #4B5563;
+  --text-muted: #6B7280;
+  --text-inverse: #FFFFFF;
+
+  --border-color: rgba(38, 61, 91, 0.28);
+  --border-color-strong: #263D5B;
+  --border-focus: #49B6E5;
+
+  --accent-color: #263D5B;
+  --accent-hover: #1D2F48;
+  --accent-active: #142239;
+  --accent-light: rgba(73, 182, 229, 0.18);
+  --accent-lighter: rgba(73, 182, 229, 0.08);
+
+  --accent-secondary: #49B6E5;
+  --accent-secondary-light: rgba(73, 182, 229, 0.22);
+
+  --success-color: #16A34A;
+  --success-light: rgba(22, 163, 74, 0.14);
+  --warning-color: #D97706;
+  --warning-light: rgba(217, 119, 6, 0.15);
+  --error-color: #DC2626;
+  --error-light: rgba(220, 38, 38, 0.13);
+  --info-color: #263D5B;
+  --info-light: rgba(73, 182, 229, 0.18);
+
+  --shadow-xs: 2px 2px 0 rgba(38, 61, 91, 0.12);
+  --shadow-sm: 3px 3px 0 rgba(38, 61, 91, 0.14);
+  --shadow-md: 4px 4px 0 rgba(38, 61, 91, 0.16);
+  --shadow-lg: 5px 5px 0 rgba(38, 61, 91, 0.18);
+  --shadow-xl: 7px 7px 0 rgba(38, 61, 91, 0.2);
+  --shadow-2xl: 9px 9px 0 rgba(38, 61, 91, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(73, 182, 229, 0.35), 3px 3px 0 rgba(38, 61, 91, 0.22);
+  --shadow-paper: 4px 4px 0 rgba(38, 61, 91, 0.16);
+  --shadow-lifted: 7px 7px 0 rgba(38, 61, 91, 0.2);
+
+  --hover-overlay: rgba(73, 182, 229, 0.12);
+  --active-overlay: rgba(38, 61, 91, 0.14);
+  --selected-overlay: rgba(73, 182, 229, 0.22);
+
+  --header-bg: #49B6E5;
+  --header-text: #111827;
+
+  --note-white: #FFFFFF;
+  --note-red: #FFE2E2;
+  --note-orange: #FFE8CC;
+  --note-yellow: #FFF6BF;
+  --note-green: #DCFCE7;
+  --note-teal: #CCFBF1;
+  --note-cyan: #D8F3FF;
+  --note-blue: #DBEAFE;
+  --note-purple: #EDE9FE;
+  --note-pink: #FCE7F3;
+  --note-brown: #F1E3D3;
+  --note-gray: #F3F4F6;
+}
+
+body.doodle-mode::before {
+  background-image:
+    linear-gradient(rgba(73, 182, 229, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(73, 182, 229, 0.13) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 1;
+}
+
+body.doodle-mode .note,
+body.doodle-mode .note-modal,
+body.doodle-mode .sidebar,
+body.doodle-mode .settings-modal,
+body.doodle-mode .auth-box,
+body.doodle-mode .toast {
+  border: 2px solid var(--border-color-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 4px 4px 0 rgba(38, 61, 91, 0.16);
+}
+
+body.doodle-mode button,
+body.doodle-mode input,
+body.doodle-mode textarea,
+body.doodle-mode select {
+  border-radius: var(--radius-md);
+}
+
+body.doodle-mode input,
+body.doodle-mode textarea,
+body.doodle-mode select {
+  border-color: var(--border-color-strong);
+}
+
+body.doodle-mode .note:hover,
+body.doodle-mode .user-name.clickable:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 rgba(38, 61, 91, 0.18);
+}
+
+body.doodle-mode .note-tag,
+body.doodle-mode .tag-pill {
+  border: 1px dashed var(--border-color-strong);
+}
+
+body.doodle-mode .btn-primary,
+body.doodle-mode .btn-secondary,
+body.doodle-mode .auth-button {
+  border: 2px solid var(--border-color-strong);
+  box-shadow: 3px 3px 0 rgba(38, 61, 91, 0.18);
+}
+
+.doodle-mode .App-header {
+  border-bottom: 2px solid var(--border-color-strong);
+  box-shadow: 0 3px 0 rgba(38, 61, 91, 0.22);
+}
+
+.doodle-mode .App-header::after {
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #263D5B 0 18px,
+    #FFFFFF 18px 24px,
+    #D97706 24px 36px,
+    #FFFFFF 36px 42px
+  );
+  opacity: 1;
+}

@@ -10,13 +10,17 @@ function ThemeToggle({ theme, onToggle }) {
     if (theme === 'light') return '☀️'; // Currently light mode
     if (theme === 'dark') return '🌙'; // Currently dark mode
     if (theme === 'oled') return '⚫'; // Currently OLED mode
-    return '📰'; // Currently E-Ink mode
+    if (theme === 'eink') return '📰'; // Currently E-Ink mode
+    if (theme === 'doodle') return '✏️'; // Currently Doodle mode
+    return '☀️';
   };
 
   const getThemeTitle = () => {
     if (theme === 'light') return t('switchToDarkMode');
     if (theme === 'dark') return t('switchToOledMode');
     if (theme === 'oled') return t('switchToEinkMode');
+    if (theme === 'eink') return t('switchToDoodleMode');
+    if (theme === 'doodle') return t('switchToLightMode');
     return t('switchToLightMode');
   };
 
@@ -25,7 +29,7 @@ function ThemeToggle({ theme, onToggle }) {
       className="theme-toggle"
       onClick={onToggle}
       title={getThemeTitle()}
-      aria-label="Toggle theme"
+      aria-label={getThemeTitle()}
     >
       {getThemeIcon()}
     </button>
