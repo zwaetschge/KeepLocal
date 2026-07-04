@@ -115,7 +115,12 @@
 }
 
 .note-modal-title:focus {
-  border-bottom-color: var(--accent-color);
+  border-bottom-color: transparent;
+}
+
+.note-modal-title:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .note-modal-title::placeholder {
@@ -143,6 +148,11 @@
   padding: var(--space-2) 0;
   min-height: 120px;
   overflow: hidden;
+}
+
+.note-modal-content:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .note-modal-content::placeholder {
@@ -1064,7 +1074,7 @@
 
 .eink-mode .note-modal-title {
   color: #000000;
-  border-bottom-color: #000000;
+  border-bottom-color: transparent;
   font-family: 'Georgia', 'Times New Roman', serif;
 }
 
