@@ -1,13 +1,27 @@
-const CACHE_NAME = 'keeplocal-v1';
+const CACHE_NAME = 'keeplocal-v2';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/static/css/main.css',
-  '/static/js/main.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
 ];
+
+function cacheResponse(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') {
+    return response;
+  }
+
+  caches.open(CACHE_NAME)
+    .then(cache => {
+      cache.put(request, response.clone());
+    })
+    .catch(err => {
+      console.log('Cache put skipped:', err.message);
+    });
+
+  return response;
+}
 
 // Install event - cache resources
 self.addEventListener('install', event => {
@@ -43,7 +57,7 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - serve app shell from network first, assets from cache first
 self.addEventListener('fetch', event => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
@@ -73,7 +87,16 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // For other requests, try cache first, then network
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => cacheResponse(event.request, response))
+        .catch(() => caches.match(event.request).then(response => response || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Hashed static assets can be served cache first.
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -81,38 +104,7 @@ self.addEventListener('fetch', event => {
           return response;
         }
 
-        return fetch(event.request).then(response => {
-          // Don't cache non-successful responses or opaque responses
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Only cache http/https requests
-          const requestUrl = new URL(event.request.url);
-          if (!requestUrl.protocol.startsWith('http')) {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            })
-            .catch(err => {
-              // Silently ignore cache errors (e.g., for extension requests)
-              console.log('Cache put skipped:', err.message);
-            });
-
-          return response;
-        });
-      })
-      .catch(() => {
-        // Return offline page for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
+        return fetch(event.request).then(response => cacheResponse(event.request, response));
       })
   );
 });
