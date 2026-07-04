@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
+import './DoodleTheme.css';
 import NoteForm from './components/NoteForm';
 import NoteList from './components/NoteList';
 import SearchBar from './components/SearchBar';
@@ -37,7 +38,7 @@ function AppContent() {
   const [operationLoading, setOperationLoading] = useState({});
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    return savedTheme || 'light'; // 'light', 'dark', 'oled', or 'eink'
+    return savedTheme || 'light'; // 'light', 'dark', 'oled', 'eink', or 'doodle'
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -63,7 +64,7 @@ function AppContent() {
   // Theme anwenden
   useEffect(() => {
     // Remove all theme classes
-    document.body.classList.remove('dark-mode', 'oled-mode', 'eink-mode');
+    document.body.classList.remove('dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode');
 
     // Add appropriate theme class
     if (theme === 'dark') {
@@ -72,6 +73,8 @@ function AppContent() {
       document.body.classList.add('oled-mode');
     } else if (theme === 'eink') {
       document.body.classList.add('eink-mode');
+    } else if (theme === 'doodle') {
+      document.body.classList.add('doodle-mode');
     }
 
     localStorage.setItem('theme', theme);
@@ -282,11 +285,13 @@ function AppContent() {
 
   // Theme umschalten
   const toggleTheme = () => {
-    // Cycle through themes: light -> dark -> oled -> eink -> light
+    // Cycle through themes: light -> dark -> oled -> eink -> doodle -> light
     setTheme(prevTheme => {
       if (prevTheme === 'light') return 'dark';
       if (prevTheme === 'dark') return 'oled';
       if (prevTheme === 'oled') return 'eink';
+      if (prevTheme === 'eink') return 'doodle';
+      if (prevTheme === 'doodle') return 'light';
       return 'light';
     });
   };
