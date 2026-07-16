@@ -26,4 +26,17 @@ test('service worker uses network-first handling before generic cache lookup for
 
 test('service worker cache name is bumped so old app-shell caches are discarded', () => {
   assert.doesNotMatch(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v1['"]/);
+  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v4['"]/);
+});
+
+test('private uploaded images are never stored in the service worker cache', () => {
+  assert.match(serviceWorker, /url\.pathname\.startsWith\(['"]\/uploads\/['"]\)/);
+  assert.match(serviceWorker, /fetch\(event\.request, \{ cache: ['"]no-store['"] \}\)/);
+});
+
+test('service worker keeps cache writes and lifecycle work alive', () => {
+  assert.match(serviceWorker, /async function cacheResponse/);
+  assert.match(serviceWorker, /await cache\.put\(request, response\.clone\(\)\)/);
+  assert.match(serviceWorker, /Promise\.all\(\[precache, self\.skipWaiting\(\)\]\)/);
+  assert.match(serviceWorker, /Promise\.all\(\[cleanup, self\.clients\.claim\(\)\]\)/);
 });

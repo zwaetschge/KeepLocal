@@ -2,6 +2,7 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
 const User = require('../models/User');
+const Settings = require('../models/Settings');
 
 /**
  * Find or create a user from an OAuth profile.
@@ -14,7 +15,7 @@ async function findOrCreateOAuthUser(provider, profile) {
   const avatar = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
 
   // First, try to find by provider + providerId
-  let user = await User.findOne({ provider, providerId });
+  let user = await User.findOne({ provider, providerId }).select('+sessionVersion');
   if (user) {
     // Update avatar if changed
     if (avatar && user.avatar !== avatar) {
@@ -26,8 +27,14 @@ async function findOrCreateOAuthUser(provider, profile) {
 
   // If we have an email, check if a local account exists with that email
   if (email) {
-    user = await User.findOne({ email });
+    user = await User.findOne({ email }).select('+sessionVersion');
     if (user) {
+      const emailEntry = profile.emails?.find(entry => entry.value === email);
+      const emailVerified = emailEntry?.verified === true || profile._json?.email_verified === true;
+      if (!emailVerified) {
+        throw new Error('OAuth email must be verified before linking an existing account');
+      }
+
       // Link OAuth to existing account
       user.provider = provider;
       user.providerId = providerId;
@@ -57,6 +64,15 @@ async function findOrCreateOAuthUser(provider, profile) {
   const userCount = await User.countDocuments();
   const isFirstUser = userCount === 0;
 
+  if (!isFirstUser) {
+    const settings = await Settings.findById('1');
+    if (!settings?.registrationEnabled) {
+      const error = new Error('Registrierung ist derzeit deaktiviert');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   user = new User({
     username,
     email,
@@ -64,6 +80,7 @@ async function findOrCreateOAuthUser(provider, profile) {
     providerId,
     avatar,
     isAdmin: isFirstUser,
+    isBootstrapAdmin: isFirstUser,
   });
 
   await user.save();

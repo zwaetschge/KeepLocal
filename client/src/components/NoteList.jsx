@@ -20,6 +20,7 @@ function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArch
           onDragEnd={onDragEnd}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          operation={operationLoading[note._id]}
         />
       ))}
     </div>

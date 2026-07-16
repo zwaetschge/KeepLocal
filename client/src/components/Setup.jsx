@@ -13,6 +13,9 @@ function Setup({ onSetup }) {
     if (pwd.length < 8) {
       return 'Passwort muss mindestens 8 Zeichen lang sein';
     }
+    if (pwd.length > 128) {
+      return 'Passwort darf maximal 128 Zeichen lang sein';
+    }
     if (!/[a-z]/.test(pwd)) {
       return 'Passwort muss mindestens einen Kleinbuchstaben enthalten';
     }
@@ -105,6 +108,7 @@ function Setup({ onSetup }) {
               placeholder="admin@example.com"
               disabled={loading}
               autoComplete="email"
+              maxLength={254}
               required
             />
           </div>
@@ -121,6 +125,7 @@ function Setup({ onSetup }) {
               autoComplete="new-password"
               required
               minLength={8}
+              maxLength={128}
             />
             <small className="form-hint">
               Mindestens 8 Zeichen, ein Groß- und Kleinbuchstabe, eine Zahl
@@ -138,6 +143,7 @@ function Setup({ onSetup }) {
               disabled={loading}
               autoComplete="new-password"
               required
+              maxLength={128}
             />
           </div>
 

@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Note = require('../models/Note');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
-const { adminService } = require('../services');
+const adminService = require('../services/adminService');
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -42,7 +42,7 @@ router.post('/users', async (req, res) => {
     const normalizedUsername = username?.trim();
 
     // Validation
-    if (!normalizedUsername || !normalizedEmail || !password) {
+    if (!normalizedUsername || !normalizedEmail || typeof password !== 'string') {
       return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
     }
 
@@ -60,8 +60,8 @@ router.post('/users', async (req, res) => {
       return res.status(400).json({ error: 'Ungültige E-Mail-Adresse' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein' });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Passwort muss zwischen 8 und 128 Zeichen lang sein' });
     }
 
     if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
@@ -270,6 +270,10 @@ router.patch('/settings', async (req, res) => {
   try {
     const { registrationEnabled } = req.body;
 
+    if (typeof registrationEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'registrationEnabled muss ein Boolean sein' });
+    }
+
     let settings = await Settings.findById('1');
 
     // Create default settings if they don't exist
@@ -278,9 +282,7 @@ router.patch('/settings', async (req, res) => {
     }
 
     // Update settings
-    if (typeof registrationEnabled === 'boolean') {
-      settings.registrationEnabled = registrationEnabled;
-    }
+    settings.registrationEnabled = registrationEnabled;
 
     await settings.save();
 

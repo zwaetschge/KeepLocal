@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -6,10 +6,16 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install --production
+RUN npm ci --omit=dev
 
 # Copy application files
-COPY . .
+COPY --chown=node:node . .
+
+# Uploaded files must be writable by the unprivileged application user.
+RUN mkdir -p /app/uploads/images /app/uploads/temp \
+    && chown -R node:node /app
+
+USER node
 
 # Expose port
 EXPOSE 5000

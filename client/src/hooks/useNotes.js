@@ -38,7 +38,7 @@ export function useNotes(showToast, t) {
       setLoading(true);
       try {
         const data = await notesAPI.getAll(params);
-        setNotes(data);
+        setNotes(data.notes || []);
       } catch (error) {
         console.error('Failed to fetch notes:', error);
         if (showToast) {

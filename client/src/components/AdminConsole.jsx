@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './AdminConsole.css';
 import { adminAPI } from '../services/api';
@@ -17,11 +17,7 @@ function AdminConsole({ onClose }) {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', isAdmin: false });
 
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -42,7 +38,11 @@ function AdminConsole({ onClose }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, t]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleDeleteUser = async (userId) => {
     setOperationLoading(prev => ({ ...prev, [userId]: 'delete' }));
@@ -253,6 +253,8 @@ function AdminConsole({ onClose }) {
                             onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
                             placeholder={t('usernamePlaceholder')}
                             required
+                            minLength={3}
+                            maxLength={50}
                           />
                         </div>
                         <div className="form-group">
@@ -264,6 +266,7 @@ function AdminConsole({ onClose }) {
                             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                             placeholder={t('emailPlaceholder')}
                             required
+                            maxLength={254}
                           />
                         </div>
                         <div className="form-group">
@@ -275,7 +278,8 @@ function AdminConsole({ onClose }) {
                             onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
                             placeholder={t('passwordPlaceholder')}
                             required
-                            minLength="6"
+                            minLength={8}
+                            maxLength={128}
                           />
                         </div>
                         <div className="form-group checkbox-group">

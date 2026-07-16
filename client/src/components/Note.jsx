@@ -6,7 +6,7 @@ import LinkPreview from './LinkPreview';
 import { sanitize, sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, operation }) {
   const { t } = useLanguage();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -113,6 +113,16 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
         '--note-index': Math.min(index || 0, 15)
       }}
       onClick={() => onOpenModal(note)}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onOpenModal(note);
+        }
+      }}
+      role="article"
+      tabIndex={0}
+      aria-label={note.title || t('note') || 'Notiz'}
+      aria-busy={Boolean(operation)}
       draggable="true"
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -131,6 +141,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
                   type="checkbox"
                   className="note-todo-checkbox"
                   checked={item.completed}
+                  disabled={Boolean(operation)}
                   onChange={(e) => {
                     e.stopPropagation();
                     handleTodoItemToggle(index);
@@ -236,6 +247,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               onTogglePin(note._id);
             }}
             className={`action-btn pin-btn ${note.isPinned ? 'pinned' : ''}`}
+            disabled={Boolean(operation)}
             title={note.isPinned ? t('unpin') : t('pin')}
             aria-label={note.isPinned ? t('unpin') : t('pin')}
           >
@@ -249,6 +261,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               onToggleArchive(note._id);
             }}
             className={`action-btn archive-btn ${note.isArchived ? 'archived' : ''}`}
+            disabled={Boolean(operation)}
             title={note.isArchived ? t('unarchive') : t('archive')}
             aria-label={note.isArchived ? t('unarchive') : t('archive')}
           >
@@ -262,6 +275,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               onOpenCollaborate(note);
             }}
             className="action-btn collaborate-btn"
+            disabled={Boolean(operation)}
             title={t('share')}
             aria-label={t('share')}
           >
@@ -278,6 +292,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               handleDeleteClick();
             }}
             className="action-btn delete-btn"
+            disabled={Boolean(operation)}
             title={t('delete')}
             aria-label={t('delete')}
           >

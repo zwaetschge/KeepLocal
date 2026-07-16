@@ -29,6 +29,24 @@ const IMAGE_SIGNATURES = {
   ]
 };
 
+const AUDIO_SIGNATURES = [
+  buffer => matchesSignature(buffer, [0x49, 0x44, 0x33]), // MP3 with ID3
+  buffer => buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0, // MP3 frame
+  buffer => matchesSignature(buffer, [0x52, 0x49, 0x46, 0x46]) &&
+    matchesSignature(buffer, [0x57, 0x41, 0x56, 0x45], 8), // WAV
+  buffer => matchesSignature(buffer, [0x4f, 0x67, 0x67, 0x53]), // Ogg
+  buffer => matchesSignature(buffer, [0x1a, 0x45, 0xdf, 0xa3]), // WebM/Matroska
+  buffer => matchesSignature(buffer, [0x66, 0x74, 0x79, 0x70], 4) // M4A/MP4
+];
+
+const IMAGE_MIME_FORMATS = new Map([
+  ['image/jpeg', 'jpeg'],
+  ['image/png', 'png'],
+  ['image/gif', 'gif'],
+  ['image/webp', 'webp'],
+  ['image/bmp', 'bmp']
+]);
+
 /**
  * Check if a buffer matches a signature at a given offset
  * @param {Buffer} buffer - File buffer
@@ -55,13 +73,13 @@ function matchesSignature(buffer, signature, offset = 0) {
  * @param {string} filepath - Path to the uploaded file
  * @returns {Promise<boolean>} True if file is a valid image
  */
-async function validateImageFile(filepath) {
+async function detectImageFormat(filepath) {
+  let fileHandle;
   try {
     // Read first 16 bytes of the file (enough for all image signatures)
-    const fileHandle = await fs.open(filepath, 'r');
+    fileHandle = await fs.open(filepath, 'r');
     const buffer = Buffer.alloc(16);
     await fileHandle.read(buffer, 0, 16, 0);
-    await fileHandle.close();
 
     // Check against all known image signatures
     for (const [format, signatures] of Object.entries(IMAGE_SIGNATURES)) {
@@ -72,19 +90,44 @@ async function validateImageFile(filepath) {
         if (mainMatch && sig.extraCheck) {
           const extraMatch = matchesSignature(buffer, sig.extraCheck.signature, sig.extraCheck.offset);
           if (extraMatch) {
-            return true;
+            return format;
           }
         } else if (mainMatch) {
-          return true;
+          return format;
         }
       }
     }
 
     // No matching signature found
-    return false;
+    return null;
   } catch (error) {
     console.error('Error validating file magic number:', error);
+    return null;
+  } finally {
+    await fileHandle?.close().catch(() => {});
+  }
+}
+
+async function validateImageFile(filepath, expectedMimeType = null) {
+  const detectedFormat = await detectImageFormat(filepath);
+  if (!detectedFormat) return false;
+  if (!expectedMimeType) return true;
+  return IMAGE_MIME_FORMATS.get(String(expectedMimeType).toLowerCase()) === detectedFormat;
+}
+
+async function validateAudioFile(filepath) {
+  let fileHandle;
+  try {
+    fileHandle = await fs.open(filepath, 'r');
+    const buffer = Buffer.alloc(16);
+    const { bytesRead } = await fileHandle.read(buffer, 0, buffer.length, 0);
+    const header = buffer.subarray(0, bytesRead);
+    return AUDIO_SIGNATURES.some(matches => matches(header));
+  } catch (error) {
+    console.error('Error validating audio magic number:', error.message);
     return false;
+  } finally {
+    await fileHandle?.close().catch(() => {});
   }
 }
 
@@ -93,12 +136,16 @@ async function validateImageFile(filepath) {
  * @param {Array<string>} filepaths - Array of file paths
  * @returns {Promise<Object>} Object with valid and invalid file paths
  */
-async function validateImageFiles(filepaths) {
+async function validateImageFiles(files) {
   const results = await Promise.all(
-    filepaths.map(async (filepath) => ({
-      filepath,
-      isValid: await validateImageFile(filepath)
-    }))
+    files.map(async (file) => {
+      const filepath = typeof file === 'string' ? file : file.filepath;
+      const mimetype = typeof file === 'string' ? null : file.mimetype;
+      return {
+        filepath,
+        isValid: await validateImageFile(filepath, mimetype)
+      };
+    })
   );
 
   return {
@@ -110,5 +157,7 @@ async function validateImageFiles(filepaths) {
 module.exports = {
   validateImageFile,
   validateImageFiles,
+  validateAudioFile,
+  detectImageFormat,
   IMAGE_SIGNATURES, // Export for testing
 };

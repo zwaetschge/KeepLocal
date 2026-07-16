@@ -3,9 +3,9 @@
  * Business logic for admin operations
  */
 
-const mongoose = require('mongoose');
 const User = require('../models/User');
 const Note = require('../models/Note');
+const ApiKey = require('../models/ApiKey');
 const Settings = require('../models/Settings');
 const { errorMessages } = require('../constants');
 const { deleteNoteImages } = require('./notesService');
@@ -63,75 +63,48 @@ async function createUser(userData) {
  * @returns {Promise<Object>} Deleted user
  */
 async function deleteUser(userId, currentUserId) {
-  if (userId === currentUserId) {
+  if (userId.toString() === currentUserId.toString()) {
     const error = new Error(errorMessages.ADMIN.CANNOT_DELETE_SELF);
     error.statusCode = 400;
     throw error;
   }
 
-  // First, get all notes owned by this user to delete their images
-  // This must be done before starting the transaction since filesystem operations
-  // are not part of the transaction
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
   const userNotes = await Note.find({ userId });
 
-  // Delete all images from filesystem for each note
-  // This happens outside the transaction as it's a filesystem operation
-  await Promise.all(userNotes.map(note => deleteNoteImages(note)));
-
-  // Start a MongoDB session for transaction
-  const session = await mongoose.startSession();
-
-  try {
-    // Start transaction - ensures atomic deletion of user and all references
-    await session.startTransaction();
-
-    const user = await User.findById(userId).session(session);
-    if (!user) {
-      const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
-      error.statusCode = 404;
-      throw error;
-    }
-
-    // Clean up all references to this user to prevent dangling references
-    // All operations happen atomically within the transaction
-    await Promise.all([
-      // Remove user from all friends lists
-      User.updateMany(
+  // The bundled MongoDB runs as a standalone server, where multi-document
+  // transactions are unavailable. Keep files until all database work succeeds;
+  // a failure can leave references to clean up, but never notes with lost files.
+  await User.updateMany(
+    {
+      $or: [
         { friends: userId },
-        { $pull: { friends: userId } },
-        { session }
-      ),
-      // Remove user from all friend request lists
-      User.updateMany(
-        { friendRequests: userId },
-        { $pull: { friendRequests: userId } },
-        { session }
-      ),
-      // Remove user from all sharedWith arrays in notes
-      Note.updateMany(
-        { sharedWith: userId },
-        { $pull: { sharedWith: userId } },
-        { session }
-      ),
-      // Delete all notes owned by this user (after images are deleted)
-      Note.deleteMany({ userId }, { session })
-    ]);
+        { 'friendRequests.from': userId }
+      ]
+    },
+    {
+      $pull: {
+        friends: userId,
+        friendRequests: { from: userId }
+      }
+    }
+  );
+  await Note.updateMany(
+    { sharedWith: userId },
+    { $pull: { sharedWith: userId } }
+  );
+  await ApiKey.deleteMany({ userId });
+  await Note.deleteMany({ userId });
+  await User.findByIdAndDelete(userId);
 
-    // Finally delete the user
-    await User.findByIdAndDelete(userId, { session });
-
-    // Commit transaction
-    await session.commitTransaction();
-
-    return user;
-  } catch (error) {
-    // Rollback transaction on error
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    // End session
-    session.endSession();
-  }
+  await Promise.all(userNotes.map(note => deleteNoteImages(note)));
+  return user;
 }
 
 /**

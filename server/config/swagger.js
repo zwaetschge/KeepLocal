@@ -13,7 +13,7 @@ Externe API für den Zugriff auf deine KeepLocal-Notizen von Scripts, Apps und A
 
 ### Authentifizierung
 
-Alle API-Endpunkte erfordern einen **API-Key**. Erstelle einen Key über die Web-Oberfläche unter Einstellungen → API-Keys, oder nutze den JWT-authentifizierten Endpunkt \`POST /api/api-keys\`.
+Alle externen API-Endpunkte erfordern einen **API-Key**. Erstelle einen Key über die angemeldete Web-Oberfläche unter Einstellungen → API-Keys.
 
 Sende den Key im \`X-API-Key\` Header:
 
@@ -56,12 +56,6 @@ Alle Fehler folgen dem gleichen Format:
           in: 'header',
           name: 'X-API-Key',
           description: 'API-Key für externen Zugriff. Erstelle einen Key unter Einstellungen → API-Keys.'
-        },
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description: 'JWT-Token aus dem Login-Endpunkt'
         }
       }
     },
@@ -80,7 +74,7 @@ Alle Fehler folgen dem gleichen Format:
       },
       {
         name: 'API Keys',
-        description: 'API-Keys verwalten (erfordert JWT-Auth aus der Web-Oberfläche)'
+        description: 'API-Keys verwalten (erfordert eine angemeldete Browser-Session)'
       }
     ]
   },

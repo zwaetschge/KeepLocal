@@ -44,7 +44,9 @@ const authenticateApiKey = async (req, res, next) => {
     }
 
     // Update last used timestamp (fire and forget)
-    ApiKey.updateOne({ _id: keyDoc._id }, { lastUsedAt: new Date() }).exec();
+    ApiKey.updateOne({ _id: keyDoc._id }, { lastUsedAt: new Date() })
+      .exec()
+      .catch(error => console.error('Failed to update API key usage timestamp:', error.message));
 
     req.user = user;
     req.apiKey = keyDoc;

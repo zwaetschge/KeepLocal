@@ -10,7 +10,7 @@ function readClientFile(...parts) {
 }
 
 test('theme cycle includes doodle mode after e-ink and applies the body class', () => {
-  const app = readClientFile('src/App.js');
+  const app = readClientFile('src/App.jsx');
 
   assert.match(app, /savedTheme \|\| 'light'; \/\/ 'light', 'dark', 'oled', 'eink', or 'doodle'/);
   assert.match(app, /classList\.remove\('dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode'\)/);
@@ -21,7 +21,7 @@ test('theme cycle includes doodle mode after e-ink and applies the body class', 
 });
 
 test('theme toggle exposes doodle as a first-class selectable theme', () => {
-  const toggle = readClientFile('src/components/ThemeToggle.js');
+  const toggle = readClientFile('src/components/ThemeToggle.jsx');
   const en = readClientFile('src/translations/en.js');
   const de = readClientFile('src/translations/de.js');
 
@@ -35,15 +35,16 @@ test('theme toggle exposes doodle as a first-class selectable theme', () => {
 
 test('doodle theme defines accessible doodle tokens and handwritten typography', () => {
   const css = readClientFile('src/DoodleTheme.css');
-  const app = readClientFile('src/App.js');
+  const app = readClientFile('src/App.jsx');
+  const entry = readClientFile('src/index.jsx');
 
-  assert.match(css, /family=Delius\+Swash\+Caps/);
-  assert.match(css, /family=JetBrains\+Mono/);
+  assert.match(entry, /@fontsource\/delius-swash-caps/);
+  assert.match(entry, /@fontsource-variable\/jetbrains-mono/);
   assert.match(app, /import '\.\/DoodleTheme\.css'/);
   assert.match(css, /body\.doodle-mode\s*\{/);
   assert.match(css, /--font-display:\s*'Delius Swash Caps'/);
   assert.match(css, /--font-body:\s*'Delius Swash Caps'/);
-  assert.match(css, /--font-mono:\s*'JetBrains Mono'/);
+  assert.match(css, /--font-mono:\s*'JetBrains Mono Variable'/);
   assert.match(css, /--text-primary:\s*#111827/);
   assert.match(css, /--border-focus:\s*#49B6E5/);
   assert.match(css, /--accent-color:\s*#263D5B/);

@@ -443,10 +443,17 @@
   transform: translateY(6px);
 }
 
-.note:hover .note-hover-actions {
+.note:hover .note-hover-actions,
+.note:focus .note-hover-actions,
+.note:focus-within .note-hover-actions {
   opacity: 1;
   border-top-color: var(--border-color);
   transform: translateY(0);
+}
+
+.note:focus-visible {
+  outline: 3px solid var(--focus-color, #1a73e8);
+  outline-offset: 3px;
 }
 
 .action-btn {

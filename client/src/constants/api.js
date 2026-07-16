@@ -1,5 +1,10 @@
-// API Base URL configuration
-export const API_BASE_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000');
+// API endpoints below already include /api. Accept both an origin and an
+// accidentally /api-suffixed base URL without ever producing /api/api.
+const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
+export const API_BASE_URL = configuredApiUrl
+  .trim()
+  .replace(/\/+$/, '')
+  .replace(/\/api$/, '');
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -8,6 +13,7 @@ export const API_ENDPOINTS = {
     SETUP_NEEDED: '/api/auth/setup-needed',
     REGISTER: '/api/auth/register',
     LOGIN: '/api/auth/login',
+    LOGOUT: '/api/auth/logout',
     ME: '/api/auth/me',
     CSRF_TOKEN: '/api/csrf-token',
     PROVIDERS: '/api/auth/providers',

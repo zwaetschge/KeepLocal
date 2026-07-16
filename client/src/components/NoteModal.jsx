@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import './NoteModal.css';
 import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
+import ConfirmDialog from './ConfirmDialog';
 import { getColorVar } from '../utils/colorMapper';
 import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 import notesAPI from '../services/api/notesAPI';
@@ -24,13 +25,24 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const [lightboxImage, setLightboxImage] = useState(null); // {index, url}
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const contentTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
 
+  useEffect(() => () => {
+    if (mediaRecorderRef.current?.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
+
   // Custom hooks for link preview and todo list management
-  const { linkPreviews, setLinkPreviews, fetchingPreview } = useLinkPreview(content, !isTodoList);
+  const { linkPreviews, setLinkPreviews } = useLinkPreview(content, !isTodoList);
   const {
     todoItems,
     setTodoItems,
@@ -82,7 +94,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   }, [note, isTodoList]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     // Validate based on mode
     if (isTodoList) {
       if (todoItems.length === 0 || todoItems.every((item) => !item.text.trim())) {
@@ -100,8 +113,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       const newTags = tagInput
         .split(',')
         .map((tag) => tag.trim())
-        .filter((tag) => tag !== '' && !finalTags.includes(tag));
-      finalTags = [...finalTags, ...newTags];
+        .filter((tag) => /^[a-zA-Z0-9äöüÄÖÜß\-_]{1,50}$/.test(tag) && !finalTags.includes(tag));
+      finalTags = [...finalTags, ...newTags].slice(0, 50);
     }
 
     const noteData = {
@@ -115,8 +128,13 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       linkPreviews: linkPreviews || [],
     };
 
-    onSave(noteData);
-    onClose();
+    setIsSaving(true);
+    try {
+      const savedNote = await onSave(noteData);
+      if (savedNote) onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Handle tag input
@@ -134,10 +152,10 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     const newTags = tagInput
       .split(',')
       .map((tag) => tag.trim())
-      .filter((tag) => tag !== '' && !tags.includes(tag));
+      .filter((tag) => /^[a-zA-Z0-9äöüÄÖÜß\-_]{1,50}$/.test(tag) && !tags.includes(tag));
 
     if (newTags.length > 0) {
-      setTags([...tags, ...newTags]);
+      setTags([...tags, ...newTags].slice(0, 50));
       setTagInput('');
     }
   };
@@ -176,12 +194,14 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
   // Add todo item handler (using the hook's internal logic via setTodoItems)
   const handleAddTodoItem = () => {
+    if (todoItems.length >= 200) return;
     setTodoItems([...todoItems, { text: '', completed: false, order: todoItems.length }]);
   };
 
   // Image upload handlers
   const handleImageSelect = (e) => {
-    const files = Array.from(e.target.files || []);
+    const remainingSlots = Math.max(0, Math.min(5, 25 - images.length - newImageFiles.length));
+    const files = Array.from(e.target.files || []).slice(0, remainingSlots);
     if (files.length > 0) {
       setNewImageFiles([...newImageFiles, ...files]);
     }
@@ -231,24 +251,25 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     setLightboxImage(null);
   };
 
-  const nextImage = () => {
+  const nextImage = useCallback(() => {
     if (lightboxImage && images.length > 0) {
       const nextIndex = (lightboxImage.index + 1) % images.length;
       setLightboxImage({ index: nextIndex, url: images[nextIndex].url });
     }
-  };
+  }, [lightboxImage, images]);
 
-  const prevImage = () => {
+  const prevImage = useCallback(() => {
     if (lightboxImage && images.length > 0) {
       const prevIndex = (lightboxImage.index - 1 + images.length) % images.length;
       setLightboxImage({ index: prevIndex, url: images[prevIndex].url });
     }
-  };
+  }, [lightboxImage, images]);
 
   // Voice recording handlers
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -262,6 +283,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         stream.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
 
         // Automatically transcribe after recording stops
         await handleTranscribe(audioBlob);
@@ -301,7 +323,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       if (transcription && transcription.text) {
         setContent(prevContent => {
           const separator = prevContent.trim() ? '\n\n' : '';
-          return prevContent + separator + transcription.text;
+          return (prevContent + separator + transcription.text).slice(0, 10000);
         });
 
         // Force textarea to resize after content update
@@ -351,7 +373,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxImage, images]);
+  }, [lightboxImage, nextImage, prevImage]);
 
   // Auto-save when clicking outside the modal
   const handleOverlayClick = () => {
@@ -367,7 +389,18 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   };
 
   // Keyboard shortcuts for modal
-  useModalShortcuts(handleOverlayClick, handleSave);
+  useModalShortcuts(
+    () => {
+      if (showDeleteConfirm) {
+        setShowDeleteConfirm(false);
+        return;
+      }
+      handleOverlayClick();
+    },
+    () => {
+      if (!showDeleteConfirm) handleSave();
+    }
+  );
 
   return (
     <div className="note-modal-overlay" onClick={handleOverlayClick}>
@@ -394,6 +427,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             placeholder={t('title')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
             autoFocus={!isTodoList}
           />
 
@@ -414,6 +448,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                     value={item.text}
                     onChange={(e) => handleTodoItemChange(index, e.target.value)}
                     onKeyDown={(e) => handleTodoItemKeyDown(e, index)}
+                    maxLength={500}
                     autoFocus={index === todoItems.length - 1}
                   />
                   <button
@@ -448,6 +483,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               placeholder={t('enterNote')}
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              maxLength={10000}
             />
           )}
 
@@ -551,6 +587,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleTagInputKeyDown}
               onBlur={addTagFromInput}
+              maxLength={50}
             />
           </div>
         </div>
@@ -577,11 +614,18 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               <button
                 type="button"
                 className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  onToggleArchive(note._id);
-                  onClose();
+                  if (isSaving) return;
+                  setIsSaving(true);
+                  try {
+                    const updated = await onToggleArchive(note._id);
+                    if (updated) onClose();
+                  } finally {
+                    setIsSaving(false);
+                  }
                 }}
+                disabled={isSaving}
                 title={note.isArchived ? t('unarchive') : t('archive')}
                 aria-label={note.isArchived ? t('unarchive') : t('archive')}
               >
@@ -688,9 +732,9 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 className="btn-modal-delete"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(note._id);
-                  onClose();
+                  setShowDeleteConfirm(true);
                 }}
+                disabled={isSaving}
                 title={t('delete')}
                 aria-label={t('delete')}
               >
@@ -704,13 +748,14 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             <button
               className="btn-modal-cancel"
               onClick={onClose}
+              disabled={isSaving}
             >
               {t('cancel')}
             </button>
             <button
               className="btn-modal-save"
               onClick={handleSave}
-              disabled={isTodoList ? (todoItems.length === 0 || todoItems.every(item => !item.text.trim())) : !content.trim()}
+              disabled={isSaving || (isTodoList ? (todoItems.length === 0 || todoItems.every(item => !item.text.trim())) : !content.trim())}
             >
               {t('save')}
             </button>
@@ -753,6 +798,24 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title={t('confirmDeleteNoteTitle')}
+        message={t('confirmDeleteMessage')}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={async () => {
+          if (isSaving) return;
+          setIsSaving(true);
+          try {
+            const deleted = await onDelete(note._id);
+            if (deleted) onClose();
+          } finally {
+            setIsSaving(false);
+            setShowDeleteConfirm(false);
+          }
+        }}
+      />
     </div>
   );
 }

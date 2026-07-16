@@ -109,10 +109,12 @@ export const sanitizeHTML = (html) => {
   });
 };
 
-export default {
+const sanitizeUtils = {
   sanitize,
   sanitizeHTML,
   linkify,
   sanitizeAndLinkify,
   parseTodos
 };
+
+export default sanitizeUtils;

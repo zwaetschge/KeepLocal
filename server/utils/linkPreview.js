@@ -5,6 +5,7 @@ const dns = require('dns').promises;
 const net = require('net');
 
 const MAX_REDIRECTS = 3;
+const MAX_RESPONSE_BYTES = 100000;
 
 const createValidationError = (message) => {
   const error = new Error(message);
@@ -12,28 +13,46 @@ const createValidationError = (message) => {
   return error;
 };
 
-const isPrivateIp = (ip) => {
+const normalizeIp = (ip) => String(ip).replace(/^\[|\]$/g, '').toLowerCase();
+
+const mappedIpv4 = (ip) => {
+  const dotted = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (dotted) return dotted[1];
+
+  const hexadecimal = ip.match(/^::ffff:([a-f\d]{1,4}):([a-f\d]{1,4})$/i);
+  if (!hexadecimal) return null;
+  const value = (parseInt(hexadecimal[1], 16) * 65536) + parseInt(hexadecimal[2], 16);
+  return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255].join('.');
+};
+
+const isBlockedIp = (rawIp) => {
+  const ip = normalizeIp(rawIp);
   const type = net.isIP(ip);
   if (type === 4) {
     const parts = ip.split('.').map(Number);
-    if (parts[0] === 10) return true;
-    if (parts[0] === 127) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+    const [a, b, c] = parts;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) return true;
+    if (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) return true;
+    if (a === 203 && b === 0 && c === 113) return true;
+    if (a >= 224) return true;
     return false;
   }
 
   if (type === 6) {
-    const normalized = ip.toLowerCase();
-    if (normalized === '::1') return true;
-    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // Unique local
-    if (normalized.startsWith('fe80')) return true; // Link-local
-    return false;
+    const mapped = mappedIpv4(ip);
+    if (mapped) return isBlockedIp(mapped);
+    if (ip === '::' || ip === '::1' || ip.startsWith('2001:db8:')) return true;
+
+    // Public IPv6 unicast is 2000::/3. Reject all special-purpose ranges.
+    const firstGroup = parseInt(ip.split(':')[0], 16);
+    return !Number.isInteger(firstGroup) || firstGroup < 0x2000 || firstGroup > 0x3fff;
   }
 
-  return false;
+  return true;
 };
 
 async function validateUrlSafety(parsedUrl) {
@@ -45,27 +64,33 @@ async function validateUrlSafety(parsedUrl) {
     throw createValidationError('Ungültige URL');
   }
 
-  if (parsedUrl.hostname === 'localhost') {
+  if (parsedUrl.username || parsedUrl.password) {
+    throw createValidationError('URLs mit eingebetteten Zugangsdaten sind nicht erlaubt');
+  }
+
+  const hostname = normalizeIp(parsedUrl.hostname);
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw createValidationError('Lokale Adressen sind nicht erlaubt');
   }
 
-  const hostIsIp = net.isIP(parsedUrl.hostname);
+  const hostIsIp = net.isIP(hostname);
   if (hostIsIp) {
-    if (isPrivateIp(parsedUrl.hostname)) {
+    if (isBlockedIp(hostname)) {
       throw createValidationError('Private IP-Adressen sind nicht erlaubt');
     }
-    return;
+    return { address: hostname, family: hostIsIp };
   }
 
   try {
-    const addresses = await dns.lookup(parsedUrl.hostname, { all: true });
+    const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
     if (!addresses.length) {
       throw createValidationError('Host konnte nicht aufgelöst werden');
     }
 
-    if (addresses.some(addr => isPrivateIp(addr.address))) {
+    if (addresses.some(addr => isBlockedIp(addr.address))) {
       throw createValidationError('Private IP-Adressen sind nicht erlaubt');
     }
+    return addresses[0];
   } catch (error) {
     if (error.statusCode) {
       throw error;
@@ -81,14 +106,31 @@ async function validateUrlSafety(parsedUrl) {
  */
 async function fetchLinkPreview(url, redirectCount = 0) {
   try {
-    const parsedUrl = new URL(url);
-    await validateUrlSafety(parsedUrl);
+    if (typeof url !== 'string' || url.length > 2048) {
+      throw createValidationError('URL ist ungueltig oder zu lang');
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch (_) {
+      throw createValidationError('Ungueltige URL');
+    }
+    const resolvedAddress = await validateUrlSafety(parsedUrl);
 
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
     const options = {
       method: 'GET',
       timeout: 5000,
+      lookup: (hostname, options, callback) => {
+        const done = typeof options === 'function' ? options : callback;
+        const lookupOptions = typeof options === 'object' ? options : {};
+        if (lookupOptions.all) {
+          return done(null, [resolvedAddress]);
+        }
+        return done(null, resolvedAddress.address, resolvedAddress.family);
+      },
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; KeepLocalBot/1.0; +http://localhost:3000)',
         'Accept': 'text/html,application/xhtml+xml'
@@ -100,11 +142,13 @@ async function fetchLinkPreview(url, redirectCount = 0) {
         // Handle redirects securely and with a limit
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           if (redirectCount >= MAX_REDIRECTS) {
+            response.resume();
             return reject(createValidationError('Zu viele Weiterleitungen'));
           }
 
           try {
             const redirectUrl = new URL(response.headers.location, parsedUrl);
+            response.resume();
             return fetchLinkPreview(redirectUrl.toString(), redirectCount + 1)
               .then(resolve)
               .catch(reject);
@@ -114,23 +158,37 @@ async function fetchLinkPreview(url, redirectCount = 0) {
         }
 
         if (response.statusCode !== 200) {
+          response.resume();
           return reject(new Error(`HTTP ${response.statusCode}`));
         }
 
+        const contentType = response.headers['content-type'] || '';
+        if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
+          response.resume();
+          return reject(createValidationError('URL liefert kein HTML-Dokument'));
+        }
+
         let html = '';
+        let receivedBytes = 0;
+        let completed = false;
         response.setEncoding('utf8');
 
         response.on('data', (chunk) => {
-          html += chunk;
-          // Stop after getting enough data for meta tags (usually in first ~50KB)
-          if (html.length > 100000) {
+          receivedBytes += Buffer.byteLength(chunk, 'utf8');
+          if (receivedBytes > MAX_RESPONSE_BYTES) {
+            completed = true;
             response.destroy();
+            reject(createValidationError('HTML-Antwort ist zu gross'));
+            return;
           }
+          html += chunk;
         });
 
         response.on('end', () => {
+          if (completed) return;
+          completed = true;
           try {
-            const metadata = parseOpenGraphTags(html, url);
+            const metadata = parseOpenGraphTags(html, parsedUrl.toString());
             resolve(metadata);
           } catch (error) {
             reject(error);
@@ -185,10 +243,12 @@ function parseOpenGraphTags(html, url) {
                        html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*property=["']og:image["']/i);
   if (ogImageMatch) {
     metadata.image = ogImageMatch[1];
-    // Make relative URLs absolute
-    if (metadata.image && !metadata.image.startsWith('http')) {
+    try {
       const parsedUrl = new URL(url);
-      metadata.image = new URL(metadata.image, parsedUrl.origin).href;
+      const imageUrl = new URL(metadata.image, parsedUrl);
+      metadata.image = ['http:', 'https:'].includes(imageUrl.protocol) ? imageUrl.href : '';
+    } catch (_) {
+      metadata.image = '';
     }
   }
 
@@ -225,6 +285,11 @@ function parseOpenGraphTags(html, url) {
     }
   }
 
+  metadata.title = metadata.title.slice(0, 200);
+  metadata.description = metadata.description.slice(0, 500);
+  metadata.siteName = metadata.siteName.slice(0, 100);
+  metadata.image = metadata.image.slice(0, 2048);
+
   return metadata;
 }
 
@@ -243,4 +308,9 @@ function decodeHtmlEntities(text) {
     .replace(/&apos;/g, "'");
 }
 
-module.exports = { fetchLinkPreview };
+module.exports = {
+  fetchLinkPreview,
+  isBlockedIp,
+  validateUrlSafety,
+  parseOpenGraphTags
+};

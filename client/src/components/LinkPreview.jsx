@@ -16,8 +16,23 @@ function LinkPreview({ preview, onRemove }) {
     }
   };
 
+  const handleKeyDown = (event) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleClick(event);
+    }
+  };
+
   return (
-    <div className="link-preview" onClick={handleClick}>
+    <div
+      className="link-preview"
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="link"
+      tabIndex={0}
+      aria-label={title || siteName || url}
+    >
       {image && (
         <div className="link-preview-image-container">
           <img

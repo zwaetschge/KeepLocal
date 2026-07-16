@@ -1,10 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const passport = require('passport');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
-const { generateToken, authenticateToken } = require('../middleware/auth');
+const {
+  generateToken,
+  authenticateToken,
+  optionalAuth,
+  setAuthCookie,
+  clearAuthCookie,
+  authCookieOptions
+} = require('../middleware/auth');
+const { clearCsrfCookie } = require('../middleware/csrfProtection');
+const { publicValidationErrors } = require('../utils/validationErrors');
+const { getClientURL } = require('../utils/clientUrl');
+
+const OAUTH_STATE_COOKIE = 'kl_oauth_state';
+const DUMMY_PASSWORD_HASH = '$2a$10$DOhqVvnjClITTjb5w5ae/exBwouYnqW5CmBHs1IPa3CH1LrXLpB3S';
 
 // Validation error handler
 const handleValidationErrors = (req, res, next) => {
@@ -12,7 +27,7 @@ const handleValidationErrors = (req, res, next) => {
   if (!errors.isEmpty()) {
     return res.status(400).json({
       error: 'Validierungsfehler',
-      details: errors.array()
+      details: publicValidationErrors(errors)
     });
   }
   next();
@@ -60,6 +75,7 @@ router.get('/registration-status', async (req, res) => {
 // POST /api/auth/register - Neuen Benutzer registrieren
 router.post('/register', [
   body('username')
+    .isString()
     .trim()
     .isLength({ min: 3, max: 50 })
     .withMessage('Benutzername muss zwischen 3 und 50 Zeichen lang sein')
@@ -67,14 +83,16 @@ router.post('/register', [
     .withMessage('Benutzername darf nur Buchstaben, Zahlen, Bindestriche und Unterstriche enthalten'),
 
   body('email')
+    .isString()
     .trim()
     .isEmail()
     .withMessage('Ungültige E-Mail-Adresse')
     .normalizeEmail(),
 
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Passwort muss mindestens 8 Zeichen lang sein')
+    .isString()
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Passwort muss zwischen 8 und 128 Zeichen lang sein')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Passwort muss mindestens einen Kleinbuchstaben, einen Großbuchstaben und eine Zahl enthalten'),
 
@@ -110,12 +128,7 @@ router.post('/register', [
     });
 
     if (existingUser) {
-      if (existingUser.email === email) {
-        return res.status(409).json({ error: 'E-Mail-Adresse bereits registriert' });
-      }
-      if (existingUser.username === username) {
-        return res.status(409).json({ error: 'Benutzername bereits vergeben' });
-      }
+      return res.status(409).json({ error: 'Benutzername oder E-Mail-Adresse bereits vergeben' });
     }
 
     // Neuen Benutzer erstellen
@@ -123,17 +136,18 @@ router.post('/register', [
       username,
       email,
       password,
-      isAdmin: isFirstUser
+      isAdmin: isFirstUser,
+      isBootstrapAdmin: isFirstUser
     });
 
     await user.save();
 
     // Token generieren
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.sessionVersion);
+    setAuthCookie(res, token);
 
     res.status(201).json({
       message: 'Registrierung erfolgreich',
-      token,
       user: {
         id: user._id,
         username: user.username,
@@ -142,6 +156,9 @@ router.post('/register', [
       }
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'Benutzername oder E-Mail-Adresse bereits vergeben' });
+    }
     if (error.name === 'ValidationError') {
       return res.status(400).json({ error: error.message });
     }
@@ -152,14 +169,16 @@ router.post('/register', [
 // POST /api/auth/login - Benutzer anmelden
 router.post('/login', [
   body('email')
+    .isString()
     .trim()
     .isEmail()
     .withMessage('Ungültige E-Mail-Adresse')
     .normalizeEmail(),
 
   body('password')
-    .notEmpty()
-    .withMessage('Passwort ist erforderlich'),
+    .isString()
+    .isLength({ min: 1, max: 128 })
+    .withMessage('Passwort ist erforderlich und darf maximal 128 Zeichen lang sein'),
 
   handleValidationErrors
 ], async (req, res, next) => {
@@ -167,33 +186,19 @@ router.post('/login', [
     const { email, password } = req.body;
 
     // Benutzer finden
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+sessionVersion');
+    const isPasswordValid = await bcrypt.compare(password, user?.password || DUMMY_PASSWORD_HASH);
 
-    if (!user) {
-      return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
-    }
-
-    // OAuth-only users cannot login with password
-    if (user.provider !== 'local' && !user.password) {
-      const providerName = user.provider.charAt(0).toUpperCase() + user.provider.slice(1);
-      return res.status(401).json({
-        error: `Dieses Konto verwendet ${providerName}-Anmeldung. Bitte nutzen Sie den ${providerName}-Button.`
-      });
-    }
-
-    // Passwort prüfen
-    const isPasswordValid = await user.comparePassword(password);
-
-    if (!isPasswordValid) {
+    if (!user || !user.password || !isPasswordValid) {
       return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
     }
 
     // Token generieren
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.sessionVersion);
+    setAuthCookie(res, token);
 
     res.json({
       message: 'Anmeldung erfolgreich',
-      token,
       user: {
         id: user._id,
         username: user.username,
@@ -221,10 +226,23 @@ router.get('/me', authenticateToken, async (req, res) => {
   });
 });
 
-// POST /api/auth/logout - Benutzer abmelden (Client muss Token löschen)
-router.post('/logout', (req, res) => {
-  // Bei Token-basierter Auth muss Client das Token löschen
-  res.json({ message: 'Erfolgreich abgemeldet' });
+// POST /api/auth/logout - Browser session and all copies of its JWT are revoked.
+router.post('/logout', optionalAuth, async (req, res, next) => {
+  try {
+    if (req.user) {
+      await User.updateOne(
+        { _id: req.user._id, sessionVersion: req.user.sessionVersion },
+        { $inc: { sessionVersion: 1 } }
+      );
+    }
+    clearAuthCookie(res);
+    clearCsrfCookie(res);
+    res.json({ message: 'Erfolgreich abgemeldet' });
+  } catch (error) {
+    clearAuthCookie(res);
+    clearCsrfCookie(res);
+    next(error);
+  }
 });
 
 // GET /api/auth/providers - Return which OAuth providers are configured
@@ -237,26 +255,58 @@ router.get('/providers', (req, res) => {
   });
 });
 
-// Determine the frontend URL for OAuth redirects
-function getClientURL(req) {
-  // Use explicit env var if set, otherwise derive from the request's Origin/Referer
-  if (process.env.CLIENT_URL) return process.env.CLIENT_URL;
-  const origin = req.headers.origin || req.headers.referer;
-  if (origin) {
-    try {
-      const url = new URL(origin);
-      return url.origin;
-    } catch (_) { /* ignore */ }
-  }
-  return 'http://localhost:3000';
-}
-
 // OAuth callback handler — generates JWT and redirects to frontend
 function handleOAuthCallback(req, res) {
-  const token = generateToken(req.user._id);
+  const token = generateToken(req.user._id, req.user.sessionVersion);
+  setAuthCookie(res, token);
   const clientURL = getClientURL(req);
-  // Redirect to frontend with token as query param; the frontend will store it
-  res.redirect(`${clientURL}/oauth/callback?token=${encodeURIComponent(token)}`);
+  res.redirect(`${clientURL}/oauth/callback#success=1`);
+}
+
+function authenticateOAuthCallback(provider, errorCode) {
+  return (req, res, next) => passport.authenticate(
+    provider,
+    { session: false },
+    (error, user) => {
+      if (error || !user) {
+        return res.redirect(`${getClientURL(req)}/oauth/callback?error=${errorCode}`);
+      }
+      req.user = user;
+      return handleOAuthCallback(req, res);
+    }
+  )(req, res, next);
+}
+
+function oauthStateCookieOptions(req) {
+  return {
+    ...authCookieOptions(null, req.secure),
+    maxAge: 10 * 60 * 1000
+  };
+}
+
+function issueOAuthState(req, res, next) {
+  req.oauthState = crypto.randomBytes(32).toString('hex');
+  res.cookie(OAUTH_STATE_COOKIE, req.oauthState, oauthStateCookieOptions(req));
+  next();
+}
+
+function validateOAuthState(req, res, next) {
+  const expected = req.cookies?.[OAUTH_STATE_COOKIE];
+  const actual = req.query.state;
+  const clearOptions = oauthStateCookieOptions(req);
+  delete clearOptions.maxAge;
+  res.clearCookie(OAUTH_STATE_COOKIE, clearOptions);
+
+  if (
+    typeof expected !== 'string' ||
+    typeof actual !== 'string' ||
+    expected.length !== actual.length ||
+    !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(actual))
+  ) {
+    return res.redirect(`${getClientURL(req)}/oauth/callback?error=invalid_oauth_state`);
+  }
+
+  return next();
 }
 
 // --- Google OAuth ---
@@ -267,12 +317,17 @@ router.get('/google',
     }
     next();
   },
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+  issueOAuthState,
+  (req, res, next) => passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+    state: req.oauthState
+  })(req, res, next)
 );
 
 router.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/oauth/callback?error=google_auth_failed' }),
-  handleOAuthCallback
+  validateOAuthState,
+  authenticateOAuthCallback('google', 'google_auth_failed')
 );
 
 // --- GitHub OAuth ---
@@ -283,12 +338,17 @@ router.get('/github',
     }
     next();
   },
-  passport.authenticate('github', { scope: ['user:email'], session: false })
+  issueOAuthState,
+  (req, res, next) => passport.authenticate('github', {
+    scope: ['user:email'],
+    session: false,
+    state: req.oauthState
+  })(req, res, next)
 );
 
 router.get('/github/callback',
-  passport.authenticate('github', { session: false, failureRedirect: '/oauth/callback?error=github_auth_failed' }),
-  handleOAuthCallback
+  validateOAuthState,
+  authenticateOAuthCallback('github', 'github_auth_failed')
 );
 
 module.exports = router;

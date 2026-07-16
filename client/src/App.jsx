@@ -24,7 +24,7 @@ import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
 
 function AppContent() {
-  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup, loginWithOAuthToken } = useAuth();
+  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup, completeOAuthLogin } = useAuth();
   const { t } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +35,8 @@ function AppContent() {
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
+  const [noteCounts, setNoteCounts] = useState({ active: 0, archived: 0 });
+  const [allTags, setAllTags] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -50,6 +52,7 @@ function AppContent() {
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
+  const fetchSequenceRef = useRef(0);
 
   // Initialize CSRF token on mount
   useEffect(() => {
@@ -83,6 +86,7 @@ function AppContent() {
   // Notizen vom Server laden
   const fetchNotes = useCallback(async (search = '', page = 1) => {
     if (!isLoggedIn) return;
+    const requestSequence = ++fetchSequenceRef.current;
 
     try {
       setLoading(true);
@@ -95,33 +99,39 @@ function AppContent() {
       if (selectedTag) params.tag = selectedTag;
 
       const response = await notesAPI.getAll(params);
+      if (requestSequence !== fetchSequenceRef.current) return;
       setNotes(response.notes || []);
       setPagination(response.pagination || { page: 1, limit: 50, total: 0, pages: 0 });
+      setNoteCounts(response.counts || { active: 0, archived: 0 });
+      setAllTags(response.tags || []);
     } catch (error) {
+      if (requestSequence !== fetchSequenceRef.current) return;
       console.error('Fehler beim Laden der Notizen:', error);
       showToast(error.message || 'Fehler beim Laden der Notizen', 'error');
     } finally {
-      setLoading(false);
+      if (requestSequence === fetchSequenceRef.current) setLoading(false);
     }
   }, [isLoggedIn, showToast, showArchived, selectedTag]);
 
   // Notizen laden wenn eingeloggt, showArchived oder selectedTag ändert
   useEffect(() => {
     if (isLoggedIn && !authLoading) {
-      fetchNotes();
+      fetchNotes(searchTerm);
     }
-  }, [isLoggedIn, authLoading, showArchived, selectedTag, fetchNotes]);
+  }, [isLoggedIn, authLoading, showArchived, selectedTag, searchTerm, fetchNotes]);
 
   // Neue Notiz erstellen
   const createNote = async (noteData) => {
     setOperationLoading(prev => ({ ...prev, create: true }));
     try {
       const response = await notesAPI.create(noteData);
-      setNotes(prev => [response, ...prev]);
+      await fetchNotes(searchTerm, 1);
       showToast('Notiz erfolgreich erstellt', 'success');
+      return response;
     } catch (error) {
       console.error('Fehler beim Erstellen der Notiz:', error);
       showToast(error.message || 'Fehler beim Erstellen der Notiz', 'error');
+      return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, create: false }));
     }
@@ -132,11 +142,14 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
       await notesAPI.delete(id);
-      setNotes(prev => prev.filter(note => note._id !== id));
+      const nextPage = notes.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page;
+      await fetchNotes(searchTerm, nextPage);
       showToast('Notiz gelöscht', 'success');
+      return true;
     } catch (error) {
       console.error('Fehler beim Löschen der Notiz:', error);
       showToast(error.message || 'Fehler beim Löschen der Notiz', 'error');
+      return false;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
@@ -147,11 +160,13 @@ function AppContent() {
     setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
     try {
       const response = await notesAPI.update(id, updatedData);
-      setNotes(prev => prev.map(note => note._id === id ? response : note));
+      await fetchNotes(searchTerm, pagination.page);
       showToast('Notiz aktualisiert', 'success');
+      return response;
     } catch (error) {
       console.error('Fehler beim Aktualisieren der Notiz:', error);
       showToast(error.message || 'Fehler beim Aktualisieren der Notiz', 'error');
+      return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
@@ -165,9 +180,11 @@ function AppContent() {
       setNotes(prev => prev.map(note => note._id === id ? response : note));
       const message = response.isPinned ? t('notePinned') : t('noteUnpinned');
       showToast(message, 'success');
+      return response;
     } catch (error) {
       console.error('Fehler beim Anheften der Notiz:', error);
       showToast(error.message || 'Fehler beim Anheften der Notiz', 'error');
+      return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
@@ -181,18 +198,13 @@ function AppContent() {
       const message = response.isArchived ? t('noteArchived') : t('noteUnarchived');
       showToast(message, 'success');
 
-      // Notiz aus der Liste entfernen wenn sie archiviert/dearchiviert wird
-      // und wir nicht in der entsprechenden Ansicht sind
-      if (response.isArchived && !showArchived) {
-        setNotes(prev => prev.filter(note => note._id !== id));
-      } else if (!response.isArchived && showArchived) {
-        setNotes(prev => prev.filter(note => note._id !== id));
-      } else {
-        setNotes(prev => prev.map(note => note._id === id ? response : note));
-      }
+      const nextPage = notes.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page;
+      await fetchNotes(searchTerm, nextPage);
+      return response;
     } catch (error) {
       console.error('Fehler beim Archivieren der Notiz:', error);
       showToast(error.message || t('errorUpdating'), 'error');
+      return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
@@ -220,28 +232,25 @@ function AppContent() {
 
   const handleModalSave = async (noteData) => {
     if (noteModal.note) {
-      // Update existing note
-      await updateNote(noteModal.note._id, noteData);
-    } else {
-      // Create new note
-      await createNote(noteData);
+      return updateNote(noteModal.note._id, noteData);
     }
+    return createNote(noteData);
   };
 
   // Drag & Drop Handlers
-  const handleDragStart = (noteId, e) => {
+  const handleDragStart = (noteId, _event) => {
     setDraggedNoteId(noteId);
   };
 
-  const handleDragEnd = (e) => {
+  const handleDragEnd = (_event) => {
     setDraggedNoteId(null);
   };
 
-  const handleDragOver = (noteId, e) => {
+  const handleDragOver = (_noteId, _event) => {
     // Allow drop
   };
 
-  const handleDrop = async (targetNoteId, e) => {
+  const handleDrop = async (targetNoteId, _event) => {
     if (!draggedNoteId || draggedNoteId === targetNoteId) {
       return;
     }
@@ -280,7 +289,6 @@ function AppContent() {
   // Suche durchführen
   const handleSearch = (search) => {
     setSearchTerm(search);
-    fetchNotes(search);
   };
 
   // Theme umschalten
@@ -297,8 +305,8 @@ function AppContent() {
   };
 
   // Logout handler
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     setNotes([]);
     showToast('Erfolgreich abgemeldet', 'info');
   };
@@ -313,26 +321,6 @@ function AppContent() {
     },
     isLoggedIn
   );
-
-  // Extract all unique tags from notes with counts
-  const allTags = useMemo(() => {
-    const tagMap = {};
-    notes.forEach(note => {
-      if (note.tags && Array.isArray(note.tags)) {
-        note.tags.forEach(tag => {
-          if (tag) {
-            tagMap[tag] = (tagMap[tag] || 0) + 1;
-          }
-        });
-      }
-    });
-    return Object.entries(tagMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [notes]);
-
-  // Count archived notes (shows count when in normal view, 0 when in archived view)
-  const archivedCount = showArchived ? 0 : pagination.total;
 
   // Filter notes by selected tag and separate into pinned/other categories
   const { pinnedNotes, otherNotes } = useMemo(() => {
@@ -372,11 +360,11 @@ function AppContent() {
   if (isOAuthCallback) {
     return (
       <OAuthCallback
-        onOAuthSuccess={async (token) => {
+        onOAuthSuccess={async () => {
           try {
-            await loginWithOAuthToken(token);
+            await completeOAuthLogin();
             showToast(t('loginSuccess') || 'Logged in successfully', 'success');
-          } catch (err) {
+          } catch {
             showToast(t('oauthFailed') || 'OAuth login failed', 'error');
           }
         }}
@@ -489,7 +477,7 @@ function AppContent() {
           allTags={allTags}
           selectedTag={selectedTag}
           onTagSelect={setSelectedTag}
-          noteCount={notes.length}
+          noteCount={noteCounts.active}
           isAdmin={user?.isAdmin}
           onAdminClick={() => setShowAdminConsole(true)}
           onSettingsClick={() => setShowSettings(true)}
@@ -499,7 +487,7 @@ function AppContent() {
           onThemeToggle={toggleTheme}
           isMobileOpen={isMobileMenuOpen}
           onMobileClose={() => setIsMobileMenuOpen(false)}
-          archivedCount={archivedCount}
+          archivedCount={noteCounts.archived}
           showArchived={showArchived}
           onShowArchivedToggle={() => setShowArchived(!showArchived)}
           onOpenFriends={() => setShowFriendsModal(true)}

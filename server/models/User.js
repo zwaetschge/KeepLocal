@@ -43,6 +43,17 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isBootstrapAdmin: {
+    type: Boolean,
+    default: false,
+    select: false
+  },
+  sessionVersion: {
+    type: Number,
+    default: 0,
+    min: 0,
+    select: false
+  },
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -67,10 +78,22 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index für schnelle Suche
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ provider: 1, providerId: 1 });
+// OAuth identities must be unique when a provider ID exists. The partial
+// index avoids treating all local users (providerId=null) as duplicates.
+userSchema.index(
+  { provider: 1, providerId: 1 },
+  { unique: true, partialFilterExpression: { providerId: { $type: 'string' } } }
+);
+
+// Exactly one account can win the first-user race. Other admins are unaffected.
+userSchema.index(
+  { isBootstrapAdmin: 1 },
+  {
+    name: 'single_bootstrap_admin',
+    unique: true,
+    partialFilterExpression: { isBootstrapAdmin: true }
+  }
+);
 
 // Passwort vor dem Speichern hashen
 userSchema.pre('save', async function(next) {
@@ -98,6 +121,8 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.sessionVersion;
+  delete obj.isBootstrapAdmin;
   return obj;
 };
 
