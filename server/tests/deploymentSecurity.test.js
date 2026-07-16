@@ -87,3 +87,31 @@ test('application containers drop root privileges', () => {
   assert.doesNotMatch(aiDockerfile, /python3\\\n/);
   assert.doesNotMatch(aiDockerfile, /python3-pip\\\n/);
 });
+
+test('all-in-one image declares the Whisper model argument in its consuming stage', () => {
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
+  const stages = dockerfile.split(/^FROM /m);
+  const clientStage = stages.find((stage) => stage.startsWith('node:22-alpine AS client-builder'));
+  const runtimeStage = stages.find((stage) => stage.startsWith('ubuntu:22.04'));
+
+  assert.ok(clientStage, 'client-builder stage should exist');
+  assert.ok(runtimeStage, 'Ubuntu runtime stage should exist');
+  assert.doesNotMatch(clientStage, /^ARG WHISPER_MODEL=/m);
+  assert.match(runtimeStage, /^ARG WHISPER_MODEL=tiny$/m);
+  assert.match(runtimeStage, /^ENV WHISPER_MODEL=\$\{WHISPER_MODEL\}/m);
+  assert.ok(
+    runtimeStage.indexOf('ARG WHISPER_MODEL=tiny')
+      < runtimeStage.indexOf('ENV WHISPER_MODEL=${WHISPER_MODEL}'),
+    'WHISPER_MODEL must be declared before it is expanded in the runtime stage',
+  );
+});
+
+test('published all-in-one image is smoke-tested on every built architecture', () => {
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
+  const testJob = workflow.match(/\n  test-image:\n([\s\S]*)/)?.[1] || '';
+
+  assert.match(testJob, /architecture:\n\s+- amd64\n\s+- arm64/);
+  assert.match(testJob, /uses: docker\/setup-qemu-action@v3/);
+  assert.match(testJob, /docker pull[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
+  assert.match(testJob, /docker run[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
+});
