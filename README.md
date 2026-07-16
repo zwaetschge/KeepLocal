@@ -2,11 +2,44 @@
 
 A self-hosted notes application inspired by Google Keep. Create, edit, organize, and collaborate on your notes with an intuitive, feature-rich user interface.
 
-### Screenshots
-<img width="1739" height="917" alt="Bildschirmfoto 2025-11-13 um 13 11 37" src="https://github.com/user-attachments/assets/f2c3f632-ccb0-46a2-ac62-7711267314ff" />
-<img width="1735" height="913" alt="Bildschirmfoto 2025-11-13 um 13 12 03" src="https://github.com/user-attachments/assets/342c0f8f-eaf9-4198-a323-d00c909415c0" />
-<img width="1733" height="915" alt="Bildschirmfoto 2025-11-13 um 13 12 16" src="https://github.com/user-attachments/assets/a8ee6e3b-05d5-469f-9373-cc8552381008" />
-<img width="1750" height="912" alt="Bildschirmfoto 2025-11-13 um 13 11 50" src="https://github.com/user-attachments/assets/41af477d-2070-46d4-9059-98c8e56d34ca" />
+## Screenshots
+
+Each persistent theme is shown with the same representative notes on desktop and mobile.
+
+### Light
+
+<p align="center">
+  <img src="assets/screenshots/keeplocal-light-desktop.png" width="74%" alt="KeepLocal Light theme on desktop" />
+  <img src="assets/screenshots/keeplocal-light-mobile.png" width="21%" alt="KeepLocal Light theme on mobile" />
+</p>
+
+### Dark
+
+<p align="center">
+  <img src="assets/screenshots/keeplocal-dark-desktop.png" width="74%" alt="KeepLocal Dark theme on desktop" />
+  <img src="assets/screenshots/keeplocal-dark-mobile.png" width="21%" alt="KeepLocal Dark theme on mobile" />
+</p>
+
+### OLED
+
+<p align="center">
+  <img src="assets/screenshots/keeplocal-oled-desktop.png" width="74%" alt="KeepLocal OLED theme on desktop" />
+  <img src="assets/screenshots/keeplocal-oled-mobile.png" width="21%" alt="KeepLocal OLED theme on mobile" />
+</p>
+
+### E-Ink
+
+<p align="center">
+  <img src="assets/screenshots/keeplocal-eink-desktop.png" width="74%" alt="KeepLocal E-Ink theme on desktop" />
+  <img src="assets/screenshots/keeplocal-eink-mobile.png" width="21%" alt="KeepLocal E-Ink theme on mobile" />
+</p>
+
+### Doodle
+
+<p align="center">
+  <img src="assets/screenshots/keeplocal-doodle-desktop.png" width="74%" alt="KeepLocal Doodle theme on desktop" />
+  <img src="assets/screenshots/keeplocal-doodle-mobile.png" width="21%" alt="KeepLocal Doodle theme on mobile" />
+</p>
 
 ## Features
 
@@ -30,8 +63,7 @@ A self-hosted notes application inspired by Google Keep. Create, edit, organize,
 
 ### User Experience
 - 🌍 Internationalization (English & German)
-- 🌙 Dark mode with theme persistence
-- 🖤 OLED mode for AMOLED displays
+- 🎨 Five persistent themes: Light, Dark, OLED, E-Ink, and Doodle
 - 📱 Fully responsive design (works on desktop and mobile)
 - 🚀 Fast and intuitive interface
 - 🎯 Toast notifications for instant feedback
