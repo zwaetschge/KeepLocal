@@ -1,11 +1,12 @@
 /**
  * API Key Management Routes
  * Allows users to create, list, and revoke API keys for external API access
- * These routes use JWT auth (from the web UI) to manage keys
+ * These routes use the authenticated browser cookie to manage keys.
  */
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const ApiKey = require('../models/ApiKey');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -19,7 +20,6 @@ router.use(authenticateToken);
  *     summary: List all API keys for the current user
  *     tags: [API Keys]
  *     security:
- *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of API keys (without the actual key values)
@@ -46,7 +46,6 @@ router.get('/', async (req, res, next) => {
  *     summary: Create a new API key
  *     tags: [API Keys]
  *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -70,10 +69,24 @@ router.post('/', async (req, res, next) => {
   try {
     const { name, expiresIn } = req.body;
 
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
       return res.status(400).json({
         success: false,
-        error: 'Name ist erforderlich'
+        error: 'Name muss zwischen 1 und 100 Zeichen lang sein'
+      });
+    }
+
+    const expirationDays = {
+      '30d': 30,
+      '90d': 90,
+      '365d': 365,
+      never: null
+    };
+    const expirationKey = expiresIn || 'never';
+    if (!Object.prototype.hasOwnProperty.call(expirationDays, expirationKey)) {
+      return res.status(400).json({
+        success: false,
+        error: 'expiresIn muss 30d, 90d, 365d oder never sein'
       });
     }
 
@@ -90,11 +103,9 @@ router.post('/', async (req, res, next) => {
 
     // Calculate expiration
     let expiresAt = null;
-    if (expiresIn && expiresIn !== 'never') {
-      const days = parseInt(expiresIn);
-      if (!isNaN(days) && days > 0) {
-        expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      }
+    const days = expirationDays[expirationKey];
+    if (days) {
+      expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     }
 
     const apiKey = new ApiKey({
@@ -131,7 +142,6 @@ router.post('/', async (req, res, next) => {
  *     summary: Revoke (delete) an API key
  *     tags: [API Keys]
  *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -144,6 +154,13 @@ router.post('/', async (req, res, next) => {
  */
 router.delete('/:id', async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Ungueltige API-Key-ID'
+      });
+    }
+
     const key = await ApiKey.findOneAndDelete({
       _id: req.params.id,
       userId: req.user._id

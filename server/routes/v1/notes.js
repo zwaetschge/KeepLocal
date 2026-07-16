@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { notesService } = require('../../services');
+const notesService = require('../../services/notesService');
 const { httpStatus } = require('../../constants');
 
 /**

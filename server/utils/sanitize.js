@@ -1,5 +1,14 @@
 const xss = require('xss');
 
+const sensitiveKeys = new Set([
+  'password',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'clientsecret',
+  'apikey'
+]);
+
 // XSS-Filteroptionen konfigurieren
 const xssOptions = {
   whiteList: {
@@ -46,24 +55,20 @@ const escapeRegex = (input) => {
  * @returns {Object} - Das bereinigte Objekt
  */
 const sanitizeObject = (obj) => {
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeObject(item));
+  }
+
   if (typeof obj !== 'object' || obj === null) {
     return sanitizeInput(obj);
   }
 
   const sanitized = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      if (typeof obj[key] === 'string') {
-        sanitized[key] = sanitizeInput(obj[key]);
-      } else if (Array.isArray(obj[key])) {
-        sanitized[key] = obj[key].map(item =>
-          typeof item === 'string' ? sanitizeInput(item) : item
-        );
-      } else if (typeof obj[key] === 'object') {
-        sanitized[key] = sanitizeObject(obj[key]);
-      } else {
-        sanitized[key] = obj[key];
-      }
+  for (const [key, value] of Object.entries(obj)) {
+    if (sensitiveKeys.has(key.toLowerCase())) {
+      sanitized[key] = value;
+    } else {
+      sanitized[key] = sanitizeObject(value);
     }
   }
   return sanitized;

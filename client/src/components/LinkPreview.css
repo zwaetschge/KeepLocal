@@ -15,6 +15,11 @@
   border-color: rgba(0, 0, 0, 0.2);
 }
 
+.link-preview:focus-visible {
+  outline: 3px solid var(--focus-color, #1a73e8);
+  outline-offset: 2px;
+}
+
 .dark-mode .link-preview {
   background: #2d2e30;
   border-color: rgba(255, 255, 255, 0.12);
@@ -128,7 +133,9 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.link-preview:hover .link-preview-remove {
+.link-preview:hover .link-preview-remove,
+.link-preview:focus-within .link-preview-remove,
+.link-preview-remove:focus-visible {
   opacity: 1;
 }
 

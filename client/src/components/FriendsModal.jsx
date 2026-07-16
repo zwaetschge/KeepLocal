@@ -235,7 +235,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
                   <div key={user._id} className="search-result-item">
                     <div className="user-info">
                       <div className="user-name">{user.username}</div>
-                      <div className="user-email">{user.email}</div>
+                      {user.email && <div className="user-email">{user.email}</div>}
                     </div>
                     <button
                       className="btn-add"

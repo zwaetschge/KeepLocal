@@ -18,16 +18,18 @@ const secureFileServe = async (req, res, next) => {
       return res.status(404).json({ error: 'Datei nicht gefunden' });
     }
 
-    // SECURITY: Path traversal protection - resolve the full path and ensure
-    // it stays within the uploads directory
-    const filepath = path.resolve(uploadsDir, rawPath);
-    if (!filepath.startsWith(uploadsDir + path.sep)) {
-      return res.status(403).json({ error: 'Zugriff verweigert' });
+    // Only final note images are public through this route. Temp files and
+    // encoded path traversal attempts must never be reachable.
+    if (!/^images\/[^/\\]+$/.test(rawPath)) {
+      return res.status(404).json({ error: 'Datei nicht gefunden' });
     }
 
-    // Extract just the basename for DB lookup since images are stored
-    // with bare filenames (e.g., "filename.jpg"), not paths like "images/filename.jpg"
     const basename = path.basename(rawPath);
+    const filepath = path.resolve(uploadsDir, 'images', basename);
+    const imagesDir = path.resolve(uploadsDir, 'images');
+    if (!filepath.startsWith(imagesDir + path.sep)) {
+      return res.status(403).json({ error: 'Zugriff verweigert' });
+    }
 
     // Find note that contains this image
     const note = await Note.findOne({
@@ -56,7 +58,7 @@ const secureFileServe = async (req, res, next) => {
       return res.status(404).json({ error: 'Datei nicht auf dem Server gefunden' });
     }
 
-    // Send file
+    res.setHeader('Cache-Control', 'private, no-store');
     res.sendFile(filepath);
   } catch (error) {
     console.error('[SecureFileServe] Error serving file:', error);

@@ -5,14 +5,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
-import { useLanguage } from '../contexts/LanguageContext';
 import { getApiKeys, createApiKey, revokeApiKey } from '../services/api/apiKeysAPI';
 import './Settings.css';
 
 function Settings({ onClose, isAdmin, onAdminClick }) {
   const { settings, toggleAIFeature, setTranscriptionLanguage } = useSettings();
-  const { t } = useLanguage();
-
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');

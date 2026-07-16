@@ -3,13 +3,13 @@
 # into a single container for easy deployment on Unraid.
 
 # Stage 1: Build React Frontend
-FROM node:18-alpine AS client-builder
+FROM node:22-alpine AS client-builder
 
 WORKDIR /app/client
 
 # Copy client package files
 COPY client/package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy client source
 COPY client/ ./
@@ -17,11 +17,13 @@ COPY client/ ./
 # Build React app with production settings
 # IMPORTANT: REACT_APP_API_URL must be empty because the client code already adds /api prefix
 ARG REACT_APP_API_URL=
-ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+ARG VITE_API_URL=${REACT_APP_API_URL}
+ARG WHISPER_MODEL=tiny
+ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # Stage 2: Prepare Node.js Backend (just copy source, no install yet)
-FROM node:18-alpine AS server-builder
+FROM node:22-alpine AS server-builder
 
 WORKDIR /app/server
 
@@ -35,8 +37,8 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install MongoDB, Node.js, Nginx, Supervisor, Python (for AI), and dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     gnupg \
     curl \
     nginx \
@@ -53,12 +55,14 @@ RUN apt-get update && apt-get install -y \
     libswscale-dev \
     libswresample-dev \
     libavdevice-dev \
-    && wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | apt-key add - \
-    && echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list \
+    && curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+       | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
+    && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
+       > /etc/apt/sources.list.d/mongodb-org-7.0.list \
     && apt-get update \
-    && apt-get install -y mongodb-org \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y --no-install-recommends mongodb-org \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -71,15 +75,16 @@ RUN groupadd -r node && useradd -r -g node node
 # Create MongoDB data directory
 RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db
 
-# Create uploads directory for images
-RUN mkdir -p /app/server/uploads/images
+# Create writable data directories for the unprivileged application services.
+RUN mkdir -p /app/server/uploads/images /app/server/uploads/temp /var/lib/keeplocal-ai \
+    && chown -R node:node /app/server /var/lib/keeplocal-ai
 
 # Copy server source from builder (without node_modules)
 COPY --from=server-builder /app/server /app/server
 
 # Install server dependencies directly in Ubuntu (avoids Alpine/Ubuntu compatibility issues)
 WORKDIR /app/server
-RUN npm install --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy AI service files
 WORKDIR /app/ai
@@ -91,15 +96,18 @@ RUN pip3 install --upgrade pip setuptools wheel
 # Install Python dependencies for AI service
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Pre-download Whisper model to bake it into the image
-RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+# Pre-download the configured Whisper model into a cache readable by the AI user.
+ENV WHISPER_MODEL=${WHISPER_MODEL} \
+    HF_HOME=/var/lib/keeplocal-ai
+RUN su -s /bin/sh node -c \
+    "python3 -c \"import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')\""
 
 # Copy built client from builder
 COPY --from=client-builder /app/client/build /app/client/build
 
 # Set ownership of application files
 RUN chown -R node:node /app/server \
-    && chown -R root:root /app/ai
+    && chown -R node:node /app/ai /var/lib/keeplocal-ai
 
 # Return to /app directory
 WORKDIR /app
@@ -121,8 +129,7 @@ RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal
 
 # Expose ports
 # 80: Nginx (Web UI + API proxy)
-# 27017: MongoDB (for debugging/backup purposes)
-EXPOSE 80 27017
+EXPOSE 80
 
 # Persist data in volumes
 VOLUME ["/data/db", "/app/server/uploads"]
@@ -131,9 +138,20 @@ VOLUME ["/data/db", "/app/server/uploads"]
 ENV NODE_ENV=production \
     PORT=5000 \
     MONGODB_URI=mongodb://localhost:27017/keeplocal \
-    ALLOWED_ORIGINS=* \
+    ALLOWED_ORIGINS=http://localhost:3000,http://localhost \
+    HOST=127.0.0.1 \
+    TRUST_PROXY=1 \
     AI_SERVICE_URL=http://localhost:5001 \
-    WHISPER_MODEL=tiny
+    JWT_EXPIRES_IN=7d \
+    CSRF_SECRET="" \
+    COOKIE_SECURE="" \
+    CLIENT_URL="" \
+    GOOGLE_CLIENT_ID="" \
+    GOOGLE_CLIENT_SECRET="" \
+    GOOGLE_CALLBACK_URL="" \
+    GITHUB_CLIENT_ID="" \
+    GITHUB_CLIENT_SECRET="" \
+    GITHUB_CALLBACK_URL=""
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

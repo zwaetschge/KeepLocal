@@ -1,23 +1,54 @@
 /* ============================================
    Authentication Components
    ============================================ */
+body:not(.dark-mode):not(.oled-mode):not(.eink-mode):not(.doodle-mode) .auth-container {
+  --bg-canvas: #EDF3F6;
+  --bg-secondary: #FFFFFF;
+  --bg-primary: #F8FAFC;
+  --bg-tertiary: #E5E7EB;
+  --text-primary: #111827;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --border-color: rgba(38, 61, 91, 0.24);
+  --border-color-strong: #64748B;
+  --border-focus: #D97706;
+  --accent-secondary: #E9A23B;
+  --shadow-focus: 0 0 0 3px rgba(73, 182, 229, 0.32);
+}
+
 .auth-container {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: var(--space-5);
+  overflow-y: auto;
+  background: var(--bg-canvas);
+  padding: max(var(--space-5), env(safe-area-inset-top)) max(var(--space-5), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
 }
 
 .auth-box {
   background: var(--bg-secondary);
-  border-radius: var(--radius-xl);
+  border: 2px solid var(--border-color-strong);
+  border-radius: 8px;
   padding: var(--space-10);
-  max-width: 450px;
+  max-width: 440px;
   width: 100%;
-  box-shadow: var(--shadow-2xl);
+  margin: auto;
+  box-shadow: 7px 7px 0 rgba(38, 61, 91, 0.16);
   animation: authFadeIn 0.4s var(--ease-out);
+  position: relative;
+}
+
+.auth-box::before {
+  content: '';
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-6);
+  right: var(--space-6);
+  border-top: 3px solid var(--accent-secondary);
+  transform: rotate(-0.4deg);
+  pointer-events: none;
 }
 
 @keyframes authFadeIn {
@@ -89,12 +120,14 @@
 
 .form-group input {
   padding: var(--space-3) var(--space-4);
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-color-strong);
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
   background: var(--bg-primary);
   color: var(--text-primary);
-  transition: all var(--duration-normal) var(--ease-default);
+  transition: border-color var(--duration-fast) var(--ease-default),
+              box-shadow var(--duration-fast) var(--ease-default),
+              background-color var(--duration-fast) var(--ease-default);
   font-family: inherit;
 }
 
@@ -108,7 +141,7 @@
 
 .form-group input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--border-focus);
   box-shadow: var(--shadow-focus);
 }
 
@@ -130,46 +163,27 @@
   padding: var(--space-4) var(--space-6);
   font-size: var(--font-size-base);
   font-weight: var(--font-semibold);
-  border: none;
-  border-radius: var(--radius-md);
+  border: 2px solid #263D5B;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all var(--duration-normal) var(--ease-default);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  transition: transform var(--duration-fast) var(--ease-default),
+              box-shadow var(--duration-fast) var(--ease-default),
+              background-color var(--duration-fast) var(--ease-default);
+  background: #263D5B;
+  color: #FFFFFF;
   margin-top: var(--space-3);
   font-family: inherit;
-  position: relative;
-  overflow: hidden;
-}
-
-.auth-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.2),
-    transparent
-  );
-  transition: left 0.5s;
-}
-
-.auth-button:hover:not(:disabled)::before {
-  left: 100%;
 }
 
 .auth-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+  background: #1D2F48;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 rgba(38, 61, 91, 0.24);
 }
 
 .auth-button:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 1px 1px 0 rgba(38, 61, 91, 0.2);
 }
 
 .auth-button:disabled {
@@ -179,7 +193,7 @@
 }
 
 .auth-button:focus-visible {
-  outline: 2px solid #667eea;
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
@@ -221,7 +235,7 @@
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-color-strong);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -248,7 +262,7 @@
 }
 
 .oauth-button:focus-visible {
-  outline: 2px solid #667eea;
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
@@ -283,7 +297,7 @@
 .auth-link {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--accent-active);
   font-weight: var(--font-semibold);
   cursor: pointer;
   padding: 0;
@@ -294,7 +308,7 @@
 }
 
 .auth-link:hover:not(:disabled) {
-  color: #764ba2;
+  color: var(--text-primary);
   text-decoration: underline;
 }
 
@@ -304,13 +318,13 @@
 }
 
 .auth-link:focus-visible {
-  outline: 2px solid #667eea;
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
 /* Dark Mode */
 body.dark-mode .auth-container {
-  background: linear-gradient(135deg, #1e3a5f 0%, #2d1b4e 100%);
+  background: var(--bg-canvas);
 }
 
 body.dark-mode .auth-error {
@@ -320,8 +334,9 @@ body.dark-mode .auth-error {
 }
 
 body.dark-mode .auth-button {
-  background: linear-gradient(135deg, #8ab4f8 0%, #c084fc 100%);
-  color: #000000;
+  background: #49B6E5;
+  border-color: #49B6E5;
+  color: #111827;
 }
 
 body.dark-mode .auth-link {
@@ -350,7 +365,7 @@ body.dark-mode .oauth-github:hover:not(:disabled) {
 
 /* OLED Mode */
 body.oled-mode .auth-container {
-  background: #000000;
+  background: var(--bg-canvas);
 }
 
 body.oled-mode .auth-box {
@@ -359,7 +374,7 @@ body.oled-mode .auth-box {
 
 /* E-Ink Mode */
 body.eink-mode .auth-container {
-  background: #ffffff;
+  background: var(--bg-canvas);
 }
 
 body.eink-mode .auth-box {
@@ -409,7 +424,7 @@ body.eink-mode .oauth-button:hover:not(:disabled) {
 @media (max-width: 500px) {
   .auth-box {
     padding: var(--space-8) var(--space-5);
-    border-radius: var(--radius-lg);
+    border-radius: 8px;
   }
 
   .auth-header h1 {

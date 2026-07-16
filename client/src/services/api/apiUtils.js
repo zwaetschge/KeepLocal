@@ -23,37 +23,7 @@ export function setCsrfToken(token) {
 }
 
 /**
- * Get JWT token from localStorage
- * @returns {string|null} The authentication token
- */
-export function getAuthToken() {
-  return localStorage.getItem('token');
-}
-
-/**
- * Set JWT token in localStorage
- * @param {string|null} token - The JWT token to store or null to remove
- */
-export function setAuthToken(token) {
-  if (token) {
-    localStorage.setItem('token', token);
-  } else {
-    localStorage.removeItem('token');
-  }
-}
-
-/**
- * Check if user is authenticated
- * @returns {boolean} True if user has a valid token
- */
-export function isAuthenticated() {
-  return !!getAuthToken();
-}
-
-/**
- * Base fetch with authentication and CSRF protection
- * Automatically adds JWT and CSRF tokens to requests
- * Handles 401 errors by redirecting to login
+ * Base fetch with cookie authentication and CSRF protection.
  *
  * @param {string} url - The API endpoint URL
  * @param {Object} options - Fetch options
@@ -61,18 +31,12 @@ export function isAuthenticated() {
  * @throws {Error} If the request fails
  */
 export async function fetchWithAuth(url, options = {}) {
-  const token = getAuthToken();
   const csrf = getCsrfToken();
 
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
-
-  // Add JWT token if available
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   // Add CSRF token for state-changing operations
   if (csrf && CSRF_METHODS.includes(options.method)) {
@@ -87,18 +51,32 @@ export async function fetchWithAuth(url, options = {}) {
 
   // Handle 401 Unauthorized - token expired or invalid
   if (response.status === 401) {
-    setAuthToken(null);
-    window.location.href = '/login';
     throw new Error(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
   // Handle other errors
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: ERROR_MESSAGES.GENERIC }));
+    const error = await parseResponse(response);
     throw new Error(error.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  return parseResponse(response);
+}
+
+export async function parseResponse(response) {
+  const text = await response.text().catch(() => '');
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const safeText = text
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+    return { error: safeText || ERROR_MESSAGES.GENERIC };
+  }
 }
 
 /**
@@ -114,9 +92,8 @@ export async function initializeCSRF() {
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await parseResponse(response);
       setCsrfToken(data.csrfToken);
-      console.log('CSRF token initialized successfully');
     }
   } catch (error) {
     console.error('Failed to fetch CSRF token:', error);

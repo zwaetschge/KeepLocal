@@ -39,6 +39,8 @@ coverage
 .nyc_output
 *.test.js
 *.spec.js
+test_*.py
+__pycache__
 
 # Documentation (except README for Docker Hub)
 IMPROVEMENTS.md

@@ -29,19 +29,15 @@ async function transcribeAudio(filePath, language = null) {
       form.append('language', language);
     }
 
-    console.log(`[AI] Sending audio to ${AI_SERVICE_URL}/transcribe...`);
-    if (language) {
-      console.log(`[AI] With language hint: ${language}`);
-    }
-
     const response = await axios.post(`${AI_SERVICE_URL}/transcribe`, form, {
       headers: {
         ...form.getHeaders(),
       },
-      timeout: 300000 // 5 minutes timeout, transcription can take time
+      timeout: 300000,
+      maxBodyLength: 26 * 1024 * 1024,
+      maxContentLength: 1024 * 1024
     });
 
-    console.log(`[AI] Transcription successful: "${response.data.text.substring(0, 100)}..."`);
     return response.data;
   } catch (error) {
     console.error('[AI Service Error]', error.message);

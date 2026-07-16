@@ -6,6 +6,31 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+
+const MIME_EXTENSIONS = new Map([
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/gif', '.gif'],
+  ['image/webp', '.webp'],
+  ['audio/mpeg', '.mp3'],
+  ['audio/wav', '.wav'],
+  ['audio/x-wav', '.wav'],
+  ['audio/ogg', '.ogg'],
+  ['audio/m4a', '.m4a'],
+  ['audio/mp4', '.m4a'],
+  ['video/mp4', '.mp4'],
+  ['audio/webm', '.webm'],
+  ['video/webm', '.webm']
+]);
+
+const extensionForMimeType = (mimetype) => (
+  MIME_EXTENSIONS.get(String(mimetype || '').toLowerCase()) || '.bin'
+);
+
+const createStoredFilename = (file) => (
+  `${crypto.randomBytes(24).toString('hex')}${extensionForMimeType(file?.mimetype)}`
+);
 
 // Temporary upload directory for initial uploads (before validation)
 const tempUploadDir = path.join(__dirname, '../uploads/temp');
@@ -37,21 +62,26 @@ const storage = multer.diskStorage({
     cb(null, tempUploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename: timestamp-randomstring-originalname
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    const nameWithoutExt = path.basename(file.originalname, ext);
-    // Sanitize filename
-    const sanitizedName = nameWithoutExt.replace(/[^a-zA-Z0-9]/g, '_');
-    cb(null, sanitizedName + '-' + uniqueSuffix + ext);
+    cb(null, createStoredFilename(file));
   }
 });
 
+const isSafeStoredFilename = (filename) => (
+  typeof filename === 'string' &&
+  filename.length > 0 &&
+  filename.length <= 255 &&
+  filename !== '.' &&
+  filename !== '..' &&
+  path.basename(filename) === filename &&
+  /^[a-zA-Z0-9_.-]+$/.test(filename)
+);
+
 // File filter - only allow images
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const allowedExtensions = new Set(['.jpeg', '.jpg', '.png', '.gif', '.webp']);
+  const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+  const extname = allowedExtensions.has(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedMimeTypes.has(file.mimetype.toLowerCase());
 
   if (mimetype && extname) {
     return cb(null, true);
@@ -62,9 +92,11 @@ const fileFilter = (req, file, cb) => {
 
 // Audio filter - only allow audio files
 const audioFileFilter = (req, file, cb) => {
-  const allowedTypes = /audio\/mpeg|audio\/wav|audio\/ogg|audio\/m4a|audio\/mp4|video\/mp4|audio\/webm/;
-  // Simple mime-type check (magic number validation for audio is more complex)
-  if (allowedTypes.test(file.mimetype)) {
+  const allowedMimeTypes = new Set([
+    'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/m4a',
+    'audio/mp4', 'video/mp4', 'audio/webm', 'video/webm'
+  ]);
+  if (allowedMimeTypes.has(file.mimetype.toLowerCase())) {
     return cb(null, true);
   }
   cb(new Error('Ungültiges Audio-Format. Erlaubt: mp3, wav, ogg, m4a, webm'));
@@ -93,5 +125,8 @@ module.exports = {
   upload,           // Image upload (default)
   uploadAudio,      // Audio upload (NEW)
   tempUploadDir,
-  finalUploadDir
+  finalUploadDir,
+  isSafeStoredFilename,
+  createStoredFilename,
+  extensionForMimeType
 };

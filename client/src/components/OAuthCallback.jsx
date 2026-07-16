@@ -4,8 +4,8 @@ import './Auth.css';
 
 /**
  * OAuthCallback handles the redirect from the OAuth provider.
- * It extracts the JWT token from the URL query params and passes it
- * to the parent via onOAuthSuccess, or shows an error.
+ * The server stores the session in an HttpOnly cookie. This component only
+ * confirms the callback result and asks the auth context to load the user.
  */
 function OAuthCallback({ onOAuthSuccess }) {
   const { t } = useLanguage();
@@ -13,7 +13,8 @@ function OAuthCallback({ onOAuthSuccess }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const success = fragment.get('success');
     const errorParam = params.get('error');
 
     if (errorParam) {
@@ -23,12 +24,12 @@ function OAuthCallback({ onOAuthSuccess }) {
       return;
     }
 
-    if (token) {
+    if (success === '1') {
       // Clean up URL before calling success handler
       window.history.replaceState({}, document.title, '/');
-      onOAuthSuccess(token);
+      onOAuthSuccess();
     } else {
-      setError(t('oauthFailed') || 'OAuth login failed. No token received.');
+      setError(t('oauthFailed') || 'OAuth login failed. No session confirmation received.');
       window.history.replaceState({}, document.title, '/');
     }
   }, [onOAuthSuccess, t]);

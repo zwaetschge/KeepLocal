@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authAPI, isAuthenticated, setAuthToken, initializeCSRF } from '../services/api';
+import { authAPI, initializeCSRF } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -19,6 +19,8 @@ export function AuthProvider({ children }) {
 
   // Check if user is authenticated and setup status on mount
   useEffect(() => {
+    window.localStorage.removeItem('token');
+
     const checkAuth = async () => {
       // First check if initial setup is needed
       try {
@@ -30,24 +32,18 @@ export function AuthProvider({ children }) {
           setLoading(false);
           return;
         }
-      } catch (error) {
-        console.error('Failed to check setup status:', error);
+      } catch (_error) {
+        console.error('Failed to check setup status:', _error);
         // Continue with normal auth check if setup check fails
       }
 
-      // Check if user is authenticated
-      if (isAuthenticated()) {
-        try {
-          const response = await authAPI.getCurrentUser();
-          setUser(response.user);
-          setIsLoggedIn(true);
-        } catch (error) {
-          console.error('Failed to fetch user:', error);
-          // Token is invalid or expired
-          authAPI.logout();
-          setUser(null);
-          setIsLoggedIn(false);
-        }
+      try {
+        const response = await authAPI.getCurrentUser();
+        setUser(response.user);
+        setIsLoggedIn(true);
+      } catch {
+        setUser(null);
+        setIsLoggedIn(false);
       }
       setLoading(false);
     };
@@ -69,8 +65,8 @@ export function AuthProvider({ children }) {
     return response;
   };
 
-  const logout = () => {
-    authAPI.logout();
+  const logout = async () => {
+    await authAPI.logout();
     setUser(null);
     setIsLoggedIn(false);
   };
@@ -84,10 +80,9 @@ export function AuthProvider({ children }) {
   };
 
   /**
-   * Handle OAuth callback — store the token and fetch user data
+   * Complete OAuth login by loading the cookie-backed session.
    */
-  const loginWithOAuthToken = useCallback(async (token) => {
-    setAuthToken(token);
+  const completeOAuthLogin = useCallback(async () => {
     await initializeCSRF();
     try {
       const response = await authAPI.getCurrentUser();
@@ -96,7 +91,7 @@ export function AuthProvider({ children }) {
       setSetupNeeded(false);
     } catch (error) {
       console.error('OAuth token validation failed:', error);
-      authAPI.logout();
+      await authAPI.logout();
       setUser(null);
       setIsLoggedIn(false);
       throw new Error('OAuth login failed');
@@ -112,7 +107,7 @@ export function AuthProvider({ children }) {
     register,
     logout,
     setup,
-    loginWithOAuthToken,
+    completeOAuthLogin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

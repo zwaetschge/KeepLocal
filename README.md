@@ -54,7 +54,7 @@ A self-hosted notes application inspired by Google Keep. Create, edit, organize,
 ### Frontend
 - React 18 with Hooks (useState, useEffect, useContext, etc.)
 - React Context API for state management (Auth, Language)
-- Axios for HTTP requests
+- Fetch-based API client with centralized cookie, CSRF, and error handling
 - CSS3 with Grid Layout, Flexbox & CSS Variables for theming
 - DOMPurify for XSS protection
 - i18n with custom translation system
@@ -65,12 +65,12 @@ A self-hosted notes application inspired by Google Keep. Create, edit, organize,
 - MongoDB & Mongoose ODM
 - JWT (JSON Web Tokens) for authentication
 - bcrypt for password hashing
-- CSRF protection with csurf
+- Signed HMAC CSRF protection without server-side session state
 - Helmet for security headers
 - Express Rate Limit for DDoS protection
 - XSS sanitization
 - CORS with origin control
-- Session management with express-session
+- HttpOnly cookie sessions with signed CSRF tokens
 
 ## Quick Start with Docker (Recommended)
 
@@ -88,12 +88,19 @@ The easiest way to run KeepLocal is using Docker Compose:
    cd KeepLocal
    ```
 
-2. **Start with Docker Compose**
+2. **Create the production configuration**
    ```bash
-   docker-compose up -d
+   cp .env.example .env
+   # Replace JWT_SECRET in .env with the output of:
+   openssl rand -base64 48
    ```
 
-3. **Access the application**
+3. **Start with Docker Compose**
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. **Access the application**
 
    Open your browser and navigate to: `http://localhost:3000`
 
@@ -107,19 +114,19 @@ That's it! The application will automatically:
 
 ```bash
 # Start the application
-docker-compose up -d
+docker compose up -d
 
 # Stop the application
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Restart services
-docker-compose restart
+docker compose restart
 
 # Stop and remove all data (including database)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Unraid Installation
@@ -174,7 +181,7 @@ After installation, you may need to update the CORS settings:
 
 ### Prerequisites
 
-- Node.js (Version 14 or higher)
+- Node.js 22
 - npm or yarn
 - MongoDB (local or MongoDB Atlas)
 
@@ -268,7 +275,7 @@ After installation, you may need to update the CORS settings:
 
 ### Theme Customization
 1. Click the theme toggle icon
-2. Cycle through: Light → Dark → OLED → Light
+2. Cycle through: Light → Dark → OLED → E-Ink → Doodle → Light
 3. Your preference is automatically saved
 
 ### Language Selection
@@ -294,10 +301,10 @@ After installation, you may need to update the CORS settings:
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/setup` - Initial admin account creation
+- `GET /api/auth/setup-needed` - Check whether the first account is required
 - `POST /api/auth/register` - Register new user (if enabled)
-- `POST /api/auth/login` - User login (returns JWT)
-- `POST /api/auth/logout` - User logout
+- `POST /api/auth/login` - User login (sets an HttpOnly session cookie)
+- `POST /api/auth/logout` - Revoke the current session generation
 - `GET /api/auth/me` - Get current user info
 - `GET /api/csrf-token` - Get CSRF token
 
@@ -327,15 +334,16 @@ After installation, you may need to update the CORS settings:
 - `GET /api/admin/users` - Get all users
 - `POST /api/admin/users` - Create new user
 - `DELETE /api/admin/users/:id` - Delete user
-- `POST /api/admin/users/:id/toggle-admin` - Toggle admin status
+- `PATCH /api/admin/users/:id/admin` - Toggle admin status
 - `GET /api/admin/settings` - Get system settings
-- `PUT /api/admin/settings` - Update system settings
+- `PATCH /api/admin/settings` - Update system settings
 
 ### Link Previews
-- `GET /api/link-preview` - Fetch link preview data
-  - Query param: `url`
+- `POST /api/notes/link-preview` - Fetch link preview data
+  - JSON body: `{ "url": "https://example.com" }`
 
-All endpoints (except auth and setup) require authentication via JWT token.
+Browser endpoints use the HttpOnly session cookie and signed CSRF tokens. External
+`/api/v1` endpoints use API keys and do not accept browser JWT bearer tokens.
 
 ## Project Structure
 
@@ -441,17 +449,17 @@ Creates an optimized production build in the `client/build/` directory.
 
 KeepLocal implements multiple security layers:
 
-- **Authentication**: JWT-based authentication with secure token storage
+- **Authentication**: Revocable JWT sessions stored only in HttpOnly cookies
 - **Password Security**: bcrypt hashing with salt rounds
-- **CSRF Protection**: csurf middleware with token validation
+- **CSRF Protection**: Signed HMAC double-submit tokens with constant-time validation
 - **XSS Protection**: Input sanitization on server and client (DOMPurify)
 - **CORS Control**: Configurable allowed origins
-- **Rate Limiting**: Protection against brute-force attacks (100 requests/15min)
+- **Rate Limiting**: JSON errors, with a dedicated 20-attempt authentication limit
 - **Security Headers**: Helmet.js for additional HTTP header security
 - **Input Validation**: Mongoose schema validation on all inputs
 - **Payload Limits**: Request size restrictions
-- **Session Security**: Secure session management with express-session
-- **SQL Injection**: Protected via Mongoose ODM parameterized queries
+- **Session Security**: HttpOnly, SameSite cookies with signed CSRF tokens
+- **Database Injection**: Recursive input sanitization and explicit query construction
 
 ## Environment Variables
 
@@ -460,18 +468,23 @@ KeepLocal implements multiple security layers:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | `5000` |
+| `HOST` | Server bind address | `0.0.0.0` |
 | `NODE_ENV` | Environment mode | `development` |
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/keeplocal` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:3000` |
-| `SESSION_SECRET` | Session encryption key | Random string |
-| `JWT_SECRET` | JWT token signing key | Auto-generated |
-| `CSRF_SECRET` | CSRF token secret | Auto-generated |
+| `TRUST_PROXY` | Number of trusted reverse-proxy hops (`1` split, `2` all-in-one behind Traefik) | `false` |
+| `JWT_SECRET` | Required JWT signing key, at least 32 characters | None |
+| `CSRF_SECRET` | Optional CSRF signing key, at least 32 characters | `JWT_SECRET` |
+| `COOKIE_SECURE` | Optional `true`/`false` override for automatic HTTPS cookie detection | Auto |
+| `CLIENT_URL` | Explicit frontend origin for OAuth redirects | First allowed origin |
+| `WHISPER_MODEL` | AI model for split deployments (`tiny`, `base`, `small`, ...) | `base` |
 
 ## Notes
 
 - Notes are stored persistently in **MongoDB**
-- Ensure MongoDB is running before starting the server
+- The HTTP server starts only after MongoDB is connected and model indexes are ready
 - The `.env` file contains sensitive configuration and should not be committed
+- Production `ALLOWED_ORIGINS` must contain explicit origins; `*` is rejected
 - For Docker deployments, MongoDB is automatically configured
 - All data is stored in Docker volumes for persistence
 
@@ -489,19 +502,19 @@ ports:
 **Cannot connect to MongoDB:**
 ```bash
 # Check if MongoDB container is running
-docker-compose ps
+docker compose ps
 
 # View MongoDB logs
-docker-compose logs mongodb
+docker compose logs mongodb
 ```
 
 **Reset everything:**
 ```bash
 # Stop and remove all containers and volumes
-docker-compose down -v
+docker compose down -v
 
 # Start fresh
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Unraid Issues

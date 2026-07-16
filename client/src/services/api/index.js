@@ -16,29 +16,26 @@ import friendsAPI from './friendsAPI';
 import adminAPI from './adminAPI';
 import {
   initializeCSRF,
-  isAuthenticated,
-  setAuthToken,
-  getAuthToken,
   getCsrfToken,
   fetchWithAuth,
 } from './apiUtils';
 
 // Named exports for tree-shaking and better IDE support
 export { authAPI, notesAPI, friendsAPI, adminAPI };
-export { initializeCSRF, isAuthenticated, setAuthToken, getAuthToken, getCsrfToken, fetchWithAuth };
+export { initializeCSRF, getCsrfToken, fetchWithAuth };
 
 // Backward compatibility: export fetchLinkPreviewAPI as a standalone function
 // This maintains the old API surface while using the new structure
 export const fetchLinkPreviewAPI = notesAPI.fetchLinkPreview;
 
 // Default export for backward compatibility
-export default {
+const api = {
   authAPI,
   notesAPI,
   friendsAPI,
   adminAPI,
   initializeCSRF,
-  isAuthenticated,
-  setAuthToken,
   fetchLinkPreviewAPI,
 };
+
+export default api;

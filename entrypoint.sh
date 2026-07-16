@@ -26,15 +26,18 @@ echo "✓ JWT_SECRET is configured correctly"
 # Fix MongoDB data directory permissions
 echo "Checking /data/db permissions..."
 if [ -d "/data/db" ]; then
-    echo "Setting correct ownership for MongoDB data directory..."
-    chown -R mongodb:mongodb /data/db
-    chmod -R 755 /data/db
+    if [ "$(stat -c '%U:%G' /data/db)" != "mongodb:mongodb" ]; then
+        echo "Setting correct ownership for MongoDB data directory..."
+        chown -R mongodb:mongodb /data/db
+        chmod -R u=rwX,go= /data/db
+    fi
+    chmod 700 /data/db
     echo "✓ Permissions fixed"
 else
     echo "Creating /data/db directory..."
     mkdir -p /data/db
     chown -R mongodb:mongodb /data/db
-    chmod -R 755 /data/db
+    chmod -R u=rwX,go= /data/db
     echo "✓ Directory created with correct permissions"
 fi
 
@@ -44,21 +47,20 @@ chown -R mongodb:mongodb /var/log/mongodb
 # Fix uploads directory permissions
 echo "Checking /app/server/uploads permissions..."
 if [ -d "/app/server/uploads" ]; then
-    echo "Setting correct permissions for uploads directory..."
-    chown -R node:node /app/server/uploads
-    chmod -R 755 /app/server/uploads
+    if [ "$(stat -c '%U:%G' /app/server/uploads)" != "node:node" ]; then
+        echo "Setting correct permissions for uploads directory..."
+        chown -R node:node /app/server/uploads
+        chmod -R u=rwX,g=rX,o= /app/server/uploads
+    fi
+    chmod 750 /app/server/uploads
     echo "✓ Permissions fixed"
 else
     echo "Creating /app/server/uploads directory..."
     mkdir -p /app/server/uploads/images
     chown -R node:node /app/server/uploads
-    chmod -R 755 /app/server/uploads
+    chmod -R u=rwX,g=rX,o= /app/server/uploads
     echo "✓ Directory created with correct permissions"
 fi
-
-# Ensure node user has access to server directory
-chown -R node:node /app/server
-chmod -R 755 /app/server
 
 echo "=== Starting Supervisor ==="
 echo ""

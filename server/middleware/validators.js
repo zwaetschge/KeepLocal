@@ -1,14 +1,16 @@
 const { body, param, query, validationResult } = require('express-validator');
+const { publicValidationErrors } = require('../utils/validationErrors');
 
 // Validation error handler middleware
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const details = publicValidationErrors(errors);
     // Only log validation errors, not the full request body (which may contain sensitive data)
-    console.log('Validation errors:', JSON.stringify(errors.array().map(e => e.msg), null, 2));
+    console.log('Validation errors:', JSON.stringify(details.map(error => error.msg), null, 2));
     return res.status(400).json({
       error: 'Validierungsfehler',
-      details: errors.array()
+      details
     });
   }
   next();
@@ -26,8 +28,8 @@ const noteValidationRules = {
     body('content')
       .optional({ checkFalsy: true })
       .trim()
-      .isLength({ max: 100000 })
-      .withMessage('Inhalt darf maximal 100.000 Zeichen lang sein'),
+      .isLength({ max: 10000 })
+      .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
 
     body('color')
       .optional()
@@ -41,7 +43,7 @@ const noteValidationRules = {
 
     body('tags')
       .optional()
-      .isArray()
+      .isArray({ max: 50 })
       .withMessage('Tags müssen ein Array sein'),
 
     body('tags.*')
@@ -59,7 +61,7 @@ const noteValidationRules = {
 
     body('todoItems')
       .optional()
-      .isArray()
+      .isArray({ max: 200 })
       .withMessage('todoItems muss ein Array sein'),
 
     body('todoItems.*.text')
@@ -80,7 +82,7 @@ const noteValidationRules = {
 
     body('linkPreviews')
       .optional()
-      .isArray()
+      .isArray({ max: 20 })
       .withMessage('linkPreviews muss ein Array sein'),
 
     body('linkPreviews.*.url')
@@ -130,8 +132,8 @@ const noteValidationRules = {
     body('content')
       .optional({ checkFalsy: true })
       .trim()
-      .isLength({ max: 100000 })
-      .withMessage('Inhalt darf maximal 100.000 Zeichen lang sein'),
+      .isLength({ max: 10000 })
+      .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
 
     body('color')
       .optional()
@@ -145,7 +147,7 @@ const noteValidationRules = {
 
     body('tags')
       .optional()
-      .isArray()
+      .isArray({ max: 50 })
       .withMessage('Tags müssen ein Array sein'),
 
     body('tags.*')
@@ -163,7 +165,7 @@ const noteValidationRules = {
 
     body('todoItems')
       .optional()
-      .isArray()
+      .isArray({ max: 200 })
       .withMessage('todoItems muss ein Array sein'),
 
     body('todoItems.*.text')
@@ -184,7 +186,7 @@ const noteValidationRules = {
 
     body('linkPreviews')
       .optional()
-      .isArray()
+      .isArray({ max: 20 })
       .withMessage('linkPreviews muss ein Array sein'),
 
     body('linkPreviews.*.url')
@@ -268,6 +270,11 @@ const noteValidationRules = {
       .optional()
       .isInt({ min: 1, max: 100 })
       .withMessage('Limit muss zwischen 1 und 100 liegen'),
+
+    query('archived')
+      .optional()
+      .isIn(['true', 'false'])
+      .withMessage('archived muss true oder false sein'),
 
     handleValidationErrors
   ]

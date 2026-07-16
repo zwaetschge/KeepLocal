@@ -3,9 +3,6 @@
    "Warm Paper Studio" Aesthetic
    ============================================ */
 
-/* Google Fonts - Distinctive Typography */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
-
 * {
   margin: 0;
   padding: 0;
@@ -17,9 +14,9 @@
    ============================================ */
 :root {
   /* Typography */
-  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', Monaco, monospace;
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', Monaco, monospace;
 
   /* Spacing Scale (4px base) */
   --space-1: 4px;
@@ -108,12 +105,12 @@
   --text-primary: #2C2416;
   --text-secondary: #5C4A32;
   --text-tertiary: #7D6B52;
-  --text-muted: #A89880;
+  --text-muted: #74644F;
   --text-inverse: #FFFCF7;
 
   /* Border Colors - Subtle, warm */
-  --border-color: rgba(92, 74, 50, 0.12);
-  --border-color-strong: rgba(92, 74, 50, 0.25);
+  --border-color: rgba(92, 74, 50, 0.24);
+  --border-color-strong: #9B8A73;
   --border-focus: #C4785D;
 
   /* Accent - Terracotta */
@@ -132,7 +129,7 @@
   --success-light: rgba(125, 155, 118, 0.15);
   --warning-color: #D4A84B;
   --warning-light: rgba(212, 168, 75, 0.15);
-  --error-color: #C17B7B;
+  --error-color: #9F3F3F;
   --error-light: rgba(193, 123, 123, 0.15);
   --info-color: #7B9BB5;
   --info-light: rgba(123, 155, 181, 0.15);
@@ -373,7 +370,7 @@ body {
   font-size: var(--font-size-base);
   font-weight: var(--font-normal);
   line-height: var(--leading-normal);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-primary);
@@ -391,12 +388,23 @@ body {
 h1, h2, h3, .heading {
   font-family: var(--font-display);
   font-weight: var(--font-medium);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   line-height: var(--leading-tight);
 }
 
 code, pre, .mono {
   font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ============================================

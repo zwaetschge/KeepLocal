@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keeplocal-v2';
+const CACHE_NAME = 'keeplocal-v4';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,54 +7,39 @@ const urlsToCache = [
   '/icon-512.png'
 ];
 
-function cacheResponse(request, response) {
+async function cacheResponse(request, response) {
   if (!response || response.status !== 200 || response.type !== 'basic') {
     return response;
   }
 
-  caches.open(CACHE_NAME)
-    .then(cache => {
-      cache.put(request, response.clone());
-    })
-    .catch(err => {
-      console.log('Cache put skipped:', err.message);
-    });
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, response.clone());
+  } catch (err) {
+    console.log('Cache put skipped:', err.message);
+  }
 
   return response;
 }
 
 // Install event - cache resources
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' })))
-          .catch(err => {
-            console.log('Cache addAll error:', err);
-            // Continue even if some resources fail to cache
-            return Promise.resolve();
-          });
-      })
-  );
-  self.skipWaiting();
+  const precache = caches.open(CACHE_NAME)
+    .then(cache => cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' }))))
+    .catch(err => {
+      console.log('Cache addAll error:', err);
+    });
+  event.waitUntil(Promise.all([precache, self.skipWaiting()]));
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-  self.clients.claim();
+  const cleanup = caches.keys().then(cacheNames => Promise.all(
+    cacheNames.map(cacheName => (
+      cacheName === CACHE_NAME ? null : caches.delete(cacheName)
+    ))
+  ));
+  event.waitUntil(Promise.all([cleanup, self.clients.claim()]));
 });
 
 // Fetch event - serve app shell from network first, assets from cache first
@@ -84,6 +69,12 @@ self.addEventListener('fetch', event => {
           );
         })
     );
+    return;
+  }
+
+  // Uploaded note images are private data. Never persist them in Cache Storage.
+  if (url.pathname.startsWith('/uploads/')) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
     return;
   }
 

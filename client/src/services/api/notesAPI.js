@@ -1,5 +1,5 @@
 import { API_ENDPOINTS } from '../../constants/api';
-import { fetchWithAuth, buildQueryString, getCsrfToken, getAuthToken, API_BASE_URL } from './apiUtils';
+import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, API_BASE_URL } from './apiUtils';
 
 /**
  * Notes API module
@@ -121,11 +121,9 @@ const notesAPI = {
     Array.from(files).forEach((file) => formData.append('images', file));
 
     // Manual fetch for multipart/form-data (don't set Content-Type, browser will set it with boundary)
-    const token = getAuthToken();
     const csrfToken = getCsrfToken();
 
     const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
     const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/images`, {
@@ -136,11 +134,11 @@ const notesAPI = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = await parseResponse(response);
       throw new Error(errorData.error || 'Bild-Upload fehlgeschlagen');
     }
 
-    return response.json();
+    return parseResponse(response);
   },
 
   /**
@@ -150,7 +148,7 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note without the image
    */
   deleteImage: (id, filename) =>
-    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${filename}`, {
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
     }),
 
@@ -171,11 +169,9 @@ const notesAPI = {
     }
 
     // Manual fetch for multipart/form-data
-    const token = getAuthToken();
     const csrfToken = getCsrfToken();
 
     const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
     const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/transcribe`, {
@@ -186,11 +182,11 @@ const notesAPI = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = await parseResponse(response);
       throw new Error(errorData.error || 'Transkription fehlgeschlagen');
     }
 
-    return response.json();
+    return parseResponse(response);
   },
 };
 

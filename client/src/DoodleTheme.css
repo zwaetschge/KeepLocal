@@ -1,12 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Delius+Swash+Caps&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 /* ============================================
    Doodle Theme - Hand-drawn Studio
    ============================================ */
 body.doodle-mode {
   --font-display: 'Delius Swash Caps', 'Comic Sans MS', cursive;
   --font-body: 'Delius Swash Caps', 'Comic Sans MS', cursive;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', Monaco, monospace;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -136,6 +134,25 @@ body.doodle-mode .btn-secondary,
 body.doodle-mode .auth-button {
   border: 2px solid var(--border-color-strong);
   box-shadow: 3px 3px 0 rgba(38, 61, 91, 0.18);
+}
+
+body.doodle-mode .auth-container {
+  background: transparent;
+}
+
+body.doodle-mode .auth-box {
+  border-radius: 8px 5px 7px 4px;
+  box-shadow: 7px 7px 0 rgba(38, 61, 91, 0.2);
+}
+
+body.doodle-mode .auth-box::before {
+  border-top-color: #D97706;
+  border-top-style: dashed;
+}
+
+body.doodle-mode .auth-button {
+  background: #263D5B;
+  color: #FFFFFF;
 }
 
 .doodle-mode .App-header {

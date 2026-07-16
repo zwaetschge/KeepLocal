@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const { escapeRegex } = require('../utils/sanitize');
@@ -41,8 +42,13 @@ router.post('/request', async (req, res, next) => {
   try {
     const { username } = req.body;
 
-    if (!username) {
-      return res.status(400).json({ error: 'Benutzername ist erforderlich' });
+    if (
+      typeof username !== 'string' ||
+      username.length < 3 ||
+      username.length > 50 ||
+      !/^[a-zA-Z0-9_-]+$/.test(username)
+    ) {
+      return res.status(400).json({ error: 'Ungueltiger Benutzername' });
     }
 
     // Ziel-Benutzer finden
@@ -57,8 +63,15 @@ router.post('/request', async (req, res, next) => {
     }
 
     // Prüfen ob bereits Freunde
-    if (targetUser.friends.includes(req.user._id)) {
+    if (targetUser.friends.some(friendId => friendId.toString() === req.user._id.toString())) {
       return res.status(400).json({ error: 'Bereits Freunde' });
+    }
+
+    const reverseRequest = req.user.friendRequests?.some(
+      fr => fr.from.toString() === targetUser._id.toString() && fr.status === 'pending'
+    );
+    if (reverseRequest) {
+      return res.status(409).json({ error: 'Von diesem Benutzer liegt bereits eine Anfrage vor' });
     }
 
     // Prüfen ob bereits eine Anfrage existiert
@@ -71,12 +84,22 @@ router.post('/request', async (req, res, next) => {
     }
 
     // Anfrage hinzufügen
-    targetUser.friendRequests.push({
-      from: req.user._id,
-      status: 'pending'
-    });
+    const result = await User.updateOne(
+      {
+        _id: targetUser._id,
+        friends: { $ne: req.user._id },
+        friendRequests: {
+          $not: { $elemMatch: { from: req.user._id, status: 'pending' } }
+        }
+      },
+      {
+        $push: { friendRequests: { from: req.user._id, status: 'pending' } }
+      }
+    );
 
-    await targetUser.save();
+    if (result.modifiedCount !== 1) {
+      return res.status(409).json({ error: 'Anfrage bereits gesendet oder bereits befreundet' });
+    }
 
     res.json({ message: 'Freundschaftsanfrage gesendet' });
   } catch (error) {
@@ -87,6 +110,10 @@ router.post('/request', async (req, res, next) => {
 // POST /api/friends/accept/:requestId - Freundschaftsanfrage akzeptieren
 router.post('/accept/:requestId', async (req, res, next) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.requestId)) {
+      return res.status(400).json({ error: 'Ungueltige Anfrage-ID' });
+    }
+
     const user = await User.findById(req.user._id);
 
     // Anfrage finden
@@ -99,16 +126,34 @@ router.post('/accept/:requestId', async (req, res, next) => {
       return res.status(400).json({ error: 'Anfrage wurde bereits bearbeitet' });
     }
 
-    // Anfrage akzeptieren
-    request.status = 'accepted';
-
-    // Beide Benutzer als Freunde hinzufügen
-    user.friends.push(request.from);
-    await user.save();
-
     const requester = await User.findById(request.from);
-    requester.friends.push(user._id);
-    await requester.save();
+    if (!requester) {
+      user.friendRequests.pull(request._id);
+      await user.save();
+      return res.status(404).json({ error: 'Anfragender Benutzer existiert nicht mehr' });
+    }
+
+    // Update the requester first. If the second write fails, the pending
+    // request remains and accepting it again safely completes the operation.
+    await User.updateOne(
+      { _id: requester._id },
+      { $addToSet: { friends: user._id } }
+    );
+
+    const accepted = await User.findOneAndUpdate(
+      {
+        _id: user._id,
+        friendRequests: { $elemMatch: { _id: request._id, status: 'pending' } }
+      },
+      {
+        $addToSet: { friends: requester._id },
+        $pull: { friendRequests: { _id: request._id } }
+      }
+    );
+
+    if (!accepted) {
+      return res.status(409).json({ error: 'Anfrage wurde bereits bearbeitet' });
+    }
 
     res.json({ message: 'Freundschaftsanfrage akzeptiert' });
   } catch (error) {
@@ -119,21 +164,21 @@ router.post('/accept/:requestId', async (req, res, next) => {
 // POST /api/friends/reject/:requestId - Freundschaftsanfrage ablehnen
 router.post('/reject/:requestId', async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    if (!mongoose.isValidObjectId(req.params.requestId)) {
+      return res.status(400).json({ error: 'Ungueltige Anfrage-ID' });
+    }
 
-    // Anfrage finden
-    const request = user.friendRequests.id(req.params.requestId);
-    if (!request) {
+    const user = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        friendRequests: { $elemMatch: { _id: req.params.requestId, status: 'pending' } }
+      },
+      { $pull: { friendRequests: { _id: req.params.requestId } } }
+    );
+
+    if (!user) {
       return res.status(404).json({ error: 'Anfrage nicht gefunden' });
     }
-
-    if (request.status !== 'pending') {
-      return res.status(400).json({ error: 'Anfrage wurde bereits bearbeitet' });
-    }
-
-    // Anfrage ablehnen (entfernen)
-    user.friendRequests.pull(request._id);
-    await user.save();
 
     res.json({ message: 'Freundschaftsanfrage abgelehnt' });
   } catch (error) {
@@ -144,19 +189,25 @@ router.post('/reject/:requestId', async (req, res, next) => {
 // DELETE /api/friends/:friendId - Freund entfernen
 router.delete('/:friendId', async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    if (!mongoose.isValidObjectId(req.params.friendId)) {
+      return res.status(400).json({ error: 'Ungueltige Benutzer-ID' });
+    }
+
     const friend = await User.findById(req.params.friendId);
 
     if (!friend) {
       return res.status(404).json({ error: 'Benutzer nicht gefunden' });
     }
 
-    // Freund aus beiden Listen entfernen
-    user.friends = user.friends.filter(id => id.toString() !== friend._id.toString());
-    friend.friends = friend.friends.filter(id => id.toString() !== user._id.toString());
-
-    await user.save();
-    await friend.save();
+    // Both updates are idempotent, so a transient failure can be retried.
+    await User.updateOne(
+      { _id: friend._id },
+      { $pull: { friends: req.user._id } }
+    );
+    await User.updateOne(
+      { _id: req.user._id },
+      { $pull: { friends: friend._id } }
+    );
 
     res.json({ message: 'Freund entfernt' });
   } catch (error) {
@@ -164,11 +215,14 @@ router.delete('/:friendId', async (req, res, next) => {
   }
 });
 
-// GET /api/friends/search - Benutzer suchen (für Admin)
+// GET /api/friends/search - Benutzer suchen
 router.get('/search', async (req, res, next) => {
   try {
     const { query } = req.query;
     const trimmedQuery = (query || '').trim();
+    if (trimmedQuery.length > 100) {
+      return res.status(400).json({ error: 'Suchbegriff darf maximal 100 Zeichen lang sein' });
+    }
     const safeQuery = escapeRegex(trimmedQuery);
 
     if (!safeQuery) {
@@ -177,25 +231,15 @@ router.get('/search', async (req, res, next) => {
 
     const regexQuery = { $regex: safeQuery, $options: 'i' };
 
-    // Admin kann alle Benutzer suchen, normale Benutzer nur Freunde
-    let users;
-    if (req.user.isAdmin) {
-      users = await User.find({
-        $or: [
-          { username: regexQuery },
-          { email: regexQuery }
-        ],
-        _id: { $ne: req.user._id } // Nicht sich selbst
-      }).select('username email').limit(10);
-    } else {
-      users = await User.find({
-        _id: { $in: req.user.friends, $ne: req.user._id },
-        $or: [
-          { username: regexQuery },
-          { email: regexQuery }
-        ]
-      }).select('username email').limit(10);
-    }
+    const searchFields = req.user.isAdmin
+      ? [{ username: regexQuery }, { email: regexQuery }]
+      : [{ username: regexQuery }];
+    const users = await User.find({
+      $or: searchFields,
+      _id: { $ne: req.user._id }
+    })
+      .select(req.user.isAdmin ? 'username email' : 'username')
+      .limit(10);
 
     res.json(users);
   } catch (error) {

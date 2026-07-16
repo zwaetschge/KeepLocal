@@ -67,7 +67,10 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
   return ReactDOM.createPortal(
     <div
       className="confirm-dialog-overlay"
-      onClick={onCancel}
+      onClick={(event) => {
+        event.stopPropagation();
+        onCancel();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"

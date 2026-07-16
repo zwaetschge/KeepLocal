@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { API_BASE_URL } from '../constants/api';
+import { parseResponse } from '../services/api/apiUtils';
 import './Auth.css';
 
 function Login({ onLogin, onSwitchToRegister }) {
@@ -15,9 +16,11 @@ function Login({ onLogin, onSwitchToRegister }) {
   useEffect(() => {
     const checkRegistrationStatus = async () => {
       try {
-        const response = await fetch('/api/auth/registration-status');
+        const response = await fetch(`${API_BASE_URL}/api/auth/registration-status`, {
+          credentials: 'include'
+        });
         if (response.ok) {
-          const data = await response.json();
+          const data = await parseResponse(response);
           setRegistrationEnabled(data.registrationEnabled);
         }
       } catch (error) {
@@ -27,9 +30,11 @@ function Login({ onLogin, onSwitchToRegister }) {
 
     const checkOAuthProviders = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/providers`);
+        const response = await fetch(`${API_BASE_URL}/api/auth/providers`, {
+          credentials: 'include'
+        });
         if (response.ok) {
-          const data = await response.json();
+          const data = await parseResponse(response);
           setOauthProviders(data.providers || {});
         }
       } catch (error) {
@@ -92,6 +97,7 @@ function Login({ onLogin, onSwitchToRegister }) {
               placeholder={t('emailPlaceholder')}
               disabled={loading}
               autoComplete="email"
+              maxLength={254}
               autoFocus
               required
             />
@@ -107,6 +113,7 @@ function Login({ onLogin, onSwitchToRegister }) {
               placeholder="••••••••"
               disabled={loading}
               autoComplete="current-password"
+              maxLength={128}
               required
             />
           </div>

@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
 import os
 import tempfile
+import re
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 26 * 1024 * 1024
 
 # Configuration
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny, base, small, medium, large
@@ -28,8 +30,8 @@ def transcribe():
 
     # Get optional language parameter
     language = request.form.get('language', None)
-    if language:
-        print(f"Language hint provided: {language}")
+    if language and not re.fullmatch(r'[a-z]{2,3}(?:-[A-Z]{2})?', language):
+        return jsonify({'error': 'Invalid language code'}), 400
 
     # faster-whisper needs a file path
     with tempfile.NamedTemporaryFile(suffix=".tmp", delete=True) as temp:
@@ -47,7 +49,7 @@ def transcribe():
             # Convert generator to list to get full text
             # This blocks until transcription is done
             text_segments = [segment.text for segment in segments]
-            full_text = " ".join(text_segments).strip()
+            full_text = " ".join(text_segments).strip()[:10000]
 
             return jsonify({
                 'text': full_text,
@@ -55,8 +57,8 @@ def transcribe():
                 'probability': info.language_probability
             })
         except Exception as e:
-            print(f"Error during transcription: {e}")
-            return jsonify({'error': str(e)}), 500
+            app.logger.exception("Transcription failed")
+            return jsonify({'error': 'Transcription failed'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
