@@ -41,7 +41,7 @@ USER keeplocal
 
 # Pre-download the model to bake it into the image (optional but recommended for speed)
 # This prevents downloading 75MB-1.5GB on every container start if the volume is missing
-RUN python3 -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')"
+RUN python3 -c "import os; from faster_whisper import download_model; download_model(os.environ['WHISPER_MODEL'])"
 
 EXPOSE 5000
 

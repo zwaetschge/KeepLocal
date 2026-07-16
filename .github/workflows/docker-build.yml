@@ -142,6 +142,26 @@ jobs:
           docker logs keeplocal-test
           exit 1
 
+      - name: Test AI health endpoint
+        run: |
+          echo "Testing AI health endpoint..."
+          max_attempts=60
+          attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            if docker exec keeplocal-test curl -f http://127.0.0.1:5001/health; then
+              echo "AI health check passed!"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts failed, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "AI health check failed after $max_attempts attempts"
+          docker logs keeplocal-test
+          exit 1
+
       - name: Test WebUI
         run: |
           echo "Testing WebUI..."
