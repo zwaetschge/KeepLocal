@@ -161,6 +161,23 @@ docker compose restart
 docker compose down -v
 ```
 
+## Vercel Frontend Preview (Optional)
+
+Vercel can build the React client as a static preview. Set the project **Root
+Directory** to `client`; the checked-in `client/vercel.json` fixes the Vite
+build command, output directory, and OAuth callback rewrite.
+
+Use `VITE_API_URL` for the HTTPS origin of a separately deployed KeepLocal
+server. Existing projects that still define `REACT_APP_API_URL` remain
+compatible during migration, but `VITE_API_URL` takes precedence.
+
+Vercel hosts only the browser client—not MongoDB, private uploads, or the
+Whisper service. A functional deployment therefore also needs a reachable
+backend, matching `ALLOWED_ORIGINS` and `CLIENT_URL`, and same-origin proxying
+for cookie-based authentication. Keep Vercel as a protected visual preview if
+that backend path is not configured; use the Docker deployment above for the
+complete self-hosted application.
+
 ## Unraid Installation
 
 ### Method 1: Using Docker Compose (Recommended)
