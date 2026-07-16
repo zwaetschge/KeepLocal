@@ -3,9 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // Keep existing deployments working while they migrate from Create React
-  // App's REACT_APP_* convention to Vite's VITE_* convention.
-  envPrefix: ['VITE_', 'REACT_APP_'],
+  // Keep the legacy API variable available without exposing every
+  // REACT_APP_* value to browser code.
+  envPrefix: ['VITE_', 'REACT_APP_API_URL'],
   build: {
     outDir: 'build',
     emptyOutDir: true

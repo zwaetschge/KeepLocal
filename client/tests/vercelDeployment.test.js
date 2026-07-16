@@ -21,7 +21,7 @@ test('Vite exposes the legacy API URL without exposing arbitrary environment var
   const configUrl = pathToFileURL(path.join(root, 'vite.config.mjs')).href;
   const { default: config } = await import(configUrl);
 
-  assert.deepEqual(config.envPrefix, ['VITE_', 'REACT_APP_']);
+  assert.deepEqual(config.envPrefix, ['VITE_', 'REACT_APP_API_URL']);
   assert.ok(!config.envPrefix.includes(''));
 });
 
