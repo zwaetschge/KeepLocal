@@ -18,7 +18,6 @@ COPY client/ ./
 # IMPORTANT: REACT_APP_API_URL must be empty because the client code already adds /api prefix
 ARG REACT_APP_API_URL=
 ARG VITE_API_URL=${REACT_APP_API_URL}
-ARG WHISPER_MODEL=tiny
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
@@ -32,6 +31,8 @@ COPY server/ ./
 
 # Stage 3: Final All-in-One Image
 FROM ubuntu:22.04
+
+ARG WHISPER_MODEL=tiny
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

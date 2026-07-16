@@ -78,21 +78,34 @@ jobs:
   test-image:
     needs: build-and-push
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - amd64
+          - arm64
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Generate JWT Secret
         id: jwt
         run: echo "secret=$(openssl rand -base64 32)" >> $GITHUB_OUTPUT
 
-      - name: Pull and test Docker image
+      - name: Pull and run ${{ matrix.architecture }} Docker image
         run: |
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          docker pull \
+            --platform "linux/${{ matrix.architecture }}" \
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
 
           docker run -d \
             --name keeplocal-test \
+            --platform "linux/${{ matrix.architecture }}" \
             -p 3000:80 \
             -e JWT_SECRET="${{ steps.jwt.outputs.secret }}" \
             -e ALLOWED_ORIGINS="http://localhost:3000" \
@@ -112,7 +125,7 @@ jobs:
       - name: Test health endpoint
         run: |
           echo "Testing health endpoint..."
-          max_attempts=10
+          max_attempts=36
           attempt=0
 
           while [ $attempt -lt $max_attempts ]; do
