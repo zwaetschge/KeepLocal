@@ -1,6 +1,8 @@
 // API endpoints below already include /api. Accept both an origin and an
 // accidentally /api-suffixed base URL without ever producing /api/api.
-const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
+const configuredApiUrl = import.meta.env.VITE_API_URL
+  || import.meta.env.REACT_APP_API_URL
+  || (import.meta.env.PROD ? '' : 'http://localhost:5000');
 export const API_BASE_URL = configuredApiUrl
   .trim()
   .replace(/\/+$/, '')

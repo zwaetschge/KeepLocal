@@ -17,9 +17,14 @@ env:
   REGISTRY: docker.io
   IMAGE_NAME: keeplocal
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write

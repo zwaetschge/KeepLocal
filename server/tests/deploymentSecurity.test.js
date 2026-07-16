@@ -108,8 +108,11 @@ test('all-in-one image declares the Whisper model argument in its consuming stag
 
 test('published all-in-one image is smoke-tested on every built architecture', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
+  const buildJob = workflow.match(/\n  build-and-push:\n([\s\S]*?)\n  test-image:\n/)?.[1] || '';
   const testJob = workflow.match(/\n  test-image:\n([\s\S]*)/)?.[1] || '';
 
+  assert.match(workflow, /concurrency:\n\s+group: docker-publish-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/);
+  assert.match(buildJob, /timeout-minutes: 45/);
   assert.match(testJob, /architecture:\n\s+- amd64\n\s+- arm64/);
   assert.match(testJob, /uses: docker\/setup-qemu-action@v3/);
   assert.match(testJob, /docker pull[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
