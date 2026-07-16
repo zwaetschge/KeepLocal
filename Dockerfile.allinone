@@ -101,7 +101,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 ENV WHISPER_MODEL=${WHISPER_MODEL} \
     HF_HOME=/var/lib/keeplocal-ai
 RUN su -s /bin/sh node -c \
-    "python3 -c \"import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')\""
+    "python3 -c \"import os; from faster_whisper import download_model; download_model(os.environ['WHISPER_MODEL'])\""
 
 # Copy built client from builder
 COPY --from=client-builder /app/client/build /app/client/build

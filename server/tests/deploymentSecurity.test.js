@@ -114,4 +114,15 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   assert.match(testJob, /uses: docker\/setup-qemu-action@v3/);
   assert.match(testJob, /docker pull[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
   assert.match(testJob, /docker run[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
+  assert.match(testJob, /docker exec keeplocal-test curl -f http:\/\/127\.0\.0\.1:5001\/health/);
+});
+
+test('Whisper images cache model files without loading CTranslate2 during the build', () => {
+  for (const filename of ['Dockerfile.allinone', 'ai/Dockerfile']) {
+    const dockerfile = fs.readFileSync(path.join(root, filename), 'utf8');
+    const preload = dockerfile.match(/RUN[^\n]*(?:\\\n[^\n]*)*download_model[^\n]*/)?.[0] || '';
+
+    assert.match(preload, /from faster_whisper import download_model/, `${filename} must use download_model`);
+    assert.doesNotMatch(preload, /WhisperModel/, `${filename} must not construct a model while cross-building`);
+  }
 });
