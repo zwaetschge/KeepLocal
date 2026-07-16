@@ -25,6 +25,8 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      test-tag: ${{ steps.meta.outputs.test-tag }}
     permissions:
       contents: read
       packages: write
@@ -47,17 +49,10 @@ jobs:
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix={{date 'YYYY-MM-DD'}}-
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: .github/scripts/docker-metadata.sh
 
       - name: Build and push All-in-One Docker image
         uses: docker/build-push-action@v5
@@ -106,7 +101,7 @@ jobs:
         run: |
           docker pull \
             --platform "linux/${{ matrix.architecture }}" \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.test-tag }}
 
           docker run -d \
             --name keeplocal-test \
@@ -115,7 +110,7 @@ jobs:
             -e JWT_SECRET="${{ steps.jwt.outputs.secret }}" \
             -e ALLOWED_ORIGINS="http://localhost:3000" \
             -e NODE_ENV="production" \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.test-tag }}
 
       - name: Wait for services to start
         run: |

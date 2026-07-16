@@ -1,9 +1,42 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '../..');
+
+const runDockerMetadata = (overrides = {}) => {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-docker-metadata-'));
+  const outputPath = path.join(outputDirectory, 'github-output');
+  const sha = '0123456789abcdef0123456789abcdef01234567';
+
+  const result = childProcess.spawnSync(
+    'bash',
+    [path.join(root, '.github/scripts/docker-metadata.sh')],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DOCKERHUB_USERNAME: 'example',
+        IMAGE_NAME: 'keeplocal',
+        GITHUB_EVENT_NAME: 'push',
+        GITHUB_OUTPUT: outputPath,
+        GITHUB_REF_NAME: 'main',
+        GITHUB_REF_TYPE: 'branch',
+        GITHUB_REPOSITORY: 'example/KeepLocal',
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_SHA: sha,
+        ...overrides,
+      },
+    },
+  );
+
+  const output = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : '';
+  fs.rmSync(outputDirectory, { recursive: true, force: true });
+  return { ...result, output, sha };
+};
 
 test('all-in-one nginx sends private uploads through backend authorization', () => {
   const config = fs.readFileSync(path.join(root, 'nginx-allinone.conf'), 'utf8');
@@ -113,11 +146,86 @@ test('published all-in-one image is smoke-tested on every built architecture', (
 
   assert.match(workflow, /concurrency:\n\s+group: docker-publish-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/);
   assert.match(buildJob, /timeout-minutes: 45/);
+  assert.match(buildJob, /run: \.github\/scripts\/docker-metadata\.sh/);
+  assert.doesNotMatch(buildJob, /docker\/metadata-action/);
+  assert.match(buildJob, /outputs:\n\s+test-tag: \$\{\{ steps\.meta\.outputs\.test-tag \}\}/);
   assert.match(testJob, /architecture:\n\s+- amd64\n\s+- arm64/);
   assert.match(testJob, /uses: docker\/setup-qemu-action@v3/);
   assert.match(testJob, /docker pull[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
   assert.match(testJob, /docker run[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
+  assert.match(testJob, /needs\.build-and-push\.outputs\.test-tag/);
   assert.match(testJob, /docker exec keeplocal-test curl -f http:\/\/127\.0\.0\.1:5001\/health/);
+});
+
+test('Docker metadata is generated locally for main and semantic-version releases', () => {
+  const main = runDockerMetadata();
+  assert.equal(main.status, 0, main.stderr);
+  assert.match(main.output, /example\/keeplocal:\d{4}-\d{2}-\d{2}-0123456/);
+  assert.match(main.output, /example\/keeplocal:main/);
+  assert.match(main.output, /example\/keeplocal:latest/);
+  assert.match(main.output, new RegExp(`org\\.opencontainers\\.image\\.revision=${main.sha}`));
+  assert.match(main.output, /test-tag=\d{4}-\d{2}-\d{2}-0123456/);
+
+  const release = runDockerMetadata({
+    GITHUB_REF_NAME: 'v2.3.4',
+    GITHUB_REF_TYPE: 'tag',
+  });
+  assert.equal(release.status, 0, release.stderr);
+  assert.match(release.output, /example\/keeplocal:2\.3\.4/);
+  assert.match(release.output, /example\/keeplocal:2\.3\n/);
+  assert.match(release.output, /example\/keeplocal:2\n/);
+  assert.match(release.output, /example\/keeplocal:latest/);
+
+  const prerelease = runDockerMetadata({
+    GITHUB_REF_NAME: 'v2.3.4-rc.1',
+    GITHUB_REF_TYPE: 'tag',
+  });
+  assert.equal(prerelease.status, 0, prerelease.stderr);
+  assert.match(prerelease.output, /example\/keeplocal:2\.3\.4-rc\.1/);
+  assert.doesNotMatch(prerelease.output, /example\/keeplocal:2\.3\n/);
+  assert.doesNotMatch(prerelease.output, /example\/keeplocal:2\n/);
+  assert.doesNotMatch(prerelease.output, /example\/keeplocal:latest/);
+
+  const buildMetadata = runDockerMetadata({
+    GITHUB_REF_NAME: 'v2.3.4+build.5',
+    GITHUB_REF_TYPE: 'tag',
+  });
+  assert.equal(buildMetadata.status, 0, buildMetadata.stderr);
+  assert.match(buildMetadata.output, /example\/keeplocal:2\.3\.4/);
+  assert.match(buildMetadata.output, /org\.opencontainers\.image\.version=2\.3\.4/);
+  assert.doesNotMatch(buildMetadata.output, /example\/keeplocal:2\.3\.4-build\.5/);
+  assert.doesNotMatch(buildMetadata.output, /example\/keeplocal:2\.3\.4\+build\.5/);
+});
+
+test('Docker metadata rejects invalid manually supplied release tags', () => {
+  const invalid = runDockerMetadata({
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    INPUT_VERSION: 'latest;echo-pwned',
+  });
+
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /Invalid semantic version/);
+  assert.equal(invalid.output, '');
+
+  for (const version of ['v01.2.3', 'v1.2.3-01']) {
+    const leadingZero = runDockerMetadata({
+      GITHUB_REF_NAME: version,
+      GITHUB_REF_TYPE: 'tag',
+    });
+    assert.notEqual(leadingZero.status, 0);
+    assert.match(leadingZero.stderr, /Invalid semantic version/);
+    assert.equal(leadingZero.output, '');
+  }
+
+  const nonMainRelease = runDockerMetadata({
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF_NAME: 'feature/unreviewed-release',
+    INPUT_VERSION: 'v9.9.9',
+  });
+
+  assert.notEqual(nonMainRelease.status, 0);
+  assert.match(nonMainRelease.stderr, /must be dispatched from the main branch/);
+  assert.equal(nonMainRelease.output, '');
 });
 
 test('Whisper images cache model files without loading CTranslate2 during the build', () => {
