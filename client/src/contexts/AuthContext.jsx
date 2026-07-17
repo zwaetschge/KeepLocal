@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authAPI, initializeCSRF } from '../services/api';
+import { removeLocalStorage } from '../utils/localStorage.mjs';
 
 const AuthContext = createContext();
 
@@ -19,7 +20,7 @@ export function AuthProvider({ children }) {
 
   // Check if user is authenticated and setup status on mount
   useEffect(() => {
-    window.localStorage.removeItem('token');
+    removeLocalStorage('token');
 
     const checkAuth = async () => {
       // First check if initial setup is needed

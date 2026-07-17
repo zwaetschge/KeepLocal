@@ -12,7 +12,8 @@ function readClientFile(...parts) {
 test('theme cycle includes doodle mode after e-ink and applies the body class', () => {
   const app = readClientFile('src/App.jsx');
 
-  assert.match(app, /savedTheme \|\| 'light'; \/\/ 'light', 'dark', 'oled', 'eink', or 'doodle'/);
+  assert.match(app, /readLocalStorage\('theme'\)/);
+  assert.match(app, /THEMES\.has\(savedTheme\) \? savedTheme : 'light'/);
   assert.match(app, /classList\.remove\('dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode'\)/);
   assert.match(app, /theme === 'doodle'/);
   assert.match(app, /classList\.add\('doodle-mode'\)/);
