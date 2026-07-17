@@ -58,6 +58,13 @@ export function AuthProvider({ children }) {
     return response;
   };
 
+  const demoLogin = async () => {
+    const response = await authAPI.demoLogin();
+    setUser(response.user);
+    setIsLoggedIn(true);
+    return response;
+  };
+
   const register = async (username, email, password) => {
     const response = await authAPI.register(username, email, password);
     setUser(response.user);
@@ -104,6 +111,7 @@ export function AuthProvider({ children }) {
     loading,
     setupNeeded,
     login,
+    demoLogin,
     register,
     logout,
     setup,

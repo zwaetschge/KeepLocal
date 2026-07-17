@@ -43,6 +43,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isDemo: {
+    type: Boolean,
+    default: false
+  },
   isBootstrapAdmin: {
     type: Boolean,
     default: false,
@@ -92,6 +96,17 @@ userSchema.index(
     name: 'single_bootstrap_admin',
     unique: true,
     partialFilterExpression: { isBootstrapAdmin: true }
+  }
+);
+
+// Public demo deployments use exactly one deliberately restricted account.
+// The partial index leaves all normal users unaffected.
+userSchema.index(
+  { isDemo: 1 },
+  {
+    name: 'single_demo_user',
+    unique: true,
+    partialFilterExpression: { isDemo: true }
   }
 );
 

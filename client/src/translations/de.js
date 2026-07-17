@@ -19,6 +19,17 @@ export const de = {
   orContinueWith: 'oder weiter mit',
   oauthFailed: 'OAuth-Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.',
   backToLogin: 'Zurück zur Anmeldung',
+  publicDemo: 'Öffentliche Demo',
+  demoIntroTitle: 'Direkt ausprobieren',
+  demoIntroBody: 'Gemeinsamer öffentlicher Bereich: Bitte keine persönlichen oder vertraulichen Daten eingeben. Änderungen sind für andere Tester sichtbar und werden alle 6 Stunden zurückgesetzt. Uploads, KI und Zusammenarbeit sind deaktiviert.',
+  demoTryNow: 'Demo ausprobieren',
+  demoEntering: 'Demo wird geöffnet...',
+  demoLoginFailed: 'Die Demo konnte nicht gestartet werden',
+  demoBadge: 'Demo',
+  demoBannerTitle: 'Öffentliche Demo',
+  demoBannerPrivacy: 'Gemeinsamer Bereich: Keine persönlichen oder vertraulichen Daten eingeben. Änderungen sind für andere Tester sichtbar.',
+  demoBannerRestrictions: 'Uploads, KI und Zusammenarbeit sind deaktiviert.',
+  demoBannerReset: 'Daten werden alle 6 Stunden zurückgesetzt.',
 
   // Setup
   setupTitle: 'KeepLocal Ersteinrichtung',

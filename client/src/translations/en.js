@@ -19,6 +19,17 @@ export const en = {
   orContinueWith: 'or continue with',
   oauthFailed: 'OAuth login failed. Please try again.',
   backToLogin: 'Back to Login',
+  publicDemo: 'Public demo',
+  demoIntroTitle: 'Try it right away',
+  demoIntroBody: 'Shared public space: Do not enter personal or confidential information. Changes are visible to other testers and reset every 6 hours. Uploads, AI, and collaboration are disabled.',
+  demoTryNow: 'Try the demo',
+  demoEntering: 'Opening demo...',
+  demoLoginFailed: 'The demo could not be started',
+  demoBadge: 'Demo',
+  demoBannerTitle: 'Public demo',
+  demoBannerPrivacy: 'Shared space: Do not enter personal or confidential information. Changes are visible to other testers.',
+  demoBannerRestrictions: 'Uploads, AI, and collaboration are disabled.',
+  demoBannerReset: 'Data resets every 6 hours.',
 
   // Setup
   setupTitle: 'KeepLocal Initial Setup',

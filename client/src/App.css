@@ -157,6 +157,104 @@ body.eink-mode::before {
   gap: var(--space-4);
 }
 
+.demo-user-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.demo-user-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.demo-user-badge,
+.mobile-demo-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px var(--space-2);
+  background: #F4A340;
+  border: 1px solid #263D5B;
+  border-radius: 5px;
+  color: #172033;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-bold);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: rotate(1deg);
+}
+
+/* The public demo notice stays visible above the shared workspace. */
+.demo-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-6);
+  background: #FFF7ED;
+  border-bottom: 2px solid #D97706;
+  color: #334155;
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-relaxed);
+  z-index: calc(var(--z-header) - 1);
+}
+
+.demo-banner strong {
+  color: #7C3500;
+  font-weight: var(--font-bold);
+}
+
+.demo-banner span + span::before {
+  content: '•';
+  margin-right: var(--space-3);
+  color: #D97706;
+  font-weight: var(--font-bold);
+}
+
+.dark-mode .demo-user-badge,
+.oled-mode .demo-user-badge,
+.dark-mode .mobile-demo-badge,
+.oled-mode .mobile-demo-badge {
+  background: #F4B860;
+  border-color: #F8FAFC;
+  color: #172033;
+}
+
+.dark-mode .demo-banner,
+.oled-mode .demo-banner {
+  background: #251D16;
+  border-bottom-color: #F4B860;
+  color: #E2E8F0;
+}
+
+.dark-mode .demo-banner strong,
+.oled-mode .demo-banner strong {
+  color: #F4B860;
+}
+
+.eink-mode .demo-user-badge,
+.eink-mode .mobile-demo-badge {
+  background: #ffffff;
+  border: 2px solid #000000;
+  color: #000000;
+  transform: none;
+}
+
+.eink-mode .demo-banner {
+  background: #ffffff;
+  border-bottom: 2px solid #000000;
+  color: #000000;
+}
+
+.eink-mode .demo-banner strong,
+.eink-mode .demo-banner span + span::before {
+  color: #000000;
+}
+
 .user-info .theme-toggle {
   position: static;
   width: 40px;
@@ -748,6 +846,23 @@ body.eink-mode::before {
 
   .user-info {
     gap: var(--space-2);
+  }
+
+  .demo-banner {
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--font-size-xs);
+  }
+
+  .demo-banner strong,
+  .demo-banner span {
+    width: 100%;
+  }
+
+  .demo-banner span + span::before {
+    margin-right: var(--space-2);
   }
 
   .pagination {

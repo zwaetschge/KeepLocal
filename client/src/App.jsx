@@ -24,7 +24,7 @@ import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
 
 function AppContent() {
-  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, register, logout, setup, completeOAuthLogin } = useAuth();
+  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, demoLogin, register, logout, setup, completeOAuthLogin } = useAuth();
   const { t } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -345,6 +345,11 @@ function AppContent() {
     showToast('Erfolgreich angemeldet', 'success');
   };
 
+  const handleDemoLogin = async () => {
+    await demoLogin();
+    showToast(t('loginSuccess'), 'success');
+  };
+
   const handleRegister = async (username, email, password) => {
     await register(username, email, password);
     showToast('Erfolgreich registriert', 'success');
@@ -416,6 +421,7 @@ function AppContent() {
         ) : (
           <Login
             onLogin={handleLogin}
+            onDemoLogin={handleDemoLogin}
             onSwitchToRegister={() => setShowRegister(true)}
           />
         )}
@@ -451,15 +457,26 @@ function AppContent() {
             aria-label={t('searchNotes')}
           />
           <div className="user-info">
-              <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            <button
-              className="user-name clickable"
-              onClick={() => setShowSettings(true)}
-              title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
-              aria-label={t('settings') || 'Einstellungen'}
-            >
-              👤 {user?.username}
-            </button>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {user?.isDemo ? (
+              <div className="demo-user-identity" title={t('demoBannerTitle')}>
+                <svg className="demo-user-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M4 21a8 8 0 0116 0"/>
+                </svg>
+                <span className="user-name">{user?.username}</span>
+                <span className="demo-user-badge">{t('demoBadge')}</span>
+              </div>
+            ) : (
+              <button
+                className="user-name clickable"
+                onClick={() => setShowSettings(true)}
+                title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
+                aria-label={t('settings') || 'Einstellungen'}
+              >
+                👤 {user?.username}
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="btn-logout"
@@ -472,6 +489,15 @@ function AppContent() {
         </div>
       </header>
 
+      {user?.isDemo && (
+        <section className="demo-banner" aria-label={t('demoBannerTitle')}>
+          <strong>{t('demoBannerTitle')}</strong>
+          <span>{t('demoBannerPrivacy')}</span>
+          <span>{t('demoBannerRestrictions')}</span>
+          <span>{t('demoBannerReset')}</span>
+        </section>
+      )}
+
       <div className="App-container">
         <Sidebar
           allTags={allTags}
@@ -480,7 +506,7 @@ function AppContent() {
           noteCount={noteCounts.active}
           isAdmin={user?.isAdmin}
           onAdminClick={() => setShowAdminConsole(true)}
-          onSettingsClick={() => setShowSettings(true)}
+          onSettingsClick={user?.isDemo ? undefined : () => setShowSettings(true)}
           user={user}
           onLogout={handleLogout}
           theme={theme}
@@ -490,7 +516,7 @@ function AppContent() {
           archivedCount={noteCounts.archived}
           showArchived={showArchived}
           onShowArchivedToggle={() => setShowArchived(!showArchived)}
-          onOpenFriends={() => setShowFriendsModal(true)}
+          onOpenFriends={user?.isDemo ? undefined : () => setShowFriendsModal(true)}
         />
 
         <main className="App-main" role="main">
@@ -516,7 +542,7 @@ function AppContent() {
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
                   onToggleArchive={toggleArchiveNote}
-                  onOpenCollaborate={openCollaborateModal}
+                  onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
                   onOpenModal={openNoteModal}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
@@ -535,7 +561,7 @@ function AppContent() {
                   onUpdateNote={updateNote}
                   onTogglePin={togglePinNote}
                   onToggleArchive={toggleArchiveNote}
-                  onOpenCollaborate={openCollaborateModal}
+                  onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
                   onOpenModal={openNoteModal}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
@@ -609,7 +635,7 @@ function AppContent() {
         />
       )}
 
-      {showAdminConsole && user?.isAdmin && (
+      {showAdminConsole && user?.isAdmin && !user?.isDemo && (
         <AdminConsole onClose={() => setShowAdminConsole(false)} />
       )}
 
@@ -619,25 +645,29 @@ function AppContent() {
           onSave={handleModalSave}
           onClose={closeNoteModal}
           onToggleArchive={toggleArchiveNote}
-          onOpenCollaborate={openCollaborateModal}
+          onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
           onDelete={deleteNote}
         />
       )}
 
-      <FriendsModal
-        isOpen={showFriendsModal}
-        onClose={() => setShowFriendsModal(false)}
-        isAdmin={user?.isAdmin}
-      />
+      {!user?.isDemo && (
+        <>
+          <FriendsModal
+            isOpen={showFriendsModal}
+            onClose={() => setShowFriendsModal(false)}
+            isAdmin={user?.isAdmin}
+          />
 
-      <CollaborateModal
-        isOpen={showCollaborateModal}
-        onClose={() => setShowCollaborateModal(false)}
-        note={collaborateNote}
-        onNoteUpdate={handleNoteShared}
-      />
+          <CollaborateModal
+            isOpen={showCollaborateModal}
+            onClose={() => setShowCollaborateModal(false)}
+            note={collaborateNote}
+            onNoteUpdate={handleNoteShared}
+          />
+        </>
+      )}
 
-      {showSettings && (
+      {showSettings && !user?.isDemo && (
         <Settings
           onClose={() => setShowSettings(false)}
           isAdmin={user?.isAdmin}

@@ -17,9 +17,31 @@ const {
 const { clearCsrfCookie } = require('../middleware/csrfProtection');
 const { publicValidationErrors } = require('../utils/validationErrors');
 const { getClientURL } = require('../utils/clientUrl');
+const {
+  isDemoMode,
+  shouldRevokeAllSessionsOnLogout
+} = require('../middleware/demoPolicy');
 
 const OAUTH_STATE_COOKIE = 'kl_oauth_state';
 const DUMMY_PASSWORD_HASH = '$2a$10$DOhqVvnjClITTjb5w5ae/exBwouYnqW5CmBHs1IPa3CH1LrXLpB3S';
+
+function publicAuthUser(user, includeProfile = false) {
+  const payload = {
+    id: user._id,
+    username: user.username,
+    email: user.email,
+    isAdmin: user.isAdmin,
+    isDemo: user.isDemo === true
+  };
+
+  if (includeProfile) {
+    payload.provider = user.provider || 'local';
+    payload.avatar = user.avatar || null;
+    payload.createdAt = user.createdAt;
+  }
+
+  return payload;
+}
 
 // Validation error handler
 const handleValidationErrors = (req, res, next) => {
@@ -36,6 +58,13 @@ const handleValidationErrors = (req, res, next) => {
 // GET /api/auth/setup-needed - Check if initial setup is required
 router.get('/setup-needed', async (req, res) => {
   try {
+    if (isDemoMode()) {
+      return res.json({
+        setupNeeded: false,
+        message: 'System already configured'
+      });
+    }
+
     const userCount = await User.countDocuments();
     res.json({
       setupNeeded: userCount === 0,
@@ -50,6 +79,10 @@ router.get('/setup-needed', async (req, res) => {
 // GET /api/auth/registration-status - Check if registration is enabled
 router.get('/registration-status', async (req, res) => {
   try {
+    if (isDemoMode()) {
+      return res.json({ registrationEnabled: false });
+    }
+
     const userCount = await User.countDocuments();
 
     // If no users exist, registration is always allowed (first admin)
@@ -99,6 +132,12 @@ router.post('/register', [
   handleValidationErrors
 ], async (req, res, next) => {
   try {
+    if (isDemoMode()) {
+      return res.status(403).json({
+        error: 'Registrierung ist in der oeffentlichen Demo deaktiviert.'
+      });
+    }
+
     const { username, email, password } = req.body;
 
     // Check if this is the first user (admin)
@@ -148,12 +187,7 @@ router.post('/register', [
 
     res.status(201).json({
       message: 'Registrierung erfolgreich',
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.isAdmin
-      }
+      user: publicAuthUser(user)
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -199,37 +233,56 @@ router.post('/login', [
 
     res.json({
       message: 'Anmeldung erfolgreich',
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.isAdmin
-      }
+      user: publicAuthUser(user)
     });
   } catch (error) {
     next(error);
   }
 });
 
+// POST /api/auth/demo - Start a session for the deliberately restricted
+// public demo account. There is no shared public password to leak or reuse.
+router.post('/demo', async (req, res, next) => {
+  try {
+    if (!isDemoMode()) {
+      return res.status(404).json({ error: 'Demo ist nicht aktiviert' });
+    }
+
+    const user = await User.findOne({ isDemo: true, isAdmin: false, provider: 'local' })
+      .select('+sessionVersion');
+
+    if (!user) {
+      return res.status(503).json({
+        error: 'Demo wird gerade vorbereitet. Bitte versuche es gleich erneut.',
+        code: 'DEMO_NOT_READY'
+      });
+    }
+
+    const token = generateToken(user._id, user.sessionVersion);
+    setAuthCookie(res, token);
+
+    return res.json({
+      message: 'Demo gestartet',
+      user: publicAuthUser(user)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // GET /api/auth/me - Aktuellen Benutzer abrufen
 router.get('/me', authenticateToken, async (req, res) => {
   res.json({
-    user: {
-      id: req.user._id,
-      username: req.user.username,
-      email: req.user.email,
-      isAdmin: req.user.isAdmin,
-      provider: req.user.provider || 'local',
-      avatar: req.user.avatar || null,
-      createdAt: req.user.createdAt
-    }
+    user: publicAuthUser(req.user, true)
   });
 });
 
-// POST /api/auth/logout - Browser session and all copies of its JWT are revoked.
+// POST /api/auth/logout - Normal accounts revoke every copy of the current
+// session. The shared demo only clears this browser so one visitor cannot log
+// out everybody else.
 router.post('/logout', optionalAuth, async (req, res, next) => {
   try {
-    if (req.user) {
+    if (shouldRevokeAllSessionsOnLogout(req.user)) {
       await User.updateOne(
         { _id: req.user._id, sessionVersion: req.user.sessionVersion },
         { $inc: { sessionVersion: 1 } }
@@ -247,10 +300,12 @@ router.post('/logout', optionalAuth, async (req, res, next) => {
 
 // GET /api/auth/providers - Return which OAuth providers are configured
 router.get('/providers', (req, res) => {
+  const demo = isDemoMode();
   res.json({
     providers: {
-      google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-      github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+      google: !demo && !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      github: !demo && !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+      demo
     }
   });
 });
@@ -290,6 +345,13 @@ function issueOAuthState(req, res, next) {
   next();
 }
 
+function rejectOAuthInDemo(req, res, next) {
+  if (isDemoMode()) {
+    return res.status(404).json({ error: 'OAuth ist in der Demo nicht konfiguriert' });
+  }
+  return next();
+}
+
 function validateOAuthState(req, res, next) {
   const expected = req.cookies?.[OAUTH_STATE_COOKIE];
   const actual = req.query.state;
@@ -312,7 +374,7 @@ function validateOAuthState(req, res, next) {
 // --- Google OAuth ---
 router.get('/google',
   (req, res, next) => {
-    if (!process.env.GOOGLE_CLIENT_ID) {
+    if (isDemoMode() || !process.env.GOOGLE_CLIENT_ID) {
       return res.status(404).json({ error: 'Google OAuth is not configured' });
     }
     next();
@@ -326,6 +388,7 @@ router.get('/google',
 );
 
 router.get('/google/callback',
+  rejectOAuthInDemo,
   validateOAuthState,
   authenticateOAuthCallback('google', 'google_auth_failed')
 );
@@ -333,7 +396,7 @@ router.get('/google/callback',
 // --- GitHub OAuth ---
 router.get('/github',
   (req, res, next) => {
-    if (!process.env.GITHUB_CLIENT_ID) {
+    if (isDemoMode() || !process.env.GITHUB_CLIENT_ID) {
       return res.status(404).json({ error: 'GitHub OAuth is not configured' });
     }
     next();
@@ -347,6 +410,7 @@ router.get('/github',
 );
 
 router.get('/github/callback',
+  rejectOAuthInDemo,
   validateOAuthState,
   authenticateOAuthCallback('github', 'github_auth_failed')
 );

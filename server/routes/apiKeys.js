@@ -9,9 +9,11 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const ApiKey = require('../models/ApiKey');
 const { authenticateToken } = require('../middleware/auth');
+const { blockDemoUser } = require('../middleware/demoPolicy');
 
 // All routes require JWT authentication
 router.use(authenticateToken);
+router.use(blockDemoUser('api_keys'));
 
 /**
  * @swagger

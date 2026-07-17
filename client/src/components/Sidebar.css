@@ -342,6 +342,17 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .sidebar-mobile-user-static {
+    cursor: default;
+  }
+
+  .sidebar-mobile-user-static:hover {
+    background: var(--accent-light);
+    border-color: rgba(196, 120, 93, 0.3);
+    box-shadow: none;
+    transform: none;
+  }
+
   .sidebar-mobile-user:focus-visible {
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
@@ -386,6 +397,10 @@
     font-size: var(--font-size-base);
     font-weight: var(--font-semibold);
     color: var(--text-primary);
+  }
+
+  .mobile-demo-badge {
+    margin-left: auto;
   }
 
   .sidebar-mobile-actions {

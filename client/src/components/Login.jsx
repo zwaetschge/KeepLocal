@@ -4,14 +4,19 @@ import { API_BASE_URL } from '../constants/api';
 import { parseResponse } from '../services/api/apiUtils';
 import './Auth.css';
 
-function Login({ onLogin, onSwitchToRegister }) {
+function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null);
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
-  const [oauthProviders, setOauthProviders] = useState({ google: false, github: false });
+  const [oauthProviders, setOauthProviders] = useState({
+    google: false,
+    github: false,
+    demo: false,
+  });
+  const loading = loadingAction !== null;
 
   useEffect(() => {
     const checkRegistrationStatus = async () => {
@@ -55,14 +60,27 @@ function Login({ onLogin, onSwitchToRegister }) {
       return;
     }
 
-    setLoading(true);
+    setLoadingAction('credentials');
 
     try {
       await onLogin(email, password);
     } catch (err) {
       setError(err.message || t('loginFailed'));
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setError('');
+    setLoadingAction('demo');
+
+    try {
+      await onDemoLogin();
+    } catch (err) {
+      setError(err.message || t('demoLoginFailed'));
+    } finally {
+      setLoadingAction(null);
     }
   };
 
@@ -79,6 +97,26 @@ function Login({ onLogin, onSwitchToRegister }) {
           <h1>KeepLocal</h1>
           <p>{t('loginSubtitle')}</p>
         </div>
+
+        {oauthProviders.demo && onDemoLogin && (
+          <section className="demo-login-panel" aria-labelledby="demo-login-title">
+            <div className="demo-login-copy">
+              <span className="demo-login-kicker">{t('publicDemo')}</span>
+              <h2 id="demo-login-title">{t('demoIntroTitle')}</h2>
+              <p id="demo-login-description">{t('demoIntroBody')}</p>
+            </div>
+            <button
+              type="button"
+              className="demo-login-button"
+              onClick={handleDemoLogin}
+              disabled={loading}
+              aria-describedby="demo-login-description"
+            >
+              {loadingAction === 'demo' ? t('demoEntering') : t('demoTryNow')}
+              <span aria-hidden="true">→</span>
+            </button>
+          </section>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           {error && (
@@ -123,7 +161,7 @@ function Login({ onLogin, onSwitchToRegister }) {
             className="auth-button"
             disabled={loading}
           >
-            {loading ? t('loggingIn') : t('login')}
+            {loadingAction === 'credentials' ? t('loggingIn') : t('login')}
           </button>
         </form>
 

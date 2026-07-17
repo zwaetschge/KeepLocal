@@ -53,17 +53,28 @@ function Sidebar({
           <Logo size={28} />
         </div>
 
-        <button
-          className="sidebar-mobile-user"
-          onClick={() => {
-            onSettingsClick();
-            onMobileClose();
-          }}
-          aria-label="Einstellungen"
-        >
-          <span className="mobile-user-icon">👤</span>
-          <span className="mobile-user-name">{user?.username}</span>
-        </button>
+        {user?.isDemo ? (
+          <div className="sidebar-mobile-user sidebar-mobile-user-static">
+            <svg className="mobile-user-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 21a8 8 0 0116 0"/>
+            </svg>
+            <span className="mobile-user-name">{user?.username}</span>
+            <span className="mobile-demo-badge">{t('demoBadge')}</span>
+          </div>
+        ) : (
+          <button
+            className="sidebar-mobile-user"
+            onClick={() => {
+              onSettingsClick();
+              onMobileClose();
+            }}
+            aria-label="Einstellungen"
+          >
+            <span className="mobile-user-icon">👤</span>
+            <span className="mobile-user-name">{user?.username}</span>
+          </button>
+        )}
 
         <div className="sidebar-mobile-actions">
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
@@ -116,21 +127,23 @@ function Sidebar({
           <span className="count">{archivedCount || 0}</span>
         </button>
 
-        <button
-          className="sidebar-item"
-          onClick={() => {
-            onOpenFriends();
-            onMobileClose();
-          }}
-          aria-label={t('friends')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-          </svg>
-          <span>{t('friends')}</span>
-        </button>
+        {onOpenFriends && (
+          <button
+            className="sidebar-item"
+            onClick={() => {
+              onOpenFriends();
+              onMobileClose();
+            }}
+            aria-label={t('friends')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+            <span>{t('friends')}</span>
+          </button>
+        )}
 
         {allTags.length > 0 && (
           <>
