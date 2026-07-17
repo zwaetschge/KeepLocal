@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef5f8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>KeepLocal sicher aktualisieren</title>
+    <link rel="stylesheet" href="/recover.css" />
+    <script src="/recover.js" defer></script>
+  </head>
+  <body>
+    <main class="recovery-shell">
+      <section class="recovery-card" aria-labelledby="recovery-title">
+        <span class="recovery-kicker">KeepLocal · Reparatur</span>
+        <h1 id="recovery-title">Web-App wird sicher aktualisiert</h1>
+        <p class="recovery-intro">
+          Alte App-Dateien und lokale Anzeigeoptionen werden entfernt. Danach öffnet sich
+          automatisch die aktuelle Version.
+        </p>
+
+        <div class="recovery-status" role="status" aria-live="polite" aria-atomic="true">
+          <span id="recovery-status-mark" class="recovery-status-mark" aria-hidden="true">↻</span>
+          <div>
+            <strong id="recovery-status-title">Reparatur läuft …</strong>
+            <p id="recovery-status-detail">Service Worker und KeepLocal-Cache werden geprüft.</p>
+          </div>
+        </div>
+
+        <div class="recovery-assurance">
+          <strong>Konto und Notizen bleiben erhalten.</strong>
+          <span>Serverdaten, Passwort und Sitzungscookie werden nicht verändert.</span>
+        </div>
+
+        <div class="recovery-actions">
+          <button id="recovery-retry" type="button" hidden>Erneut versuchen</button>
+          <a id="recovery-open" href="/?app-repair=manual">App jetzt öffnen</a>
+        </div>
+
+        <noscript>
+          <p class="recovery-noscript">
+            JavaScript ist deaktiviert. Bitte öffnen Sie über „App jetzt öffnen“ die aktuelle App.
+          </p>
+        </noscript>
+      </section>
+    </main>
+  </body>
+</html>
