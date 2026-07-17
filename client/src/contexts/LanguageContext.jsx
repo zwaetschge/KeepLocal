@@ -1,23 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, defaultLanguage } from '../translations';
+import { getBrowserLanguage } from '../utils/browserLanguage.mjs';
 
 const LanguageContext = createContext();
 
-function getBrowserLanguage() {
-  const browserLang = navigator.language.split('-')[0];
-  if (translations[browserLang]) {
-    return browserLang;
-  }
-  return defaultLanguage;
-}
+const resolveLanguage = () => getBrowserLanguage(translations, defaultLanguage);
 
 export function LanguageProvider({ children }) {
-  const [language, setLanguage] = useState(getBrowserLanguage);
+  const [language, setLanguage] = useState(resolveLanguage);
 
   // Listen for browser language changes
   useEffect(() => {
     function handleLanguageChange() {
-      setLanguage(getBrowserLanguage());
+      setLanguage(resolveLanguage());
     }
 
     window.addEventListener('languagechange', handleLanguageChange);

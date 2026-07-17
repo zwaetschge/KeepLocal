@@ -1,5 +1,7 @@
 import React from 'react';
 import './ErrorBoundary.css';
+import { repairAppCaches } from '../utils/appRecovery.mjs';
+import { buildErrorDiagnostic } from '../utils/errorDiagnostic.mjs';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -7,7 +9,10 @@ class ErrorBoundary extends React.Component {
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
+      diagnostic: null,
+      isRepairing: false,
+      repairFailed: false
     };
   }
 
@@ -17,14 +22,12 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log error to console in development
-    if (import.meta.env.DEV) {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
 
     this.setState({
       error,
-      errorInfo
+      errorInfo,
+      diagnostic: buildErrorDiagnostic(error, errorInfo)
     });
 
     // Here you could also log to an error reporting service
@@ -35,11 +38,30 @@ class ErrorBoundary extends React.Component {
     this.setState({
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
+      diagnostic: null,
+      isRepairing: false,
+      repairFailed: false
     });
 
     // Reload the page to reset the app
     window.location.reload();
+  };
+
+  handleRepair = async () => {
+    if (this.state.isRepairing) return;
+
+    this.setState({ isRepairing: true, repairFailed: false });
+
+    try {
+      await repairAppCaches();
+      const url = new URL(window.location.href);
+      url.searchParams.set('app-repair', Date.now().toString(36));
+      window.location.replace(url.toString());
+    } catch (error) {
+      console.error('App recovery failed:', error);
+      this.setState({ isRepairing: false, repairFailed: true });
+    }
   };
 
   render() {
@@ -47,10 +69,20 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="error-boundary">
           <div className="error-boundary-content">
-            <h1>😔 Etwas ist schiefgelaufen</h1>
+            <h1>
+              <span className="error-boundary-mark" aria-hidden="true">!</span>
+              Etwas ist schiefgelaufen
+            </h1>
             <p className="error-boundary-message">
               Die Anwendung ist auf einen unerwarteten Fehler gestoßen.
             </p>
+
+            {this.state.diagnostic && (
+              <p className="error-boundary-diagnostic">
+                Diagnose: <code>{this.state.diagnostic.code}</code>
+                {' · '}{this.state.diagnostic.name}
+              </p>
+            )}
 
             {import.meta.env.DEV && this.state.error && (
               <details className="error-boundary-details">
@@ -69,25 +101,35 @@ class ErrorBoundary extends React.Component {
             )}
 
             <div className="error-boundary-actions">
-              <button onClick={this.handleReset} className="error-boundary-button">
-                Anwendung neu laden
+              <button
+                onClick={this.handleRepair}
+                className="error-boundary-button"
+                disabled={this.state.isRepairing}
+              >
+                {this.state.isRepairing ? 'App wird aktualisiert …' : 'App sicher aktualisieren'}
               </button>
               <button
-                onClick={() => window.history.back()}
+                onClick={this.handleReset}
                 className="error-boundary-button error-boundary-button-secondary"
               >
-                Zurück
+                Nur neu laden
               </button>
             </div>
 
+            {this.state.isRepairing && (
+              <p className="error-boundary-status" role="status">
+                Alte App-Dateien werden entfernt und frisch geladen.
+              </p>
+            )}
+            {this.state.repairFailed && (
+              <p className="error-boundary-status error-boundary-status-error" role="alert">
+                Die automatische Aktualisierung wurde blockiert. Bitte laden Sie die Seite neu.
+              </p>
+            )}
+
             <p className="error-boundary-help">
-              Wenn das Problem weiterhin besteht, versuchen Sie:
+              „App sicher aktualisieren“ erneuert nur die Web-App. Konto und Notizen bleiben erhalten.
             </p>
-            <ul className="error-boundary-suggestions">
-              <li>Browser-Cache leeren</li>
-              <li>Auf einem anderen Browser versuchen</li>
-              <li>Den Support kontaktieren</li>
-            </ul>
           </div>
         </div>
       );

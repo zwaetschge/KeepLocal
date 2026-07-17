@@ -46,6 +46,18 @@ test('Vercel applies static security headers and never caches private demo data'
   }
 });
 
+test('Vercel never serves a stale service worker', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+  const serviceWorkerHeaders = config.headers.find(
+    ({ source }) => source === '/service-worker.js'
+  )?.headers || [];
+  const asMap = (headers) => Object.fromEntries(headers.map(({ key, value }) => [key, value]));
+  const headers = asMap(serviceWorkerHeaders);
+
+  assert.equal(headers['Cache-Control'], 'no-cache, no-store, must-revalidate');
+  assert.equal(headers['Service-Worker-Allowed'], '/');
+});
+
 test('Vite exposes the legacy API URL without exposing arbitrary environment variables', async () => {
   const configUrl = pathToFileURL(path.join(root, 'vite.config.mjs')).href;
   const { default: config } = await import(configUrl);
