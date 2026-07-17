@@ -5,6 +5,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { readLocalStorage, writeLocalStorage } from '../utils/localStorage.mjs';
 
 const SettingsContext = createContext();
 
@@ -18,7 +19,7 @@ const DEFAULT_SETTINGS = {
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(() => {
     // Load from localStorage or use defaults
-    const savedSettings = localStorage.getItem('keeplocal_settings');
+    const savedSettings = readLocalStorage('keeplocal_settings');
     if (savedSettings) {
       try {
         return { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
@@ -32,11 +33,7 @@ export function SettingsProvider({ children }) {
 
   // Save to localStorage whenever settings change
   useEffect(() => {
-    try {
-      localStorage.setItem('keeplocal_settings', JSON.stringify(settings));
-    } catch (error) {
-      console.error('Error saving settings to localStorage:', error);
-    }
+    writeLocalStorage('keeplocal_settings', JSON.stringify(settings));
   }, [settings]);
 
   const updateSettings = (newSettings) => {

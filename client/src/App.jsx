@@ -22,6 +22,9 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
+import { readLocalStorage, writeLocalStorage } from './utils/localStorage.mjs';
+
+const THEMES = new Set(['light', 'dark', 'oled', 'eink', 'doodle']);
 
 function AppContent() {
   const { user, isLoggedIn, loading: authLoading, setupNeeded, login, demoLogin, register, logout, setup, completeOAuthLogin } = useAuth();
@@ -39,8 +42,8 @@ function AppContent() {
   const [allTags, setAllTags] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
   const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme || 'light'; // 'light', 'dark', 'oled', 'eink', or 'doodle'
+    const savedTheme = readLocalStorage('theme');
+    return THEMES.has(savedTheme) ? savedTheme : 'light';
   });
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -80,7 +83,7 @@ function AppContent() {
       document.body.classList.add('doodle-mode');
     }
 
-    localStorage.setItem('theme', theme);
+    writeLocalStorage('theme', theme);
   }, [theme]);
 
   // Notizen vom Server laden
