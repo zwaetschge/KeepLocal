@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keeplocal-v6';
+const CACHE_NAME = 'keeplocal-v7';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -76,6 +76,13 @@ self.addEventListener('fetch', event => {
 
   // Uploaded note images are private data. Never persist them in Cache Storage.
   if (url.pathname.startsWith('/uploads/')) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }));
+    return;
+  }
+
+  // The standalone recovery path must always come from the network so it can
+  // repair a stale app shell or service worker without depending on React.
+  if (['/recover.html', '/recover.js', '/recover.css'].includes(url.pathname)) {
     event.respondWith(fetch(event.request, { cache: 'no-store' }));
     return;
   }

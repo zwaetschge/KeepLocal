@@ -1,0 +1,220 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #eef5f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 280px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(rgba(38, 61, 91, 0.035) 1px, transparent 1px),
+    #eef5f8;
+  background-size: 100% 32px;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.recovery-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 32px 20px;
+  place-items: center;
+}
+
+.recovery-card {
+  position: relative;
+  width: min(100%, 560px);
+  padding: clamp(28px, 6vw, 48px);
+  overflow: hidden;
+  border: 2px solid #263d5b;
+  border-radius: 10px 7px 12px 8px;
+  background: #ffffff;
+  box-shadow: 8px 8px 0 rgba(38, 61, 91, 0.14);
+}
+
+.recovery-card::before,
+.recovery-card::after {
+  position: absolute;
+  top: 18px;
+  right: -18px;
+  width: 88px;
+  height: 3px;
+  background: #f4a63a;
+  content: "";
+  transform: rotate(23deg);
+}
+
+.recovery-card::after {
+  top: 31px;
+  right: -8px;
+  width: 64px;
+  height: 2px;
+  background: #263d5b;
+}
+
+.recovery-kicker {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #8a4700;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 470px;
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 7vw, 3rem);
+  line-height: 1.05;
+}
+
+.recovery-intro {
+  margin: 20px 0 24px;
+  color: #43506a;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.recovery-status {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px dashed #6b7890;
+  border-radius: 8px 6px 9px 7px;
+  background: #f6f9fb;
+}
+
+.recovery-status-mark {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #dce9f0;
+  color: #263d5b;
+  font-size: 1.35rem;
+  font-weight: 800;
+  place-items: center;
+}
+
+.recovery-status.is-complete .recovery-status-mark {
+  background: #dff1e2;
+  color: #166534;
+}
+
+.recovery-status.is-error .recovery-status-mark {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.recovery-status strong,
+.recovery-status p {
+  display: block;
+  margin: 0;
+}
+
+.recovery-status p {
+  margin-top: 4px;
+  color: #58657b;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.recovery-assurance {
+  display: grid;
+  gap: 4px;
+  margin: 22px 0;
+  color: #263d5b;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.recovery-assurance span {
+  color: #58657b;
+}
+
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.recovery-actions button,
+.recovery-actions a {
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 2px solid #263d5b;
+  border-radius: 6px 5px 7px 5px;
+  color: #172033;
+  font-weight: 750;
+  text-align: center;
+  text-decoration: none;
+}
+
+.recovery-actions button {
+  background: #f4a63a;
+  cursor: pointer;
+}
+
+.recovery-actions a {
+  background: #ffffff;
+}
+
+.recovery-actions button:hover,
+.recovery-actions a:hover {
+  transform: translateY(-1px);
+}
+
+.recovery-actions button:focus-visible,
+.recovery-actions a:focus-visible {
+  outline: 3px solid #49b6e5;
+  outline-offset: 3px;
+}
+
+.recovery-noscript {
+  margin: 18px 0 0;
+  color: #8a4700;
+  line-height: 1.5;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 480px) {
+  .recovery-shell {
+    align-items: start;
+    padding: 20px 12px;
+  }
+
+  .recovery-card {
+    padding: 28px 22px;
+    box-shadow: 5px 5px 0 rgba(38, 61, 91, 0.14);
+  }
+
+  .recovery-actions {
+    display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
