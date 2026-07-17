@@ -32,6 +32,7 @@ test('Vercel applies static security headers and never caches private demo data'
   const security = asMap(globalHeaders);
 
   assert.match(security['Content-Security-Policy'], /default-src 'self'/);
+  assert.match(security['Content-Security-Policy'], /font-src 'self' data:/);
   assert.match(security['Content-Security-Policy'], /connect-src 'self'/);
   assert.match(security['Content-Security-Policy'], /frame-ancestors 'self'/);
   assert.equal(security['X-Frame-Options'], 'SAMEORIGIN');
