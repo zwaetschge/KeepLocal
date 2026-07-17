@@ -16,6 +16,7 @@ const errorHandler = require('./middleware/errorHandler');
 const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
+const noStore = require('./middleware/noStore');
 const { csrfProtection, issueCsrfToken } = require('./middleware/csrfProtection');
 const passport = require('passport');
 const { configurePassport } = require('./config/passport');
@@ -116,6 +117,10 @@ app.use(helmet({
 }));
 
 app.use(compression()); // Gzip-Komprimierung für Responses
+// API and private upload responses can contain account data or session state.
+// Prevent browser, proxy, and CDN caches even when the backend is reached
+// directly instead of through the frontend proxy.
+app.use(['/api', '/uploads'], noStore);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (!isAllowedOrigin(req, origin)) {
@@ -127,7 +132,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 app.use(limiter); // Rate Limiting anwenden
-app.use(['/api/auth/login', '/api/auth/register'], authLimiter);
+app.use(['/api/auth/login', '/api/auth/register', '/api/auth/demo'], authLimiter);
 
 // Passport OAuth initialization (stateless — we use JWT, not sessions)
 app.use(passport.initialize());

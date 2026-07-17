@@ -103,10 +103,8 @@ test('all deployment variants pass authentication security settings through', ()
   }
 
   const supervisor = fs.readFileSync(path.join(root, 'supervisord.conf'), 'utf8');
-  assert.match(supervisor, /CSRF_SECRET="%\(ENV_CSRF_SECRET\)s"/);
-  assert.match(supervisor, /COOKIE_SECURE="%\(ENV_COOKIE_SECURE\)s"/);
-  assert.match(supervisor, /GOOGLE_CLIENT_ID="%\(ENV_GOOGLE_CLIENT_ID\)s"/);
-  assert.match(supervisor, /GITHUB_CLIENT_ID="%\(ENV_GITHUB_CLIENT_ID\)s"/);
+  assert.doesNotMatch(supervisor, /^environment=/m);
+  assert.match(supervisor, /\[program:nodejs\][\s\S]*?command=\/usr\/bin\/node server\.js/);
 });
 
 test('application containers drop root privileges', () => {

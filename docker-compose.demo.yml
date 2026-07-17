@@ -1,0 +1,56 @@
+name: keeplocal-demo
+
+services:
+  keeplocal-demo:
+    # Use a multi-architecture manifest digest, never a mutable tag such as latest.
+    image: ${KEEPLOCAL_DEMO_IMAGE:?KEEPLOCAL_DEMO_IMAGE must be an immutable image reference ending in @sha256:<digest>}
+    pull_policy: always
+    container_name: keeplocal-demo
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      HOST: 127.0.0.1
+      MONGODB_URI: mongodb://localhost:27017/keeplocal-demo
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must contain at least 32 random characters}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      CSRF_SECRET: ${CSRF_SECRET:?CSRF_SECRET must contain at least 32 random characters}
+      COOKIE_SECURE: "true"
+      ALLOWED_ORIGINS: https://keep-local-silk.vercel.app
+      TRUST_PROXY: "2"
+      CLIENT_URL: https://keep-local-silk.vercel.app
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      DEMO_MODE: "true"
+      DEMO_RESET_INTERVAL_HOURS: ${DEMO_RESET_INTERVAL_HOURS:-6}
+      DEMO_NOTE_LIMIT: ${DEMO_NOTE_LIMIT:-100}
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_CALLBACK_URL: ""
+      GITHUB_CLIENT_ID: ""
+      GITHUB_CLIENT_SECRET: ""
+      GITHUB_CALLBACK_URL: ""
+    volumes:
+      - /mnt/user/appdata/keeplocal-demo/mongodb:/data/db
+      - /mnt/user/appdata/keeplocal-demo/uploads:/app/server/uploads
+    networks:
+      - brian_traefik-public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      traefik.enable: ${TRAEFIK_ENABLE:-false}
+      traefik.docker.network: brian_traefik-public
+      traefik.http.routers.keeplocal-demo.rule: Host(`keeplocal-demo.zwaetschge-webui.ch`) && (Path(`/api`) || PathPrefix(`/api/`) || Path(`/uploads`) || PathPrefix(`/uploads/`))
+      traefik.http.routers.keeplocal-demo.entrypoints: websecure
+      traefik.http.routers.keeplocal-demo.tls: "true"
+      traefik.http.routers.keeplocal-demo.tls.certresolver: cloudflare
+      traefik.http.routers.keeplocal-demo.middlewares: security-headers@file
+      traefik.http.routers.keeplocal-demo.service: keeplocal-demo
+      traefik.http.services.keeplocal-demo.loadbalancer.server.port: "80"
+
+networks:
+  brian_traefik-public:
+    external: true

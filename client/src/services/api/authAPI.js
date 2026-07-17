@@ -109,6 +109,33 @@ const authAPI = {
   },
 
   /**
+   * Start an isolated public demo session without exposing shared credentials.
+   * The endpoint only exists when the server explicitly enables demo mode.
+   * @returns {Promise<{user: Object}>} Demo user data
+   * @throws {Error} If demo mode is unavailable or the session cannot be created
+   */
+  demoLogin: async () => {
+    const csrfHeaders = await authCsrfHeaders();
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.DEMO}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await parseResponse(response);
+      throw new Error(error.error || ERROR_MESSAGES.LOGIN_FAILED);
+    }
+
+    const data = requireUserPayload(
+      await parseResponse(response),
+      ERROR_MESSAGES.LOGIN_FAILED
+    );
+    await initializeCSRF();
+    return data;
+  },
+
+  /**
    * Logout current user
    * Clears the cookie-backed session and any legacy local token.
    */

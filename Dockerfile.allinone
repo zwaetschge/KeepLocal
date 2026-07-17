@@ -144,14 +144,14 @@ ENV NODE_ENV=production \
     TRUST_PROXY=1 \
     AI_SERVICE_URL=http://localhost:5001 \
     JWT_EXPIRES_IN=7d \
-    CSRF_SECRET="" \
+    DEMO_MODE=false \
+    DEMO_RESET_INTERVAL_HOURS=6 \
+    DEMO_NOTE_LIMIT=100 \
     COOKIE_SECURE="" \
     CLIENT_URL="" \
     GOOGLE_CLIENT_ID="" \
-    GOOGLE_CLIENT_SECRET="" \
     GOOGLE_CALLBACK_URL="" \
     GITHUB_CLIENT_ID="" \
-    GITHUB_CLIENT_SECRET="" \
     GITHUB_CALLBACK_URL=""
 
 # Health check

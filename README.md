@@ -2,6 +2,17 @@
 
 A self-hosted notes application inspired by Google Keep. Create, edit, organize, and collaborate on your notes with an intuitive, feature-rich user interface.
 
+## Public Demo
+
+[Open the public KeepLocal demo](https://keep-local-silk.vercel.app/) and choose
+**Try demo** / **Demo ausprobieren**. No account or shared password is required.
+
+The demo runs in an isolated database and upload directory; it is not connected
+to the maintainer's private KeepLocal installation. Its sample notes are reset
+every six hours. Treat it as a public sandbox: do not enter personal or
+confidential information. Uploads, transcription, link previews, API keys,
+friends, and note sharing are disabled in demo mode.
+
 ## Screenshots
 
 Each persistent theme is shown with the same representative notes on desktop and mobile.
@@ -161,22 +172,73 @@ docker compose restart
 docker compose down -v
 ```
 
-## Vercel Frontend Preview (Optional)
+## Vercel Public Demo
 
-Vercel can build the React client as a static preview. Set the project **Root
-Directory** to `client`; the checked-in `client/vercel.json` fixes the Vite
-build command, output directory, and OAuth callback rewrite.
+Vercel builds only the React client. Set the project **Root Directory** to
+`client`; the checked-in `client/vercel.json` proxies `/api` and `/uploads` to
+the isolated demo backend so session and CSRF cookies remain same-origin from
+the browser's perspective. Leave
+`VITE_API_URL` and the legacy `REACT_APP_API_URL` unset for this deployment.
+The external rewrite target is intentionally fixed to
+`keeplocal-demo.zwaetschge-webui.ch`; changing the demo hostname requires a
+matching change to `client/vercel.json`, `ALLOWED_ORIGINS`, and `CLIENT_URL`.
 
-Use `VITE_API_URL` for the HTTPS origin of a separately deployed KeepLocal
-server. Existing projects that still define `REACT_APP_API_URL` remain
-compatible during migration, but `VITE_API_URL` takes precedence.
+### Deploy the isolated demo backend
 
-Vercel hosts only the browser client—not MongoDB, private uploads, or the
-Whisper service. A functional deployment therefore also needs a reachable
-backend, matching `ALLOWED_ORIGINS` and `CLIENT_URL`, and same-origin proxying
-for cookie-based authentication. Keep Vercel as a protected visual preview if
-that backend path is not configured; use the Docker deployment above for the
-complete self-hosted application.
+`docker-compose.demo.yml` is the production contract for the public sandbox.
+It has no host port, joins only the existing `brian_traefik-public` network,
+and gives Traefik routes only for `/api` and `/uploads`. Its MongoDB and upload
+bind mounts use `/mnt/user/appdata/keeplocal-demo`, never the normal KeepLocal
+paths.
+
+Prepare the host and a mode-`0600` environment file outside the repository.
+Use the published multi-architecture manifest digest, not `latest` or another
+mutable tag:
+
+```bash
+DEMO_DIR=/mnt/user/appdata/keeplocal-demo
+DEMO_ENV="$DEMO_DIR/demo.env"
+install -d -m 0700 "$DEMO_DIR" "$DEMO_DIR/mongodb" "$DEMO_DIR/uploads"
+
+export KEEPLOCAL_DEMO_IMAGE='valentin2177/keeplocal@sha256:<manifest-digest>'
+export JWT_SECRET="$(openssl rand -hex 48)"
+export CSRF_SECRET="$(openssl rand -hex 48)"
+umask 077
+printf '%s\n' \
+  "KEEPLOCAL_DEMO_IMAGE=$KEEPLOCAL_DEMO_IMAGE" \
+  "JWT_SECRET=$JWT_SECRET" \
+  "CSRF_SECRET=$CSRF_SECRET" \
+  'TRAEFIK_ENABLE=false' \
+  > "$DEMO_ENV"
+
+docker compose --env-file "$DEMO_ENV" -f docker-compose.demo.yml config >/dev/null
+docker compose --env-file "$DEMO_ENV" -f docker-compose.demo.yml up -d
+```
+
+The first start keeps Traefik disabled. Verify the private health endpoint and
+demo seeding before making it reachable:
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' keeplocal-demo
+docker exec keeplocal-demo curl -fsS http://127.0.0.1/api/health
+docker exec keeplocal-demo curl -fsS http://127.0.0.1/api/auth/providers
+```
+
+Then enable the route and verify both the backend and the same-origin Vercel
+proxy:
+
+```bash
+sed -i 's/^TRAEFIK_ENABLE=false$/TRAEFIK_ENABLE=true/' "$DEMO_ENV"
+docker compose --env-file "$DEMO_ENV" -f docker-compose.demo.yml up -d --force-recreate
+curl -fsS https://keeplocal-demo.zwaetschge-webui.ch/api/health
+curl -fsS https://keep-local-silk.vercel.app/api/auth/providers
+```
+
+To take the demo off the internet without deleting its data, set
+`TRAEFIK_ENABLE=false` in `demo.env` and recreate the service. To roll back an
+application release, replace `KEEPLOCAL_DEMO_IMAGE` with the previous verified
+manifest digest and recreate it. Do not run `down -v` or delete the two bind
+mounts unless a full, irreversible sandbox reset is intended.
 
 ## Unraid Installation
 
@@ -527,6 +589,9 @@ KeepLocal implements multiple security layers:
 | `COOKIE_SECURE` | Optional `true`/`false` override for automatic HTTPS cookie detection | Auto |
 | `CLIENT_URL` | Explicit frontend origin for OAuth redirects | First allowed origin |
 | `WHISPER_MODEL` | AI model for split deployments (`tiny`, `base`, `small`, ...) | `base` |
+| `DEMO_MODE` | Enables the isolated public-demo account and restrictions | `false` |
+| `DEMO_RESET_INTERVAL_HOURS` | Hours between demo fixture resets (1–168) | `6` |
+| `DEMO_NOTE_LIMIT` | Maximum notes in the shared demo account (1–500) | `100` |
 
 ## Notes
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import './NoteModal.css';
 import ColorPicker from './ColorPicker';
@@ -11,7 +12,9 @@ import notesAPI from '../services/api/notesAPI';
 
 function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { settings } = useSettings();
+  const isDemo = Boolean(user?.isDemo);
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState(note?.tags || []);
@@ -42,7 +45,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   }, []);
 
   // Custom hooks for link preview and todo list management
-  const { linkPreviews, setLinkPreviews } = useLinkPreview(content, !isTodoList);
+  const { linkPreviews, setLinkPreviews } = useLinkPreview(content, !isTodoList && !isDemo);
   const {
     todoItems,
     setTodoItems,
@@ -125,7 +128,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       isPinned: isPinned,
       isTodoList: isTodoList,
       todoItems: isTodoList ? getCleanedItems() : [],
-      linkPreviews: linkPreviews || [],
+      linkPreviews: isDemo ? [] : (linkPreviews || []),
     };
 
     setIsSaving(true);
@@ -487,7 +490,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             />
           )}
 
-          {!isTodoList && linkPreviews && linkPreviews.length > 0 && (
+          {!isDemo && !isTodoList && linkPreviews && linkPreviews.length > 0 && (
             <div className="note-modal-link-previews">
               {linkPreviews.map((preview, index) => (
                 <LinkPreview
@@ -501,7 +504,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             </div>
           )}
 
-          {note && images && images.length > 0 && (
+          {!isDemo && note && images && images.length > 0 && (
             <div className="note-modal-images">
               <div className="uploaded-images">
                 {images.map((image, index) => (
@@ -524,7 +527,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             </div>
           )}
 
-          {note && newImageFiles.length > 0 && (
+          {!isDemo && note && newImageFiles.length > 0 && (
             <div className="new-images-preview">
               {newImageFiles.map((file, index) => (
                 <div key={index} className="image-preview new">
@@ -547,7 +550,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
           )}
 
           {/* Hidden file input for image selection */}
-          {note && (
+          {!isDemo && note && (
             <input
               ref={fileInputRef}
               type="file"
@@ -668,7 +671,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
               </svg>
             </button>
-            {note && (
+            {!isDemo && note && (
               <>
                 <label
                   htmlFor="image-upload-input"
@@ -702,7 +705,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 )}
               </>
             )}
-            {note && settings.aiFeatures.voiceTranscription && !isTodoList && (
+            {!isDemo && note && settings.aiFeatures.voiceTranscription && !isTodoList && (
               <button
                 type="button"
                 className={`btn-modal-voice ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}

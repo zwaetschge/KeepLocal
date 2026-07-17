@@ -4,9 +4,11 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const { escapeRegex } = require('../utils/sanitize');
+const { blockDemoUser } = require('../middleware/demoPolicy');
 
 // Alle Routen erfordern Authentifizierung
 router.use(authenticateToken);
+router.use(blockDemoUser('collaboration'));
 
 // GET /api/friends - Alle Freunde abrufen
 router.get('/', async (req, res, next) => {

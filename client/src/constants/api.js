@@ -15,6 +15,7 @@ export const API_ENDPOINTS = {
     SETUP_NEEDED: '/api/auth/setup-needed',
     REGISTER: '/api/auth/register',
     LOGIN: '/api/auth/login',
+    DEMO: '/api/auth/demo',
     LOGOUT: '/api/auth/logout',
     ME: '/api/auth/me',
     CSRF_TOKEN: '/api/csrf-token',

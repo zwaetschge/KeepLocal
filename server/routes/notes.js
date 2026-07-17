@@ -14,6 +14,16 @@ const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberV
 const notesService = require('../services/notesService');
 const aiService = require('../services/aiService');
 const { httpStatus } = require('../constants');
+const {
+  blockDemoUser,
+  enforceDemoNoteLimit,
+  rejectDemoNoteCapabilities
+} = require('../middleware/demoPolicy');
+
+const blockDemoCollaboration = blockDemoUser('collaboration');
+const blockDemoLinkPreview = blockDemoUser('link_preview');
+const blockDemoUploads = blockDemoUser('uploads');
+const blockDemoTranscription = blockDemoUser('transcription');
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -70,22 +80,28 @@ router.get('/:id', noteValidation.getOne, async (req, res, next) => {
 /**
  * POST /api/notes - Create a new note
  */
-router.post('/', noteValidation.create, async (req, res, next) => {
-  try {
-    const savedNote = await notesService.createNote(req.body, req.user._id);
-    res.status(httpStatus.CREATED).json(savedNote);
-  } catch (error) {
-    if (error.name === 'ValidationError') {
-      return res.status(httpStatus.BAD_REQUEST).json({ error: error.message });
+router.post(
+  '/',
+  noteValidation.create,
+  rejectDemoNoteCapabilities,
+  enforceDemoNoteLimit,
+  async (req, res, next) => {
+    try {
+      const savedNote = await notesService.createNote(req.body, req.user._id);
+      res.status(httpStatus.CREATED).json(savedNote);
+    } catch (error) {
+      if (error.name === 'ValidationError') {
+        return res.status(httpStatus.BAD_REQUEST).json({ error: error.message });
+      }
+      next(error);
     }
-    next(error);
   }
-});
+);
 
 /**
  * PUT /api/notes/:id - Update an existing note
  */
-router.put('/:id', noteValidation.update, async (req, res, next) => {
+router.put('/:id', noteValidation.update, rejectDemoNoteCapabilities, async (req, res, next) => {
   try {
     const updatedNote = await notesService.updateNote(
       req.params.id,
@@ -155,7 +171,7 @@ router.post('/:id/archive', noteValidation.pin, async (req, res, next) => {
 /**
  * POST /api/notes/:id/share - Share a note with another user
  */
-router.post('/:id/share', async (req, res, next) => {
+router.post('/:id/share', blockDemoCollaboration, async (req, res, next) => {
   try {
     const { userId: targetUserId } = req.body;
     if (!targetUserId || !/^[a-f\d]{24}$/i.test(targetUserId)) {
@@ -178,7 +194,7 @@ router.post('/:id/share', async (req, res, next) => {
 /**
  * DELETE /api/notes/:id/share/:userId - Unshare a note from a user
  */
-router.delete('/:id/share/:userId', async (req, res, next) => {
+router.delete('/:id/share/:userId', blockDemoCollaboration, async (req, res, next) => {
   try {
     const note = await notesService.unshareNote(
       req.params.id,
@@ -197,7 +213,7 @@ router.delete('/:id/share/:userId', async (req, res, next) => {
 /**
  * POST /api/notes/link-preview - Fetch link preview for a URL
  */
-router.post('/link-preview', async (req, res, next) => {
+router.post('/link-preview', blockDemoLinkPreview, async (req, res, next) => {
   try {
     const { url } = req.body;
 
@@ -222,7 +238,7 @@ router.post('/link-preview', async (req, res, next) => {
  * POST /api/notes/:id/images - Upload images to a note
  * Supports multiple files (max 5 images per request)
  */
-router.post('/:id/images', noteValidation.getOne, requireOwnedNote, (req, res, next) => {
+router.post('/:id/images', blockDemoUploads, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
   if ((req.ownedNote.images?.length || 0) >= 25) {
     return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Bilder pro Notiz erlaubt' });
   }
@@ -353,7 +369,7 @@ router.post('/:id/images', noteValidation.getOne, requireOwnedNote, (req, res, n
 /**
  * DELETE /api/notes/:id/images/:filename - Delete an image from a note
  */
-router.delete('/:id/images/:filename', noteValidation.getOne, async (req, res, next) => {
+router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, async (req, res, next) => {
   try {
     if (!isSafeStoredFilename(req.params.filename)) {
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungueltiger Dateiname' });
@@ -400,7 +416,7 @@ router.delete('/:id/images/:filename', noteValidation.getOne, async (req, res, n
  * POST /api/notes/:id/transcribe - Upload audio and append transcription to note
  * Uses Whisper AI service to convert speech to text
  */
-router.post('/:id/transcribe', noteValidation.getOne, requireOwnedNote, (req, res, next) => {
+router.post('/:id/transcribe', blockDemoTranscription, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
   uploadAudio.single('audio')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
