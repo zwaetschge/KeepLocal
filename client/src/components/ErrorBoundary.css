@@ -54,9 +54,13 @@
   line-height: var(--leading-relaxed);
 }
 
+.error-boundary-diagnostics {
+  margin: 0 0 var(--space-5);
+}
+
 .error-boundary-diagnostic {
   display: inline-block;
-  margin: 0 0 var(--space-5);
+  margin: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px dashed var(--border-color-strong);
   border-radius: var(--radius-sm);
@@ -69,6 +73,21 @@
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-weight: var(--font-semibold);
+}
+
+.error-boundary-hint {
+  margin: var(--space-3) auto 0;
+  max-width: 500px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.error-boundary-hint code {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
 }
 
 .error-boundary-details {

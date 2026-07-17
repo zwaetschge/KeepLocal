@@ -30,7 +30,7 @@ test('service worker uses network-first handling before generic cache lookup for
 
 test('service worker cache name is bumped so old app-shell caches are discarded', () => {
   assert.doesNotMatch(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v1['"]/);
-  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v5['"]/);
+  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v6['"]/);
   assert.match(serviceWorker, /cacheName\.startsWith\(['"]keeplocal-['"]\)/);
 });
 
@@ -48,5 +48,6 @@ test('service worker keeps cache writes and lifecycle work alive', () => {
 
 test('service worker updates bypass browser HTTP caches', () => {
   assert.match(clientEntry, /updateViaCache:\s*['"]none['"]/);
+  assert.match(clientEntry, /typeof registration\?\.update === ['"]function['"]/);
   assert.match(clientEntry, /await registration\.update\(\)/);
 });

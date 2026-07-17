@@ -6,15 +6,9 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { readLocalStorage, writeLocalStorage } from '../utils/localStorage.mjs';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../utils/settingsPayload.mjs';
 
 const SettingsContext = createContext();
-
-const DEFAULT_SETTINGS = {
-  aiFeatures: {
-    voiceTranscription: false,  // Opt-in for Whisper voice-to-text
-  },
-  transcriptionLanguage: 'auto',  // Language for transcription (auto = auto-detect)
-};
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(() => {
@@ -22,13 +16,13 @@ export function SettingsProvider({ children }) {
     const savedSettings = readLocalStorage('keeplocal_settings');
     if (savedSettings) {
       try {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
+        return normalizeSettings(JSON.parse(savedSettings));
       } catch (error) {
         console.error('Error parsing settings from localStorage:', error);
         return DEFAULT_SETTINGS;
       }
     }
-    return DEFAULT_SETTINGS;
+    return normalizeSettings(DEFAULT_SETTINGS);
   });
 
   // Save to localStorage whenever settings change

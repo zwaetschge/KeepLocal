@@ -26,7 +26,9 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         '/service-worker.js',
         { updateViaCache: 'none' }
       );
-      await registration.update();
+      if (typeof registration?.update === 'function') {
+        await registration.update();
+      }
     } catch (error) {
       console.error('Service worker registration failed:', error);
     }
