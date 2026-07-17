@@ -57,6 +57,7 @@ test('split nginx proxies uploads and never caches the service worker immutably'
   assert.match(config, /X-Content-Type-Options\s+"nosniff"/);
   assert.match(config, /Permissions-Policy\s+/);
   assert.match(config, /Content-Security-Policy\s+"default-src 'self'/);
+  assert.match(config, /font-src 'self' data:/);
 });
 
 test('all-in-one internal services bind to loopback and production CORS is not wildcarded', () => {
@@ -68,7 +69,9 @@ test('all-in-one internal services bind to loopback and production CORS is not w
   assert.match(supervisor, /gunicorn --bind 127\.0\.0\.1:5001/);
   assert.doesNotMatch(dockerfile, /ALLOWED_ORIGINS=\*/);
   assert.doesNotMatch(compose, /ALLOWED_ORIGINS=\*/);
-  assert.match(fs.readFileSync(path.join(root, 'nginx-allinone.conf'), 'utf8'), /Content-Security-Policy\s+"default-src 'self'/);
+  const nginx = fs.readFileSync(path.join(root, 'nginx-allinone.conf'), 'utf8');
+  assert.match(nginx, /Content-Security-Policy\s+"default-src 'self'/);
+  assert.match(nginx, /font-src 'self' data:/);
 });
 
 test('split deployments persist the upload directory actually used by the server', () => {
