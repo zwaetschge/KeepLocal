@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keeplocal-v4';
+const CACHE_NAME = 'keeplocal-v5';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -36,7 +36,9 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   const cleanup = caches.keys().then(cacheNames => Promise.all(
     cacheNames.map(cacheName => (
-      cacheName === CACHE_NAME ? null : caches.delete(cacheName)
+      cacheName.startsWith('keeplocal-') && cacheName !== CACHE_NAME
+        ? caches.delete(cacheName)
+        : null
     ))
   ));
   event.waitUntil(Promise.all([cleanup, self.clients.claim()]));
