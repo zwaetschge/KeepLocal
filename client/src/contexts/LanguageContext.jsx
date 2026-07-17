@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, defaultLanguage } from '../translations';
 import { getBrowserLanguage } from '../utils/browserLanguage.mjs';
+import { subscribeToWindowEvent } from '../utils/browserEnvironment.mjs';
 
 const LanguageContext = createContext();
 
@@ -15,8 +16,7 @@ export function LanguageProvider({ children }) {
       setLanguage(resolveLanguage());
     }
 
-    window.addEventListener('languagechange', handleLanguageChange);
-    return () => window.removeEventListener('languagechange', handleLanguageChange);
+    return subscribeToWindowEvent('languagechange', handleLanguageChange);
   }, []);
 
   const t = (key) => {

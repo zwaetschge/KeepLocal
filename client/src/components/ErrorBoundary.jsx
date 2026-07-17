@@ -1,6 +1,6 @@
 import React from 'react';
 import './ErrorBoundary.css';
-import { repairAppCaches } from '../utils/appRecovery.mjs';
+import { repairAppState } from '../utils/appRecovery.mjs';
 import { buildErrorDiagnostic } from '../utils/errorDiagnostic.mjs';
 
 class ErrorBoundary extends React.Component {
@@ -54,7 +54,7 @@ class ErrorBoundary extends React.Component {
     this.setState({ isRepairing: true, repairFailed: false });
 
     try {
-      await repairAppCaches();
+      await repairAppState();
       const url = new URL(window.location.href);
       url.searchParams.set('app-repair', Date.now().toString(36));
       window.location.replace(url.toString());
@@ -78,10 +78,17 @@ class ErrorBoundary extends React.Component {
             </p>
 
             {this.state.diagnostic && (
-              <p className="error-boundary-diagnostic">
-                Diagnose: <code>{this.state.diagnostic.code}</code>
-                {' · '}{this.state.diagnostic.name}
-              </p>
+              <div className="error-boundary-diagnostics">
+                <p className="error-boundary-diagnostic">
+                  Diagnose: <code>{this.state.diagnostic.code}</code>
+                  {' · '}{this.state.diagnostic.name}
+                </p>
+                {this.state.diagnostic.message && (
+                  <p className="error-boundary-hint">
+                    Technischer Hinweis: <code>{this.state.diagnostic.message}</code>
+                  </p>
+                )}
+              </div>
             )}
 
             {import.meta.env.DEV && this.state.error && (
@@ -128,7 +135,8 @@ class ErrorBoundary extends React.Component {
             )}
 
             <p className="error-boundary-help">
-              „App sicher aktualisieren“ erneuert nur die Web-App. Konto und Notizen bleiben erhalten.
+              „App sicher aktualisieren“ erneuert die Web-App und setzt lokale Anzeigeoptionen zurück.
+              Konto und Notizen bleiben erhalten.
             </p>
           </div>
         </div>

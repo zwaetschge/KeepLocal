@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keeplocal-v5';
+const CACHE_NAME = 'keeplocal-v6';
 const urlsToCache = [
   '/',
   '/index.html',

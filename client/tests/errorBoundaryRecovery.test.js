@@ -13,9 +13,10 @@ const styles = fs.readFileSync(
 );
 
 test('error boundary offers safe cache recovery and a non-sensitive diagnostic', () => {
-  assert.match(component, /repairAppCaches/);
+  assert.match(component, /repairAppState/);
   assert.match(component, /App sicher aktualisieren/);
   assert.match(component, /diagnostic\.code/);
+  assert.match(component, /Technischer Hinweis/);
   assert.doesNotMatch(component, /Browser-Cache leeren/);
   assert.match(styles, /\.error-boundary-button:focus-visible/);
 });

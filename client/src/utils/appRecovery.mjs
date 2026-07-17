@@ -1,4 +1,5 @@
 export const APP_CACHE_PREFIX = 'keeplocal-';
+export const APP_PREFERENCE_KEYS = ['theme', 'keeplocal_settings', 'token'];
 
 async function unregisterServiceWorkers(environment) {
   let serviceWorker;
@@ -69,11 +70,38 @@ async function removeAppCaches(environment) {
   }
 }
 
-export async function repairAppCaches(environment = globalThis) {
+function removeAppPreferences(environment) {
+  let storage;
+
+  try {
+    storage = environment?.localStorage;
+  } catch {
+    return 0;
+  }
+
+  if (!storage || typeof storage.removeItem !== 'function') return 0;
+
+  let removedPreferences = 0;
+  for (const key of APP_PREFERENCE_KEYS) {
+    try {
+      storage.removeItem(key);
+      removedPreferences += 1;
+    } catch {
+      // Keep repairing the remaining app state when one key is blocked.
+    }
+  }
+
+  return removedPreferences;
+}
+
+export async function repairAppState(environment = globalThis) {
   const [unregisteredWorkers, removedCaches] = await Promise.all([
     unregisterServiceWorkers(environment),
     removeAppCaches(environment)
   ]);
+  const removedPreferences = removeAppPreferences(environment);
 
-  return { unregisteredWorkers, removedCaches };
+  return { unregisteredWorkers, removedCaches, removedPreferences };
 }
+
+export const repairAppCaches = repairAppState;

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { subscribeToWindowEvent } from '../utils/browserEnvironment.mjs';
 
 /**
  * Hook for registering global keyboard shortcuts
@@ -50,8 +51,7 @@ export function useKeyboardShortcuts(shortcuts = {}, enabled = true) {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return subscribeToWindowEvent('keydown', handleKeyDown);
   }, [shortcuts, enabled]);
 }
 

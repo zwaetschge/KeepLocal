@@ -23,6 +23,8 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts } from './hooks';
 import { readLocalStorage, writeLocalStorage } from './utils/localStorage.mjs';
+import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
+import { normalizeNote, normalizeNotesPayload } from './utils/notesPayload.mjs';
 
 const THEMES = new Set(['light', 'dark', 'oled', 'eink', 'doodle']);
 
@@ -69,20 +71,7 @@ function AppContent() {
 
   // Theme anwenden
   useEffect(() => {
-    // Remove all theme classes
-    document.body.classList.remove('dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode');
-
-    // Add appropriate theme class
-    if (theme === 'dark') {
-      document.body.classList.add('dark-mode');
-    } else if (theme === 'oled') {
-      document.body.classList.add('oled-mode');
-    } else if (theme === 'eink') {
-      document.body.classList.add('eink-mode');
-    } else if (theme === 'doodle') {
-      document.body.classList.add('doodle-mode');
-    }
-
+    applyThemeToDocument(theme);
     writeLocalStorage('theme', theme);
   }, [theme]);
 
@@ -103,10 +92,11 @@ function AppContent() {
 
       const response = await notesAPI.getAll(params);
       if (requestSequence !== fetchSequenceRef.current) return;
-      setNotes(response.notes || []);
-      setPagination(response.pagination || { page: 1, limit: 50, total: 0, pages: 0 });
-      setNoteCounts(response.counts || { active: 0, archived: 0 });
-      setAllTags(response.tags || []);
+      const normalized = normalizeNotesPayload(response);
+      setNotes(normalized.notes);
+      setPagination(normalized.pagination);
+      setNoteCounts(normalized.counts);
+      setAllTags(normalized.tags);
     } catch (error) {
       if (requestSequence !== fetchSequenceRef.current) return;
       console.error('Fehler beim Laden der Notizen:', error);
@@ -179,7 +169,8 @@ function AppContent() {
   const togglePinNote = async (id) => {
     setOperationLoading(prev => ({ ...prev, [id]: 'pin' }));
     try {
-      const response = await notesAPI.togglePin(id);
+      const response = normalizeNote(await notesAPI.togglePin(id));
+      if (!response) throw new Error('Ungültige Serverantwort');
       setNotes(prev => prev.map(note => note._id === id ? response : note));
       const message = response.isPinned ? t('notePinned') : t('noteUnpinned');
       showToast(message, 'success');
@@ -221,7 +212,9 @@ function AppContent() {
 
   // Wenn eine Notiz geteilt wurde, aktualisieren
   const handleNoteShared = (updatedNote) => {
-    setNotes(prev => prev.map(note => note._id === updatedNote._id ? updatedNote : note));
+    const normalized = normalizeNote(updatedNote);
+    if (!normalized) return;
+    setNotes(prev => prev.map(note => note._id === normalized._id ? normalized : note));
   };
 
   // Modal handlers
@@ -364,7 +357,7 @@ function AppContent() {
   };
 
   // Handle OAuth callback route
-  const isOAuthCallback = window.location.pathname === '/oauth/callback';
+  const isOAuthCallback = getBrowserPathname() === '/oauth/callback';
   if (isOAuthCallback) {
     return (
       <OAuthCallback
