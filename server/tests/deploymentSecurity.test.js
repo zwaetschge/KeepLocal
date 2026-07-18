@@ -48,16 +48,22 @@ test('all-in-one nginx sends private uploads through backend authorization', () 
   assert.match(uploads[1], /Cache-Control\s+"private, no-store"/);
 });
 
-test('split nginx proxies uploads and never caches the service worker immutably', () => {
-  const config = fs.readFileSync(path.join(root, 'client/nginx.conf'), 'utf8');
+test('Nginx deployments keep recovery assets and the service worker out of immutable caches', () => {
+  for (const filename of ['client/nginx.conf', 'nginx-allinone.conf']) {
+    const config = fs.readFileSync(path.join(root, filename), 'utf8');
 
-  assert.match(config, /location (?:\^~ )?\/uploads\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/server:5000/);
-  assert.match(config, /location = \/service-worker\.js\s*\{[\s\S]*?no-cache/);
-  assert.match(config, /X-Frame-Options\s+"SAMEORIGIN"/);
-  assert.match(config, /X-Content-Type-Options\s+"nosniff"/);
-  assert.match(config, /Permissions-Policy\s+/);
-  assert.match(config, /Content-Security-Policy\s+"default-src 'self'/);
-  assert.match(config, /font-src 'self' data:/);
+    assert.match(config, /location = \/service-worker\.js\s*\{[\s\S]*?no-cache/);
+    assert.match(config, /location = \/recover\.html\s*\{[\s\S]*?no-store/);
+    assert.match(config, /location ~ \^\/recover\\\.\(css\|js\)\$\s*\{[\s\S]*?no-store/);
+    assert.match(config, /X-Frame-Options\s+"SAMEORIGIN"/);
+    assert.match(config, /X-Content-Type-Options\s+"nosniff"/);
+    assert.match(config, /Permissions-Policy\s+/);
+    assert.match(config, /Content-Security-Policy\s+"default-src 'self'/);
+    assert.match(config, /font-src 'self' data:/);
+  }
+
+  const splitConfig = fs.readFileSync(path.join(root, 'client/nginx.conf'), 'utf8');
+  assert.match(splitConfig, /location (?:\^~ )?\/uploads\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/server:5000/);
 });
 
 test('all-in-one internal services bind to loopback and production CORS is not wildcarded', () => {
@@ -87,7 +93,7 @@ test('Nginx Proxy Manager deployment includes AI and isolates internal services'
 
   assert.match(compose, /\n\s{2}ai:\n[\s\S]*?WHISPER_MODEL=/);
   assert.match(compose, /AI_SERVICE_URL=http:\/\/ai:5000/);
-  assert.match(compose, /TRUST_PROXY=1/);
+  assert.match(compose, /TRUST_PROXY=2/);
   assert.match(compose, /\n\s{2}backend:\n[\s\S]*?internal:\s*true/);
   assert.match(compose, /\n\s{2}frontend:\n/);
 

@@ -42,10 +42,11 @@ coverage
 test_*.py
 __pycache__
 
-# Documentation (except README for Docker Hub)
-IMPROVEMENTS.md
-DOCKER_BUILD.md
-UNRAID_INSTALLATION.md
+# Documentation and non-runtime assets
+*.md
+docs
+unraid
+assets
 
 # Docker
 docker-compose.yml

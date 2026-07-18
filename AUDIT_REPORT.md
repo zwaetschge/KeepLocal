@@ -1,8 +1,13 @@
 # KeepLocal Audit Report
 
 Date: 2026-07-16
+Status refreshed: 2026-07-18
 Base: `origin/main` at `3d9c7aa`
 Audit branch: `codex/comprehensive-audit-20260716`
+
+The original audit was merged into `main`. Subsequent recovery, public-demo,
+documentation, and deployment-contract changes are reflected in the current
+verification status below; the base/branch lines remain as audit provenance.
 
 ## Scope
 
@@ -68,24 +73,38 @@ Docker/Compose, Nginx, Supervisor, and dependency vulnerabilities.
   split server/AI and all-in-one AI processes.
 - Fixed the AI Dockerfile package syntax and aligned its preloaded model with the
   configured model. Updated Flask, Faster-Whisper, and Gunicorn to secure releases.
+- Added an isolated public demo with server-enforced feature restrictions,
+  deterministic fixture resets, and dedicated MongoDB/upload paths.
+- Added a React-independent `/recover.html` path, network-first service-worker
+  updates, and no-store policies across Vercel and both Nginx variants so stale
+  browser bundles can repair safely without deleting account data.
+- Replaced obsolete status reports and unsupported Unraid split templates with
+  current Docker, NPM, Unraid, CachyOS, demo, and architecture guides. The
+  canonical Unraid template now persists both MongoDB and uploads and has no
+  reusable default secret.
 
 ## Verification
 
-- Server: 37/37 Node tests passed.
-- Client: 22/22 Node tests passed.
+- Server: 59/59 Node tests passed.
+- Client: 52/52 Node tests passed.
 - AI: 4/4 Flask route tests passed; Gunicorn configuration loaded successfully.
 - ESLint: no findings.
-- Vite production build: 85 modules, 281.40 kB JavaScript and 127.04 kB CSS,
+- Vite production build: 92 modules, 291.87 kB JavaScript and 133.68 kB CSS,
   successful.
 - `npm audit`: 0 known vulnerabilities in server and client trees.
 - `pip-audit`: 0 known vulnerabilities in the Python 3.10/Ubuntu-resolved tree.
-- All three Compose variants pass `docker compose config --quiet`.
+- All four Compose variants pass `docker compose config`.
 - JavaScript, Python, shell, and Git whitespace syntax checks passed.
 - Chromium smoke tests passed at 1440x900 and 390x844 without clipping or overlap.
+- The public Vercel recovery-to-demo path passed in Chromium on desktop and mobile,
+  including removal of a simulated v5 cache and rendering three demo notes.
+- GitHub Actions built the all-in-one manifest and started/health-checked the
+  published AMD64 and ARM64 images successfully.
 
-The environment's Docker policy rejects image build requests with HTTP 403, so a
-fresh Docker image build could not be completed here. This is the remaining build
-verification gap; it is not a Dockerfile parser or application test failure.
+The local workspace's Docker proxy still rejects BuildKit requests with HTTP 403.
+This is an environment limitation rather than an open image-verification gap:
+the repository's Docker workflow performs the real multi-architecture build and
+runtime smoke tests after merges to `main`.
 
 ## Deployment and migration notes
 
@@ -95,10 +114,10 @@ verification gap; it is not a Dockerfile parser or application test failure.
    at the wrong directory.
 3. Existing browser sessions intentionally require one new login because legacy
    bearer/local-storage tokens and the old `token` cookie are no longer accepted.
-4. Set `CLIENT_URL` and explicit `ALLOWED_ORIGINS` to the public HTTPS origin. Keep
-   `TRUST_PROXY=1` unless exactly two trusted proxies sit in front of Express.
+4. Set `CLIENT_URL` and explicit `ALLOWED_ORIGINS` to the public HTTPS origin. Use
+   `TRUST_PROXY=1` for the standard internal Nginx path and `2` when one additional
+   trusted reverse proxy (such as NPM or Traefik) sits in front of it.
 5. Startup may expose pre-existing duplicate OAuth identities because indexes are now
    awaited. Resolve duplicates rather than disabling the index.
-6. The running production container was built from a source state not present on
-   `origin/main`. Do not deploy this branch over it without a backup and staging
-   migration test; this audit branch has not changed the live container.
+6. The public demo is intentionally isolated from private KeepLocal deployments.
+   Never point its Compose bind mounts or Vercel rewrites at production data.

@@ -52,7 +52,8 @@ services:
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
       - CSRF_SECRET=${CSRF_SECRET:-}
       - COOKIE_SECURE=${COOKIE_SECURE:-}
-      - TRUST_PROXY=1
+      # Browser -> Nginx Proxy Manager -> client Nginx -> Express
+      - TRUST_PROXY=2
       - AI_SERVICE_URL=http://ai:5000
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
