@@ -1,48 +1,39 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <Container version="2">
   <Name>KeepLocal</Name>
   <Repository>valentin2177/keeplocal:latest</Repository>
-  <Registry>https://hub.docker.com/</Registry>
+  <Registry>https://hub.docker.com/r/valentin2177/keeplocal</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/zwaetschge/KeepLocal</Support>
+  <Support>https://github.com/zwaetschge/KeepLocal/issues</Support>
   <Project>https://github.com/zwaetschge/KeepLocal</Project>
-  <Overview>
-    KeepLocal - A self-hosted notes application inspired by Google Keep.
-
-    Features:
-    - User authentication with JWT (secure multi-user support)
-    - Create, edit, and delete notes with confirmation dialogs
-    - Google Keep-style todo lists with checkboxes
-    - Link preview cards with Open Graph metadata
-    - 10 different colors for your notes
-    - Pin/unpin functionality
-    - Tags/categories for better organization
-    - Full-text search in title and content
-    - Dark mode with theme persistence
-    - Keyboard shortcuts (Ctrl+N, Ctrl+F, Ctrl+K)
-    - Responsive design (works on desktop and mobile)
-    - MongoDB database integration
-    - Advanced security (JWT auth, XSS protection, CSRF, CORS, CSP, Rate Limiting)
-    - Toast notifications for better feedback
-    - ARIA labels for accessibility
-  </Overview>
+  <Overview>KeepLocal is a self-hosted, multi-user notes application with checklists, tags, colors, archives, collaboration, private uploads, five themes, a responsive PWA, and optional local Whisper transcription. The all-in-one image includes MongoDB, the API, AI service, and web client. Persist both configured data paths and provide a unique JWT secret before first start.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/assets/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/zwaetschge/KeepLocal/main/client/public/icon-512.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
-  <DateInstalled></DateInstalled>
+  <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Docker Compose plugin recommended</Requires>
-  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp" Description="Port for accessing the web interface" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
-  <Config Name="MongoDB Data" Target="/data/db" Default="/mnt/user/appdata/keeplocal/mongodb" Mode="rw" Description="MongoDB data storage location" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/mongodb</Config>
-  <Config Name="JWT_SECRET" Target="JWT_SECRET" Default="changeme-generate-secure-secret" Mode="" Description="Secret key for JWT token generation - MUST be changed! Generate with: openssl rand -base64 32" Type="Variable" Display="always" Required="true" Mask="true">changeme-generate-secure-secret</Config>
-  <Config Name="ALLOWED_ORIGINS" Target="ALLOWED_ORIGINS" Default="http://localhost:3000,http://localhost" Mode="" Description="Comma-separated list of allowed CORS origins" Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:3000,http://localhost</Config>
-  <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node environment (production/development)" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+  <Requires>A unique JWT_SECRET containing at least 32 random characters is required.</Requires>
+
+  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp" Description="Host port for the KeepLocal web interface." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="MongoDB Data" Target="/data/db" Default="/mnt/user/appdata/keeplocal/mongodb" Mode="rw" Description="Persistent MongoDB data. Back up this path before updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/mongodb</Config>
+  <Config Name="Uploads" Target="/app/server/uploads" Default="/mnt/user/appdata/keeplocal/uploads" Mode="rw" Description="Persistent private note uploads. Back up this path together with MongoDB." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/keeplocal/uploads</Config>
+
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Required: generate at least 32 random characters, for example with openssl rand -hex 48. Never reuse the example from documentation." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Allowed Origins" Target="ALLOWED_ORIGINS" Default="http://[IP]:3000" Mode="" Description="Exact comma-separated browser origins. Use the public HTTPS URL when a reverse proxy is used; wildcards are rejected." Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:3000</Config>
+  <Config Name="Client URL" Target="CLIENT_URL" Default="http://[IP]:3000" Mode="" Description="Exact browser origin used for OAuth redirects. Match Allowed Origins." Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:3000</Config>
+
+  <Config Name="CSRF Secret" Target="CSRF_SECRET" Default="" Mode="" Description="Optional independent CSRF signing key with at least 32 random characters. JWT_SECRET is used when omitted." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="JWT Lifetime" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="Session token lifetime, for example 7d or 12h." Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
+  <Config Name="Secure Cookies" Target="COOKIE_SECURE" Default="" Mode="" Description="Leave empty for automatic HTTPS detection. Set true only when KeepLocal is reached through HTTPS." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Trusted Proxy Hops" Target="TRUST_PROXY" Default="1" Mode="" Description="Use 1 for direct access and 2 when an external reverse proxy sits in front of the built-in Nginx." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Whisper Model" Target="WHISPER_MODEL" Default="tiny" Mode="" Description="Bundled transcription model: tiny is the fastest and lowest-memory default." Type="Variable" Display="advanced" Required="false" Mask="false">tiny</Config>
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Keep production for normal deployments." Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
 </Container>

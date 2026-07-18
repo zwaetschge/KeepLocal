@@ -1,53 +1,36 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# KeepLocal Docker Image Build Script
-# This script builds the Docker images for KeepLocal
+# Build the split MongoDB, AI, API, and web deployment defined by Compose.
 
-set -e
+set -Eeuo pipefail
 
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║         KeepLocal Docker Image Build Script             ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo ""
+WHISPER_MODEL="${WHISPER_MODEL:-base}"
+export WHISPER_MODEL
 
-# Configuration
-DOCKER_REGISTRY="${DOCKER_REGISTRY:-}"
-VERSION="${VERSION:-latest}"
-SERVER_IMAGE="${DOCKER_REGISTRY}keeplocal-server:${VERSION}"
-CLIENT_IMAGE="${DOCKER_REGISTRY}keeplocal-client:${VERSION}"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is not installed or not available in PATH." >&2
+  exit 1
+fi
 
-echo "Building images with tags:"
-echo "  Server: ${SERVER_IMAGE}"
-echo "  Client: ${CLIENT_IMAGE}"
-echo ""
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Compose v2 (the 'docker compose' command) is required." >&2
+  exit 1
+fi
 
-# Build server image
-echo "📦 Building server image..."
-docker build -t "${SERVER_IMAGE}" \
-    -f server/Dockerfile \
-    ./server
-echo "✅ Server image built successfully"
-echo ""
+if [[ ! -f docker-compose.yml ]]; then
+  echo "Run this script from the KeepLocal repository root." >&2
+  exit 1
+fi
 
-# Build client image
-echo "📦 Building client image..."
-docker build -t "${CLIENT_IMAGE}" \
-    -f client/Dockerfile \
-    ./client
-echo "✅ Client image built successfully"
-echo ""
+docker compose config >/dev/null
+docker compose build
 
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║                  Build Complete!                         ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo ""
-echo "Images built:"
-echo "  - ${SERVER_IMAGE}"
-echo "  - ${CLIENT_IMAGE}"
-echo ""
-echo "To push to Docker Hub (optional):"
-echo "  docker push ${SERVER_IMAGE}"
-echo "  docker push ${CLIENT_IMAGE}"
-echo ""
-echo "To run with Docker Compose:"
-echo "  docker-compose up -d"
+cat <<'EOF'
+
+Split images built successfully. Start them with:
+
+  docker compose up -d
+
+The public Docker Hub release is the all-in-one image. Use
+./build-allinone.sh when you need a tag that can be pushed to a registry.
+EOF
