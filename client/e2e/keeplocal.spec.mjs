@@ -179,7 +179,7 @@ test.describe.serial('KeepLocal production smoke', () => {
       // a 500 would mean the server faulted on a user-pasted link (offline CI
       // runners resolve nothing, so the suite must tolerate the 502).
       expect(
-        [200, 400, 403, 404, 422, 502].includes(status),
+        [200, 400, 403, 404, 422, 429, 502].includes(status),
         `link-preview answered ${status}`
       ).toBeTruthy();
     }

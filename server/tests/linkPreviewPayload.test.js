@@ -14,7 +14,8 @@ const path = require('node:path');
 const servicePath = require.resolve('../services/notesService');
 const authPath = require.resolve('../middleware/auth');
 const routerPath = require.resolve('../routes/notes');
-const linkPreviewPath = require.resolve('../utils/linkPreview');
+// The route goes through the caching service, which wraps utils/linkPreview.
+const linkPreviewPath = require.resolve('../services/linkPreviewService');
 
 const NOTE_ID = '507f1f77bcf86cd799439011';
 
@@ -38,7 +39,9 @@ function loadRouter({ createNote, updateNote, fetchLinkPreview }) {
   };
   require.cache[linkPreviewPath] = {
     id: linkPreviewPath, filename: linkPreviewPath, loaded: true,
-    exports: { fetchLinkPreview }
+    exports: {
+      getLinkPreview: async (url) => ({ preview: await fetchLinkPreview(url), cached: false })
+    }
   };
   return require(routerPath);
 }

@@ -6,10 +6,12 @@
 
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
 const { upload, uploadAudio, isSafeStoredFilename } = require('../middleware/upload');
-const { fetchLinkPreview } = require('../utils/linkPreview');
+const { getLinkPreview } = require('../services/linkPreviewService');
+const { acquire } = require('../utils/concurrencyGate');
 const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberValidator');
 const notesService = require('../services/notesService');
 const aiService = require('../services/aiService');
@@ -24,6 +26,68 @@ const blockDemoCollaboration = blockDemoUser('collaboration');
 const blockDemoLinkPreview = blockDemoUser('link_preview');
 const blockDemoUploads = blockDemoUser('uploads');
 const blockDemoTranscription = blockDemoUser('transcription');
+
+// Teure Endpunkte brauchen eigene Budgets: Der globale Limiter (500/15 min pro
+// IP) schützt weder den Whisper-Worker (ein Request blockiert bis zu 300 s alle
+// anderen) noch den ausgehenden Traffic der Link-Vorschau. Die Zähler sind
+// pro Nutzer, nicht pro IP — hinter einem Reverse Proxy teilen sich sonst alle
+// ein Budget. (In-Memory-Store: gilt pro Server-Prozess, was bei den
+// Ein-Container-Deployments genau einem Instanz entspricht.)
+const numberFromEnv = (name, fallback) => {
+  const parsed = Number(process.env[name]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const userKeyGenerator = (req) => `user:${req.user?._id ? String(req.user._id) : req.ip}`;
+
+const tooManyRequests = (code, message, retryAfterSeconds) => (req, res) => {
+  res.setHeader('Retry-After', String(retryAfterSeconds));
+  return res.status(httpStatus.TOO_MANY_REQUESTS).json({ code, error: message });
+};
+
+const LINK_PREVIEW_LIMIT_PER_MINUTE = numberFromEnv('LINK_PREVIEW_LIMIT_PER_MINUTE', 30);
+const TRANSCRIPTION_LIMIT_PER_HOUR = numberFromEnv('TRANSCRIPTION_LIMIT_PER_HOUR', 10);
+const TRANSCRIPTION_LIMIT_PER_DAY = numberFromEnv('TRANSCRIPTION_LIMIT_PER_DAY', 60);
+const MAX_CONCURRENT_TRANSCRIPTIONS = numberFromEnv('MAX_CONCURRENT_TRANSCRIPTIONS', 2);
+
+const linkPreviewLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: LINK_PREVIEW_LIMIT_PER_MINUTE,
+  keyGenerator: userKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyRequests(
+    'LINK_PREVIEW_RATE_LIMITED',
+    'Zu viele Link-Vorschauen in kurzer Zeit. Bitte einen Moment warten.',
+    60
+  )
+});
+
+const transcribeHourLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: TRANSCRIPTION_LIMIT_PER_HOUR,
+  keyGenerator: userKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyRequests(
+    'TRANSCRIPTION_RATE_LIMITED',
+    'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.',
+    600
+  )
+});
+
+const transcribeDayLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: TRANSCRIPTION_LIMIT_PER_DAY,
+  keyGenerator: userKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyRequests(
+    'TRANSCRIPTION_DAILY_LIMIT',
+    'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.',
+    3600
+  )
+});
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -279,15 +343,16 @@ router.delete('/:id/share/:userId', blockDemoCollaboration, async (req, res, nex
 /**
  * POST /api/notes/link-preview - Fetch link preview for a URL
  */
-router.post('/link-preview', blockDemoLinkPreview, async (req, res, next) => {
+router.post('/link-preview', blockDemoLinkPreview, linkPreviewLimiter, async (req, res, next) => {
   try {
     const { url } = req.body;
 
     if (typeof url !== 'string' || !url.trim() || url.length > 2048) {
-      return res.status(httpStatus.BAD_REQUEST).json({ error: 'URL ist erforderlich und darf maximal 2048 Zeichen lang sein' });
+      return res.status(httpStatus.BAD_REQUEST).json({ code: 'URL_REQUIRED', error: 'URL ist erforderlich und darf maximal 2048 Zeichen lang sein' });
     }
 
-    const preview = await fetchLinkPreview(url.trim());
+    const { preview, cached } = await getLinkPreview(url.trim());
+    res.setHeader('X-Preview-Cache', cached ? 'hit' : 'miss');
     res.json(preview);
   } catch (error) {
     // Expected upstream conditions are not server faults: a dead link, a
@@ -500,7 +565,7 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
  * POST /api/notes/:id/transcribe - Upload audio and append transcription to note
  * Uses Whisper AI service to convert speech to text
  */
-router.post('/:id/transcribe', blockDemoTranscription, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
+router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, transcribeDayLimiter, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
   uploadAudio.single('audio')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -542,8 +607,25 @@ router.post('/:id/transcribe', blockDemoTranscription, noteValidation.getOne, re
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungueltige Audio-Datei' });
     }
 
-    // 1. Call AI Service for transcription
-    const result = await aiService.transcribeAudio(req.file.path, language);
+    // 1. Call AI Service for transcription — behind a concurrency gate, because
+    // the Whisper container runs a single worker: queueing more requests than it
+    // can serve only turns them into 300s timeouts.
+    const gate = acquire('transcription', MAX_CONCURRENT_TRANSCRIPTIONS);
+    if (!gate.acquired) {
+      await fs.promises.rm(req.file.path, { force: true });
+      res.setHeader('Retry-After', '30');
+      return res.status(httpStatus.TOO_MANY_REQUESTS).json({
+        code: 'TRANSCRIPTION_BUSY',
+        error: 'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.'
+      });
+    }
+
+    let result;
+    try {
+      result = await aiService.transcribeAudio(req.file.path, language);
+    } finally {
+      gate.release();
+    }
 
     if (!result || typeof result.text !== 'string' || !result.text.trim()) {
       throw new Error('Keine Transkription erhalten');
