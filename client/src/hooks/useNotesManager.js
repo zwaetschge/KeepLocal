@@ -591,10 +591,31 @@ export function useNotesManager({
       return;
     }
 
-    // Innerhalb derselben Sektion umsortieren
-    setNotes(prev => applyMutationLocally(prev, { type: 'reorder', sourceId, targetId: targetNoteId }));
+    // Innerhalb derselben Sektion umsortieren: sofort lokal, dann persistieren.
+    // Ohne den Server-Call war der Drop ein No-Op, weil die Liste gleich wieder
+    // nach updatedAt sortiert wurde.
+    const reordered = applyMutationLocally(stateRef.current.notes, { type: 'reorder', sourceId, targetId: targetNoteId });
+    setNotes(reordered);
     setDraggedNoteId(null);
-  }, [draggedNoteId, togglePinNote]);
+
+    const sectionIsPinned = Boolean(draggedNote.isPinned);
+    const orderedIds = reordered
+      .filter(item => Boolean(item.isPinned) === sectionIsPinned)
+      .map(item => item._id);
+
+    try {
+      await api.reorder(orderedIds);
+      // Der Refetch bestätigt die persistierte Ordnung; silent, weil der Drop selbst
+      // schon Rückmeldung gibt.
+      invalidateInFlightFetches();
+      refreshInBackground(stateRef.current.searchTerm, stateRef.current.pagination.page, { silent: true });
+    } catch (error) {
+      console.error('Fehler beim Speichern der Reihenfolge:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
+      // Lokale Ordnung zurücknehmen, damit UI und Server nicht auseinanderlaufen.
+      refreshInBackground(stateRef.current.searchTerm, stateRef.current.pagination.page);
+    }
+  }, [api, draggedNoteId, invalidateInFlightFetches, refreshInBackground, showToast, t, togglePinNote]);
 
   // Live-Refresh geteilter Notizen (P17): Focus/visibilitychange (15s-Throttle)
   // und 60s-Interval-Poll, beides nur bei sichtbarem Tab und im Hintergrund.
@@ -632,9 +653,15 @@ export function useNotesManager({
       ? notes.filter(item => item.tags && item.tags.includes(selectedTag))
       : notes;
     const byRecency = (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+    // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
+    // sortiert hat, bleibt die gewohnte „zuletzt bearbeitet zuerst"-Ordnung.
+    const hasManualOrder = filtered.some(item => Number(item.order) > 0);
+    const comparator = hasManualOrder
+      ? (a, b) => ((Number(b.order) || 0) - (Number(a.order) || 0)) || byRecency(a, b)
+      : byRecency;
     return {
-      pinnedNotes: filtered.filter(item => item.isPinned).sort(byRecency),
-      otherNotes: filtered.filter(item => !item.isPinned).sort(byRecency),
+      pinnedNotes: filtered.filter(item => item.isPinned).sort(comparator),
+      otherNotes: filtered.filter(item => !item.isPinned).sort(comparator),
     };
   }, [notes, selectedTag]);
 

@@ -296,6 +296,19 @@ const noteValidationRules = {
       .withMessage('permanent muss true oder false sein'),
 
     handleValidationErrors
+  ],
+
+  // PATCH /api/notes/reorder — manuelle Reihenfolge (Drag & Drop)
+  reorder: [
+    body('orderedIds')
+      .isArray({ min: 1, max: 200 })
+      .withMessage('orderedIds muss ein Array mit 1 bis 200 Notiz-IDs sein'),
+
+    body('orderedIds.*')
+      .isMongoId()
+      .withMessage('Ungültige Notiz-ID'),
+
+    handleValidationErrors
   ]
 };
 

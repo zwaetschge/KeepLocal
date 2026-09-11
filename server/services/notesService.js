@@ -6,6 +6,7 @@
 
 const Note = require('../models/Note');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
 const fs = require('fs');
 const path = require('path');
@@ -354,7 +355,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     // Same recency key the client uses to order a page (useNotesManager sorts by
     // updatedAt): sorting by createdAt here made recently edited older notes
     // land on later pages, so the visible order contradicted the pagination.
-    .sort({ isPinned: -1, updatedAt: -1, createdAt: -1 })
+    .sort({ isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(safeLimit);
 
@@ -426,6 +427,12 @@ async function createNote(noteData, userId) {
     content: normalizedContent
   });
 
+  // Manuelle Reihenfolge: Sobald in einem Abschnitt (angeheftet / sonstige)
+  // einmal per Drag & Drop sortiert wurde, gehören neue Notizen nach oben.
+  // Vorher bleibt order 0 und updatedAt entscheidet — also exakt das bisherige
+  // Verhalten, ganz ohne Migration.
+  const nextOrder = await nextTopOrder(userId, isPinned === true);
+
   const newNote = new Note({
     title: title || '',
     content: normalizedContent,
@@ -435,11 +442,111 @@ async function createNote(noteData, userId) {
     isTodoList: normalizedIsTodoList,
     todoItems: normalizedTodoItems,
     linkPreviews: linkPreviews || [],
+    order: nextOrder,
     userId: userId
   });
 
   const savedNote = await newNote.save();
   return savedNote;
+}
+
+/**
+ * Order value for a new note: 0 while the section has never been sorted
+ * manually, otherwise one above the current top so it lands first.
+ * @param {string} userId
+ * @param {boolean} isPinned
+ * @returns {Promise<number>}
+ */
+async function nextTopOrder(userId, isPinned) {
+  const top = await Note.findOne({
+    userId,
+    isPinned,
+    isArchived: false,
+    deletedAt: null,
+    order: { $gt: 0 }
+  }).sort({ order: -1 }).select('order');
+
+  return top ? top.order + 1 : 0;
+}
+
+const MAX_REORDER_IDS = 200;
+
+/**
+ * Persist a manual order (drag & drop).
+ *
+ * The client sends the ids of one section in their new sequence — typically the
+ * currently visible page. The server reuses the existing order values of exactly
+ * those notes (highest value to the first id), so notes outside the payload keep
+ * their relative position and a page-local reorder cannot scramble other pages.
+ *
+ * @param {string} userId - owner
+ * @param {string[]} orderedIds - note ids, top first
+ * @returns {Promise<{updated: number}>}
+ */
+async function reorderNotes(userId, orderedIds) {
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    throw clientError('orderedIds muss ein nicht-leeres Array sein');
+  }
+  if (orderedIds.length > MAX_REORDER_IDS) {
+    throw clientError(`Maximal ${MAX_REORDER_IDS} Notizen pro Sortiervorgang`);
+  }
+
+  const uniqueIds = [];
+  const seen = new Set();
+  for (const id of orderedIds) {
+    const key = String(id);
+    if (!mongoose.Types.ObjectId.isValid(key) || seen.has(key)) continue;
+    seen.add(key);
+    uniqueIds.push(key);
+  }
+  if (uniqueIds.length === 0) {
+    throw clientError('Keine gültigen Notiz-IDs');
+  }
+
+  const notes = await Note.find({ userId, deletedAt: null, _id: { $in: uniqueIds } })
+    .select('order isPinned isArchived')
+    .lean();
+
+  // Nur eigene Notizen; fremde/ungefundene Ids fliegen raus statt den Vorgang
+  // abzubrechen (geteilte Notizen gehören dem Besitzer).
+  const sortable = new Map(notes.map(note => [String(note._id), note]));
+  const ids = uniqueIds.filter(id => sortable.has(id));
+  if (ids.length === 0) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Bestehende Order-Werte der beteiligten Notizen absteigend wiederverwenden.
+  // Sind sie alle gleich (z. B. 0 = noch nie sortiert), wird ein frischer Block
+  // über dem bisherigen Maximum des Abschnitts vergeben.
+  const existing = ids.map(id => sortable.get(id).order || 0).sort((a, b) => b - a);
+  const allEqual = existing.every(value => value === existing[0]);
+
+  let values;
+  if (allEqual) {
+    const first = sortable.get(ids[0]);
+    const highest = await Note.findOne({
+      userId,
+      isPinned: first.isPinned,
+      isArchived: first.isArchived,
+      deletedAt: null
+    }).sort({ order: -1 }).select('order').lean();
+    const top = Math.max(highest?.order || 0, 0) + ids.length;
+    values = ids.map((_id, index) => top - index);
+  } else {
+    values = existing;
+  }
+
+  const operations = ids.map((id, index) => ({
+    updateOne: {
+      filter: { _id: id, userId, deletedAt: null },
+      update: { $set: { order: values[index] } }
+    }
+  }));
+
+  const result = await Note.bulkWrite(operations);
+  return { updated: result.modifiedCount ?? ids.length };
 }
 
 /**
@@ -820,6 +927,8 @@ module.exports = {
   restoreNote,
   purgeNote,
   emptyTrash,
+  reorderNotes,
+  nextTopOrder,
   togglePinNote,
   toggleArchiveNote,
   shareNote,

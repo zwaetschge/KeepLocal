@@ -147,6 +147,25 @@ router.delete('/trash', async (req, res, next) => {
 });
 
 /**
+ * PATCH /api/notes/reorder - manuelle Reihenfolge nach Drag & Drop speichern.
+ * Vor '/:id' registriert, damit 'reorder' nicht als ID geprüft wird.
+ */
+router.patch('/reorder', noteValidation.reorder, async (req, res, next) => {
+  try {
+    const result = await notesService.reorderNotes(req.user._id, req.body.orderedIds);
+    res.json({ message: 'Reihenfolge gespeichert', ...result });
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
  * POST /api/notes/:id/restore - Notiz aus dem Papierkorb wiederherstellen
  */
 router.post('/:id/restore', noteValidation.getOne, async (req, res, next) => {

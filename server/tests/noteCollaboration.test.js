@@ -155,7 +155,7 @@ test('sharing with a friend succeeds', async () => {
   assert.deepEqual(updated, { $addToSet: { sharedWith: FRIEND_ID } });
 });
 
-test('the note list is ordered by the same recency key the client sorts by', async () => {
+test('the note list is ordered by manual order, then the recency key the client sorts by', async () => {
   const seen = {};
   const chain = {
     populate() { return this; },
@@ -171,5 +171,5 @@ test('the note list is ordered by the same recency key the client sorts by', asy
 
   await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, archived: 'false' });
 
-  assert.deepEqual(seen.sort, { isPinned: -1, updatedAt: -1, createdAt: -1 });
+  assert.deepEqual(seen.sort, { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 });
 });

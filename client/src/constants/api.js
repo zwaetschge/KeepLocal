@@ -35,6 +35,7 @@ export const API_ENDPOINTS = {
     SHARE: (id) => `/api/notes/${id}/share`,
     UNSHARE: (id, userId) => `/api/notes/${id}/share/${userId}`,
     LINK_PREVIEW: '/api/notes/link-preview',
+    REORDER: '/api/notes/reorder',
     RESTORE: (id) => `/api/notes/${id}/restore`,
     TRASH: '/api/notes/trash',
   },

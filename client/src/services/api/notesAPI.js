@@ -57,6 +57,17 @@ const notesAPI = {
     }),
 
   /**
+   * Persist a manual order (drag & drop) for one section
+   * @param {string[]} orderedIds - note ids, top first
+   * @returns {Promise<{updated: number}>}
+   */
+  reorder: (orderedIds) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.REORDER, {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+    }),
+
+  /**
    * Restore a note from the trash
    * @param {string} id - Note ID
    * @returns {Promise<Object>} The restored note
