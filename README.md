@@ -281,10 +281,23 @@ local password alongside the OAuth identity.
 | `COOKIE_SECURE` | Optional `true`/`false` override | Detected from HTTPS |
 | `TRUST_PROXY` | Trusted reverse-proxy hop count | `1` standard / `2` NPM and public demo |
 | `WHISPER_MODEL` | Bundled transcription model | `base` split / `tiny` all-in-one |
+| `LINK_PREVIEW_LIMIT_PER_MINUTE` | Link previews per user and minute | `30` |
+| `TRANSCRIPTION_LIMIT_PER_HOUR` | Transcriptions per user and hour | `10` |
+| `TRANSCRIPTION_LIMIT_PER_DAY` | Transcriptions per user and day | `60` |
+| `MAX_CONCURRENT_TRANSCRIPTIONS` | Parallel Whisper jobs before answering 429 | `2` |
 | `GOOGLE_*`, `GITHUB_*` | Optional OAuth credentials and callbacks | Disabled when empty |
 
 Production rejects wildcard CORS origins. Never commit `.env`, tokens, OAuth
 secrets, database dumps, or uploaded user files.
+
+The four limits above are per **user** (not per IP, which a reverse proxy would
+collapse into one) and are counted in memory, i.e. per server process. Refused
+requests answer `429` with a `Retry-After` header and a stable `code`
+(`LINK_PREVIEW_RATE_LIMITED`, `TRANSCRIPTION_RATE_LIMITED`,
+`TRANSCRIPTION_DAILY_LIMIT`, `TRANSCRIPTION_BUSY`) that the UI translates. Link
+previews are additionally cached for 15 minutes per URL
+(`X-Preview-Cache: hit|miss`), which is what makes reopening a note with a link
+instant instead of another outbound fetch.
 
 ## Repository layout
 

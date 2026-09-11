@@ -33,6 +33,10 @@ const MESSAGE_TO_CODE = {
   'URL ist erforderlich und darf maximal 2048 Zeichen lang sein': 'URL_REQUIRED',
   'Link ist nicht erreichbar': 'LINK_UNREACHABLE',
   'Fehler beim Abrufen der Link-Vorschau': 'LINK_PREVIEW_FAILED',
+  'Zu viele Link-Vorschauen in kurzer Zeit. Bitte einen Moment warten.': 'LINK_PREVIEW_RATE_LIMITED',
+  'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.': 'TRANSCRIPTION_RATE_LIMITED',
+  'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.': 'TRANSCRIPTION_DAILY_LIMIT',
+  'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.': 'TRANSCRIPTION_BUSY',
   'Notizen koennen nur mit Freunden geteilt werden': 'SHARE_REQUIRES_FRIEND',
 
   // Files
