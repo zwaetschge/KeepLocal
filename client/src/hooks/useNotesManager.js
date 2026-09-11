@@ -22,7 +22,7 @@ export const FOCUS_REFRESH_THROTTLE_MS = 15_000;
 export const POLL_INTERVAL_MS = 60_000;
 
 const DEFAULT_PAGINATION = { page: 1, limit: NOTES_PAGE_LIMIT, total: 0, pages: 0 };
-const DEFAULT_COUNTS = { active: 0, archived: 0 };
+const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 
 // ---------------------------------------------------------------------------
 // Reine Logik (exportiert für node --test, siehe tests/notesManagerLogic.test.js)
@@ -180,6 +180,7 @@ export function getEmptyStateReason({ hasNotes, selectedTag, searchTerm } = {}) 
  * @param {Function} params.showToast
  * @param {Function} params.t
  * @param {boolean} params.showArchived
+ * @param {boolean} params.showTrash
  * @param {string|null} params.selectedTag
  * @param {string} params.searchTerm
  */
@@ -190,6 +191,7 @@ export function useNotesManager({
   showToast,
   t,
   showArchived = false,
+  showTrash = false,
   selectedTag = null,
   searchTerm = '',
 }) {
@@ -207,7 +209,7 @@ export function useNotesManager({
 
   // Spiegel des aktuellen Zustands für Handler ohne Stale-Closures
   const stateRef = useRef({});
-  stateRef.current = { notes, pagination, noteCounts, allTags, showArchived, selectedTag, searchTerm };
+  stateRef.current = { notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm };
 
   // Läuft ein Fetch mit älterer Sequenz ein, wird sein Ergebnis verworfen.
   const invalidateInFlightFetches = useCallback(() => {
@@ -268,13 +270,17 @@ export function useNotesManager({
     else setLoading(true);
 
     try {
+      const trashView = stateRef.current.showTrash;
       const params = {
         page,
         limit: NOTES_PAGE_LIMIT,
-        archived: stateRef.current.showArchived ? 'true' : 'false'
+        archived: trashView ? 'false' : (stateRef.current.showArchived ? 'true' : 'false'),
+        deleted: trashView ? 'true' : 'false'
       };
       if (search) params.search = search;
-      if (stateRef.current.selectedTag) params.tag = stateRef.current.selectedTag;
+      // Im Papierkorb gibt es keine Tag-Filter (der Server liefert dort keine
+      // Tag-Counts), die Suche bleibt verfügbar.
+      if (!trashView && stateRef.current.selectedTag) params.tag = stateRef.current.selectedTag;
 
       const response = await api.getAll(params);
       if (requestSequence !== fetchSequenceRef.current) return;
@@ -309,7 +315,7 @@ export function useNotesManager({
       const background = hasLoadedRef.current && stateRef.current.notes.length > 0;
       fetchNotes(searchTerm, 1, { background });
     }
-  }, [isLoggedIn, authLoading, showArchived, selectedTag, searchTerm, fetchNotes]);
+  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, fetchNotes]);
 
   // Beim Logout: Zustand zurücksetzen und laufende Fetches entwerten.
   useEffect(() => {
@@ -356,12 +362,45 @@ export function useNotesManager({
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
-  // Notiz löschen
+  // Notiz aus dem Papierkorb wiederherstellen (auch als "Rückgängig" nach dem
+  // Löschen verwendet, bevor die 30-Tage-Frist abläuft).
+  const restoreNote = useCallback(async (id) => {
+    setOperationLoading(prev => ({ ...prev, [id]: 'restore' }));
+    try {
+      const response = normalizeNote(await api.restore(id));
+      if (!response) throw new Error('Ungültige Serverantwort');
+      const inTrashView = stateRef.current.showTrash;
+      applyLocallyAndRevalidate(
+        inTrashView
+          ? { type: 'delete', id }
+          : { type: 'create', note: response, visible: response.isArchived === Boolean(stateRef.current.showArchived) }
+      );
+      setNoteCounts(prev => ({
+        ...prev,
+        trash: Math.max(0, (prev.trash || 0) - 1),
+        ...(inTrashView
+          ? {}
+          : response.isArchived
+            ? { archived: (prev.archived || 0) + 1 }
+            : { active: (prev.active || 0) + 1 })
+      }));
+      showToast(t('noteRestored'), 'success');
+      return response;
+    } catch (error) {
+      console.error('Fehler beim Wiederherstellen der Notiz:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
+      return null;
+    } finally {
+      setOperationLoading(prev => ({ ...prev, [id]: false }));
+    }
+  }, [api, applyLocallyAndRevalidate, showToast, t]);
+
+  // Notiz löschen -> Papierkorb (30 Tage). "Rückgängig" stellt sie wieder her.
   const deleteNote = useCallback(async (id) => {
     setOperationLoading(prev => ({ ...prev, [id]: 'delete' }));
     try {
-      await api.delete(id);
       const { notes: currentNotes, pagination: currentPagination } = stateRef.current;
+      await api.delete(id);
       applyLocallyAndRevalidate({ type: 'delete', id }, {
         page: currentNotes.length === 1 && currentPagination.page > 1
           ? currentPagination.page - 1
@@ -369,9 +408,16 @@ export function useNotesManager({
       });
       // Zähler lokal anpassen (der Hintergrund-Refetch korrigiert serverseitig)
       const countKey = stateRef.current.showArchived ? 'archived' : 'active';
-      setNoteCounts(prev => ({ ...prev, [countKey]: Math.max(0, prev[countKey] - 1) }));
+      setNoteCounts(prev => ({
+        ...prev,
+        [countKey]: Math.max(0, prev[countKey] - 1),
+        trash: (prev.trash || 0) + 1
+      }));
       setPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
-      showToast(t('noteDeleted'), 'success');
+      showToast(t('noteMovedToTrash'), 'success', {
+        duration: 8000,
+        action: { label: t('undo'), onClick: () => restoreNote(id) }
+      });
       return true;
     } catch (error) {
       console.error('Fehler beim Löschen der Notiz:', error);
@@ -380,7 +426,47 @@ export function useNotesManager({
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
     }
+  }, [api, applyLocallyAndRevalidate, restoreNote, showToast, t]);
+
+  // Notiz endgültig löschen (nur aus dem Papierkorb, inkl. Bilddateien)
+  const purgeNote = useCallback(async (id) => {
+    setOperationLoading(prev => ({ ...prev, [id]: 'purge' }));
+    try {
+      await api.purge(id);
+      applyLocallyAndRevalidate({ type: 'delete', id });
+      setNoteCounts(prev => ({ ...prev, trash: Math.max(0, (prev.trash || 0) - 1) }));
+      setPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+      showToast(t('noteDeletedPermanently'), 'success');
+      return true;
+    } catch (error) {
+      console.error('Fehler beim endgültigen Löschen:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
+      return false;
+    } finally {
+      setOperationLoading(prev => ({ ...prev, [id]: false }));
+    }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
+
+  // Papierkorb komplett leeren
+  const emptyTrash = useCallback(async () => {
+    setOperationLoading(prev => ({ ...prev, trash: true }));
+    try {
+      const response = await api.emptyTrash();
+      invalidateInFlightFetches();
+      setNotes([]);
+      setPagination(DEFAULT_PAGINATION);
+      setNoteCounts(prev => ({ ...prev, trash: 0 }));
+      refreshInBackground(stateRef.current.searchTerm, 1);
+      showToast(t('trashEmptied', { count: response?.removed ?? 0 }), 'success');
+      return true;
+    } catch (error) {
+      console.error('Fehler beim Leeren des Papierkorbs:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
+      return false;
+    } finally {
+      setOperationLoading(prev => ({ ...prev, trash: false }));
+    }
+  }, [api, invalidateInFlightFetches, refreshInBackground, showToast, t]);
 
   // Notiz aktualisieren.
   // 409 (Konflikt durch baseUpdatedAt/optimistic Locking) wird bewusst NICHT
@@ -574,6 +660,9 @@ export function useNotesManager({
     createNote,
     updateNote,
     deleteNote,
+    restoreNote,
+    purgeNote,
+    emptyTrash,
     togglePinNote,
     toggleArchiveNote,
     handleNoteShared,

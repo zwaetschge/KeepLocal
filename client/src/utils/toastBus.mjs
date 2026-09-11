@@ -24,14 +24,20 @@ export const toastBus = {
    * @param {string} message
    * @param {'info'|'success'|'error'|'warning'} [type]
    * @param {number} [duration] Auto-dismiss delay in ms
+   * @param {{label: string, onClick: Function}|null} [action] Optional button
+   *   (e.g. "Undo" after moving a note to the trash). Clicking it dismisses the
+   *   toast, so the action cannot fire twice.
    * @returns {number|null} Toast id (for dismiss) or null when ignored
    */
-  publish(message, type = 'info', duration = 3000) {
+  publish(message, type = 'info', duration = 3000, action = null) {
     if (message === undefined || message === null || message === '') {
       return null;
     }
     const id = nextToastId++;
-    toasts = [...toasts, { id, message: String(message), type, duration }].slice(
+    const normalizedAction = action && typeof action.onClick === 'function' && action.label
+      ? { label: String(action.label), onClick: action.onClick }
+      : null;
+    toasts = [...toasts, { id, message: String(message), type, duration, action: normalizedAction }].slice(
       -MAX_VISIBLE_TOASTS
     );
     emit();

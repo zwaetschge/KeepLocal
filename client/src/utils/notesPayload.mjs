@@ -1,5 +1,5 @@
 const DEFAULT_PAGINATION = { page: 1, limit: 50, total: 0, pages: 0 };
-const DEFAULT_COUNTS = { active: 0, archived: 0 };
+const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -120,7 +120,8 @@ export function normalizeNotesPayload(payload) {
     },
     counts: {
       active: asNonNegativeNumber(counts.active, DEFAULT_COUNTS.active),
-      archived: asNonNegativeNumber(counts.archived, DEFAULT_COUNTS.archived)
+      archived: asNonNegativeNumber(counts.archived, DEFAULT_COUNTS.archived),
+      trash: asNonNegativeNumber(counts.trash, DEFAULT_COUNTS.trash)
     },
     tags: Array.isArray(source.tags)
       ? source.tags.map(normalizeTag).filter(Boolean)

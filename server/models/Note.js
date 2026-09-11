@@ -91,7 +91,14 @@ const noteSchema = new mongoose.Schema({
   sharedWith: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }]
+  }],
+  // Papierkorb: weiches Löschen. `null` = aktiv, Datum = gelöscht am.
+  // Ein partieller TTL-Index lässt MongoDB die Dokumente nach 30 Tagen selbst
+  // entfernen; die Bilddateien räumt der Purge-Pfad bzw. der Start auf.
+  deletedAt: {
+    type: Date,
+    default: null
+  }
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
 });
@@ -102,6 +109,14 @@ noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // 
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
 noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
+noteSchema.index(
+  { deletedAt: 1 },
+  {
+    name: 'trash_ttl',
+    expireAfterSeconds: 30 * 24 * 60 * 60,
+    partialFilterExpression: { deletedAt: { $type: 'date' } }
+  }
+); // Papierkorb: automatische Endlöschung nach 30 Tagen
 
 // Validation: Ensure either content or todo items exist
 noteSchema.pre('save', function(next) {

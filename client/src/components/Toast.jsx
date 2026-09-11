@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Toast.css';
 
-function Toast({ message, type = 'info', duration = 3000, onClose }) {
+function Toast({ message, type = 'info', duration = 3000, action = null, onClose }) {
   const { t } = useLanguage();
   // Keep onClose in a ref so a new inline-arrow identity from the parent does
   // not re-run this effect (and restart the dismiss timer) on every render.
@@ -44,6 +44,17 @@ function Toast({ message, type = 'info', duration = 3000, onClose }) {
     >
       <span className="toast-icon" aria-hidden="true">{getIcon()}</span>
       <span className="toast-message">{message}</span>
+      {action && (
+        <button
+          className="toast-action"
+          onClick={() => {
+            action.onClick();
+            onCloseRef.current();
+          }}
+        >
+          {action.label}
+        </button>
+      )}
       <button className="toast-close" onClick={onClose} aria-label={t('close')}>
         ✕
       </button>

@@ -64,6 +64,7 @@ and mobile.
 
 - Notes and checklists with colors, tags, pinning, archives, search, and
   pagination
+- Trash with undo, restore, permanent delete, and a 30-day server-side retention
 - Private image uploads and optional local audio transcription
 - Friend requests and shared-note collaboration
 - English and German interfaces with Light, Dark, OLED, E-Ink, and Doodle
@@ -228,6 +229,12 @@ When the API is running, interactive documentation is available at
   tokens.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
+- `DELETE /api/notes/:id` moves a note to the trash (30-day TTL index, image
+  files stay until it is purged). `POST /api/notes/:id/restore` brings it back,
+  `DELETE /api/notes/:id?permanent=true` removes a trashed note for good, and
+  `DELETE /api/notes/trash` empties it. `GET /api/notes?deleted=true` lists the
+  trash; every other listing, count, tag aggregate and single-note lookup
+  excludes trashed notes.
 - Every error response carries a stable machine-readable `code` next to the
   human-readable `error` text (`server/constants/errorCodes.js`). Browser clients
   translate the code (`client/src/utils/apiErrors.mjs` plus the `err*` catalog

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react
 import './App.css';
 import './DoodleTheme.css';
 import NoteForm from './components/NoteForm';
-import NoteList from './components/NoteList';
+import { NotesSkeleton, EmptyState, NotesSection, TrashHeader } from './components/AppStates';
 import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
@@ -41,43 +41,6 @@ const LAZY_FALLBACK = (
   <div className="loading" role="status" aria-live="polite"><div className="loading-spinner" aria-hidden="true"></div></div>
 );
 
-// Skeleton-Karten für den ersten Ladevorgang (P15b). Die Shimmer-Klassen
-// (.skeleton/.skeleton-card/.skeleton-text) existieren bereits in App.css.
-function NotesSkeleton({ count = 8 }) {
-  return (
-    <div className="notes-skeleton" role="status" aria-busy="true" aria-live="polite">
-      {Array.from({ length: count }).map((_, index) => (
-        <div className="skeleton skeleton-card" key={index}>
-          <div className="skeleton skeleton-text" style={{ width: '65%', margin: 'var(--space-4) var(--space-4) var(--space-2)' }} />
-          <div className="skeleton skeleton-text" style={{ width: '92%', margin: '0 var(--space-4) var(--space-2)' }} />
-          <div className="skeleton skeleton-text short" style={{ margin: '0 var(--space-4)' }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Leerer Zustand der Notizliste (Grund wird aus useNotesManager berechnet)
-function EmptyState({ emoji, title, hint, kbd }) {
-  const { t } = useLanguage();
-  return (
-    <div className="empty-state" role="status">
-      <p>{emoji} {title}</p>
-      <p className="empty-hint">{hint}{kbd ? <> <kbd>{t('shortcutCtrlN')}</kbd></> : null}</p>
-    </div>
-  );
-}
-
-// Notiz-Sektion (angeheftet/sonstige) mit gemeinsamen Listen-Props
-function NotesSection({ title, notes, actions }) {
-  return (
-    <div className="notes-section">
-      {title && <h2 className="section-title">{title}</h2>}
-      <NoteList notes={notes} {...actions} />
-    </div>
-  );
-}
-
 function AppContent() {
   const {
     user, isLoggedIn, loading: authLoading, setupNeeded, sessionExpired,
@@ -97,6 +60,7 @@ function AppContent() {
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showCollaborateModal, setShowCollaborateModal] = useState(false);
   const [collaborateNote, setCollaborateNote] = useState(null);
@@ -113,18 +77,19 @@ function AppContent() {
   // Meldungen laufen über den toastBus: <ToastStack /> (App-Root) rendert die
   // Queue als Portal, jede Meldung behält ihren eigenen Timer und geht nicht
   // verloren, wenn kurz darauf die nächste kommt.
-  const showToast = useCallback((message, type = 'info') => {
-    toastBus.publish(message, type);
+  const showToast = useCallback((message, type = 'info', options = null) => {
+    toastBus.publish(message, type, options?.duration, options?.action);
   }, []);
 
   const {
     notes, loading, refreshing, pagination, noteCounts, allTags, operationLoading,
     pinnedNotes, otherNotes, emptyStateReason, fetchNotes,
-    createNote, updateNote, deleteNote, togglePinNote, toggleArchiveNote, handleNoteShared,
+    createNote, updateNote, deleteNote, restoreNote, purgeNote, emptyTrash,
+    togglePinNote, toggleArchiveNote, handleNoteShared,
     handleDragStart, handleDragEnd, handleDragOver, handleDrop,
   } = useNotesManager({
     api: notesAPI, isLoggedIn, authLoading, showToast, t,
-    showArchived, selectedTag, searchTerm,
+    showArchived, showTrash, selectedTag, searchTerm,
   });
 
   // Initialize CSRF token on mount
@@ -152,6 +117,18 @@ function AppContent() {
     noteModal.note ? updateNote(noteModal.note._id, noteData) : createNote(noteData)
   );
   const handleSearch = (search) => setSearchTerm(search);
+
+  // Die drei Ansichten (Notizen, Archiv, Papierkorb) schließen sich aus, genau
+  // wie ein Tag-Filter den Papierkorb verlässt.
+  const selectView = (view) => {
+    setShowTrash(view === 'trash');
+    setShowArchived(view === 'archived');
+    if (view === 'trash') setSelectedTag(null);
+  };
+  const handleTagSelect = (tag) => {
+    if (tag) setShowTrash(false);
+    setSelectedTag(tag);
+  };
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
@@ -243,20 +220,31 @@ function AppContent() {
   }
 
   // Main app (authenticated)
-  const listActions = {
-    onDeleteNote: deleteNote, onUpdateNote: updateNote,
-    onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
-    onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
-    onOpenModal: openNoteModal,
-    onDragStart: handleDragStart, onDragEnd: handleDragEnd,
-    onDragOver: handleDragOver, onDrop: handleDrop,
-    operationLoading,
-  };
-  const emptyStateContent = {
-    noNotes: { emoji: '📝', title: t('noNotesAvailable'), hint: t('createFirstNote'), kbd: true },
-    noTagResults: { emoji: '🏷️', title: t('noNotesWithTag'), hint: t('selectOtherTagOrCreate') },
-    noSearchResults: { emoji: '🔍', title: t('noNotesFound'), hint: t('tryDifferentSearch') },
-  }[emptyStateReason];
+  const listActions = showTrash
+    ? {
+      // Im Papierkorb gibt es kein Bearbeiten, kein Anheften und kein Teilen —
+      // nur Wiederherstellen und endgültiges Löschen.
+      onRestoreNote: restoreNote, onPurgeNote: purgeNote,
+      operationLoading, inTrash: true,
+    }
+    : {
+      onDeleteNote: deleteNote, onUpdateNote: updateNote,
+      onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
+      onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
+      onOpenModal: openNoteModal,
+      onDragStart: handleDragStart, onDragEnd: handleDragEnd,
+      onDragOver: handleDragOver, onDrop: handleDrop,
+      operationLoading,
+    };
+  const emptyStateContent = showTrash
+    ? (pinnedNotes.length === 0 && otherNotes.length === 0
+      ? { emoji: '🗑️', title: t('trashEmpty'), hint: t('trashEmptyHint') }
+      : null)
+    : {
+      noNotes: { emoji: '📝', title: t('noNotesAvailable'), hint: t('createFirstNote'), kbd: true },
+      noTagResults: { emoji: '🏷️', title: t('noNotesWithTag'), hint: t('selectOtherTagOrCreate') },
+      noSearchResults: { emoji: '🔍', title: t('noNotesFound'), hint: t('tryDifferentSearch') },
+    }[emptyStateReason];
 
   return (
     <div className="App">
@@ -305,19 +293,31 @@ function AppContent() {
 
       <div className="App-container">
         <Sidebar
-          allTags={allTags} selectedTag={selectedTag} onTagSelect={setSelectedTag}
+          allTags={allTags} selectedTag={selectedTag} onTagSelect={handleTagSelect}
           noteCount={noteCounts.active}
           onSettingsClick={user?.isDemo ? undefined : () => setShowSettings(true)}
           user={user} onLogout={handleLogout} theme={theme} onThemeToggle={toggleTheme}
           isMobileOpen={isMobileMenuOpen} onMobileClose={() => setIsMobileMenuOpen(false)}
           archivedCount={noteCounts.archived} showArchived={showArchived}
-          onShowArchivedToggle={() => setShowArchived(!showArchived)}
+          onShowArchivedToggle={() => selectView(showArchived ? 'notes' : 'archived')}
+          onShowNotes={() => selectView('notes')}
+          trashCount={noteCounts.trash} showTrash={showTrash}
+          onShowTrashToggle={() => selectView(showTrash ? 'notes' : 'trash')}
+          onEmptyTrash={emptyTrash}
           onOpenFriends={user?.isDemo ? undefined : () => setShowFriendsModal(true)}
         />
 
         <main className="App-main" role="main" aria-busy={refreshing}
           style={refreshing ? REFRESHING_STYLE : undefined}>
-          <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
+          {showTrash ? (
+            <TrashHeader
+              count={noteCounts.trash}
+              busy={operationLoading.trash}
+              onEmpty={emptyTrash}
+            />
+          ) : (
+            <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
+          )}
 
           {/* P15b: erster Load zeigt Skeletons; Hintergrund-Refresh dimmt die Liste nur */}
           {loading && notes.length === 0 ? (

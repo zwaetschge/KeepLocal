@@ -12,6 +12,10 @@ function Sidebar({
   archivedCount,
   showArchived,
   onShowArchivedToggle,
+  trashCount,
+  showTrash,
+  onShowTrashToggle,
+  onShowNotes,
   onOpenFriends,
   onSettingsClick,
   user,
@@ -96,10 +100,11 @@ function Sidebar({
 
       <nav className="sidebar-nav">
         <button
-          className={`sidebar-item ${!selectedTag && !showArchived ? 'active' : ''}`}
+          className={`sidebar-item ${!selectedTag && !showArchived && !showTrash ? 'active' : ''}`}
           onClick={() => {
             onTagSelect(null);
-            if (showArchived) onShowArchivedToggle();
+            if (onShowNotes) onShowNotes();
+            else if (showArchived) onShowArchivedToggle();
             onMobileClose();
           }}
           aria-label={t('allNotes')}
@@ -126,6 +131,23 @@ function Sidebar({
           <span>{t('archived')}</span>
           <span className="count">{archivedCount || 0}</span>
         </button>
+
+        {onShowTrashToggle && (
+          <button
+            className={`sidebar-item ${showTrash ? 'active' : ''}`}
+            onClick={() => {
+              onShowTrashToggle();
+              onMobileClose();
+            }}
+            aria-label={t('trash')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+            </svg>
+            <span>{t('trash')}</span>
+            <span className="count">{trashCount || 0}</span>
+          </button>
+        )}
 
         {onOpenFriends && (
           <button
