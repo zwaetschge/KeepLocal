@@ -36,14 +36,19 @@ test('a drop sends the section order and falls back on failure', () => {
   assert.match(hook, /catch \(error\) \{[\s\S]{0,400}?refreshInBackground\(stateRef\.current\.searchTerm, stateRef\.current\.pagination\.page\);/);
 });
 
-test('manual order wins over recency only when it exists', () => {
+test('search relevance beats manual order, which beats recency', () => {
   const hook = read('hooks', 'useNotesManager.js');
 
   assert.match(hook, /const hasManualOrder = filtered\.some\(item => Number\(item\.order\) > 0\);/);
-  assert.match(hook, /const comparator = hasManualOrder/);
+  // While searching, the server already sorted by weighted textScore — sorting
+  // again here would throw the relevance away.
+  assert.match(hook, /const isSearching = searchTerm\.trim\(\) !== '';/);
+  assert.match(hook, /const comparator = isSearching\s*\? null\s*: hasManualOrder/);
   assert.match(hook, /\(\(Number\(b\.order\) \|\| 0\) - \(Number\(a\.order\) \|\| 0\)\) \|\| byRecency\(a, b\)/);
-  assert.match(hook, /pinnedNotes: filtered\.filter\(item => item\.isPinned\)\.sort\(comparator\)/);
-  assert.match(hook, /otherNotes: filtered\.filter\(item => !item\.isPinned\)\.sort\(comparator\)/);
+  assert.match(hook, /const order = \(items\) => \(comparator \? items\.sort\(comparator\) : items\);/);
+  assert.match(hook, /pinnedNotes: order\(filtered\.filter\(item => item\.isPinned\)\)/);
+  assert.match(hook, /otherNotes: order\(filtered\.filter\(item => !item\.isPinned\)\)/);
+  assert.match(hook, /\}, \[notes, selectedTag, searchTerm\]\);/);
 });
 
 test('the payload normalizer keeps a numeric order', async () => {

@@ -215,7 +215,7 @@
   border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
   font-weight: var(--font-medium);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: var(--font-body);
@@ -421,7 +421,7 @@
 
 .btn-modal-checkbox.active {
   background: var(--accent-light);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .dark-mode .btn-modal-checkbox {
@@ -480,7 +480,7 @@
 
 .btn-modal-pin.pinned {
   background: var(--accent-light);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .btn-modal-delete:hover {
@@ -900,7 +900,7 @@
 
 .btn-modal-image-upload.uploading {
   background: var(--accent-light);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .btn-modal-image-upload:disabled {
@@ -1024,7 +1024,7 @@
 
 .btn-modal-voice.transcribing {
   background: var(--accent-light);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   cursor: wait;
 }
 

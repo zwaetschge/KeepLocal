@@ -656,14 +656,20 @@ export function useNotesManager({
     // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
     // sortiert hat, bleibt die gewohnte „zuletzt bearbeitet zuerst"-Ordnung.
     const hasManualOrder = filtered.some(item => Number(item.order) > 0);
-    const comparator = hasManualOrder
-      ? (a, b) => ((Number(b.order) || 0) - (Number(a.order) || 0)) || byRecency(a, b)
-      : byRecency;
+    // Bei aktiver Suche sortiert der Server nach gewichtetem textScore —
+    // erneutes Sortieren hier würde die Relevanz wieder zerstören.
+    const isSearching = searchTerm.trim() !== '';
+    const comparator = isSearching
+      ? null
+      : hasManualOrder
+        ? (a, b) => ((Number(b.order) || 0) - (Number(a.order) || 0)) || byRecency(a, b)
+        : byRecency;
+    const order = (items) => (comparator ? items.sort(comparator) : items);
     return {
-      pinnedNotes: filtered.filter(item => item.isPinned).sort(comparator),
-      otherNotes: filtered.filter(item => !item.isPinned).sort(comparator),
+      pinnedNotes: order(filtered.filter(item => item.isPinned)),
+      otherNotes: order(filtered.filter(item => !item.isPinned)),
     };
-  }, [notes, selectedTag]);
+  }, [notes, selectedTag, searchTerm]);
 
   const emptyStateReason = useMemo(() => getEmptyStateReason({
     hasNotes: pinnedNotes.length > 0 || otherNotes.length > 0,

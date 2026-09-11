@@ -61,6 +61,14 @@ const SearchBar = React.forwardRef(({ onSearch }, ref) => {
         placeholder={t('searchPlaceholder')}
         value={searchTerm}
         onChange={handleSearch}
+        onKeyDown={(event) => {
+          // Escape leert die Suche und gibt den Fokus frei, statt (wie bisher)
+          // nur den Browser-Default zu triggern.
+          if (event.key === 'Escape' && searchTerm) {
+            event.stopPropagation();
+            handleClear();
+          }
+        }}
         className="search-input"
         aria-label={t('searchNotes')}
       />

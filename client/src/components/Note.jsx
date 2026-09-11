@@ -8,7 +8,7 @@ import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, operation }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
@@ -172,7 +172,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
             <p
               ref={contentRef}
               className="note-content"
-              dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content, { highlight }) }}
               onClick={(e) => {
                 // Allow links to be clicked
                 if (e.target.tagName === 'A') {

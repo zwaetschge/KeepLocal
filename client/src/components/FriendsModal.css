@@ -70,7 +70,7 @@
 }
 
 .tab-btn.active {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   border-bottom-color: var(--accent-color);
 }
 

@@ -196,6 +196,50 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('[role="article"]', { hasText: NOTE_TITLE })).toBeVisible();
   });
 
+  test('search ranks by relevance, highlights matches and narrows tag counts', async () => {
+    // Two notes: one matches in the title, one only in the content.
+    for (const [title, content, tag] of [
+      ['Brot-Rezept', 'Mehl, Wasser, Salz', 'suchtest'],
+      ['Einkauf', 'Bitte Brot kaufen und Apfel mitnehmen', 'suchtest'],
+    ]) {
+      await page.click('.note-form-button');
+      await expect(page.locator('.note-modal')).toBeVisible();
+      await page.fill('.note-modal-title', title);
+      await page.fill('.note-modal-content', content);
+      await page.fill('.note-modal-tags-input', tag);
+      await page.keyboard.press('Enter');
+      await page.click('.btn-modal-save');
+      await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    }
+
+    // Both tagged notes are counted before searching.
+    await page.fill('.search-input', '');
+    await expect(page.locator('.sidebar-item', { hasText: 'suchtest' })).toContainText('2', { timeout: 20000 });
+
+    await page.fill('.search-input', 'Brot');
+    const hits = page.locator('[role="article"] .note-title');
+    await expect(hits.first()).toHaveText('Brot-Rezept', { timeout: 20000 });
+
+    // The match is highlighted inside the rendered note content.
+    const marks = page.locator('[role="article"] .note-content mark');
+    await expect(marks.first()).toBeVisible();
+    expect((await marks.first().innerText()).toLowerCase()).toBe('brot');
+    // Highlighting must not break links or leak markup.
+    const html = await page.locator('[role="article"] .note-content').first().innerHTML();
+    expect(html).not.toContain('&lt;mark&gt;');
+
+    // Tag counts follow the search instead of showing the whole view: "Apfel"
+    // only occurs in one of the two tagged notes.
+    await page.fill('.search-input', 'Apfel');
+    await expect(page.locator('[role="article"] .note-title').first()).toHaveText('Einkauf', { timeout: 20000 });
+    await expect(page.locator('.sidebar-item', { hasText: 'suchtest' })).toContainText('1', { timeout: 20000 });
+
+    // Escape clears the search and restores the full view.
+    await page.locator('.search-input').press('Escape');
+    await expect(page.locator('.search-input')).toHaveValue('');
+    await expect(page.locator('.sidebar-item', { hasText: 'suchtest' })).toContainText('2', { timeout: 20000 });
+  });
+
   test('archiving moves the note between the views and updates counts', async () => {
     const card = page.locator('[role="article"]', { hasText: NOTE_TITLE });
     await card.hover();

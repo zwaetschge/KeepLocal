@@ -2,7 +2,7 @@ import React from 'react';
 import Note from './Note';
 import './NoteList.css';
 
-function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestoreNote, onPurgeNote, inTrash, operationLoading }) {
+function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestoreNote, onPurgeNote, inTrash, highlight, operationLoading }) {
   return (
     <div className="note-list">
       {notes.map((note, index) => (
@@ -23,6 +23,7 @@ function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArch
           onRestore={onRestoreNote}
           onPurge={onPurgeNote}
           inTrash={Boolean(inTrash)}
+          highlight={highlight}
           operation={operationLoading[note._id]}
         />
       ))}

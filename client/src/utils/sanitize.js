@@ -46,6 +46,39 @@ export const parseTodos = (text) => {
   return withTodos;
 };
 
+const escapeRegExpSource = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const escapeHtmlText = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+/**
+ * Wrap occurrences of `needle` in <mark> — but only in text nodes, never inside
+ * a tag or attribute (the input is already escaped and linkified HTML).
+ *
+ * @param {string} html - escaped HTML produced by sanitizeAndLinkify
+ * @param {string} needle - raw search term as typed by the user
+ * @returns {string}
+ */
+export function highlightMatches(html, needle) {
+  if (typeof html !== 'string') return html;
+  const term = typeof needle === 'string' ? needle.trim() : '';
+  if (!term) return html;
+
+  // The haystack is escaped HTML, so the needle has to be escaped the same way
+  // ("Tom <3" is stored as "Tom &lt;3").
+  const escapedNeedle = escapeHtmlText(term);
+  const pattern = new RegExp(escapeRegExpSource(escapedNeedle), 'gi');
+
+  return html
+    .split(/(<[^>]*>)/g)
+    .map(part => (part.startsWith('<') ? part : part.replace(pattern, match => `<mark>${match}</mark>`)))
+    .join('');
+}
+
 /**
  * Bereinigt HTML-Inhalt von XSS-Angriffen
  * @param {string} dirty - Der zu bereinigende String
@@ -66,9 +99,10 @@ export const sanitize = (dirty) => {
 /**
  * Sanitizes and linkifies text content with todo support
  * @param {string} text - The text to process
+ * @param {{highlight?: string}} [options] - Optional search term to mark
  * @returns {string} - Sanitized HTML with clickable links and todos
  */
-export const sanitizeAndLinkify = (text) => {
+export const sanitizeAndLinkify = (text, options = {}) => {
   if (typeof text !== 'string') {
     return text;
   }
@@ -90,9 +124,13 @@ export const sanitizeAndLinkify = (text) => {
   // Linkify URLs
   const linked = linkify(withTodos);
 
+  // Search highlighting runs on the escaped/linkified HTML and only touches text
+  // nodes, so it can neither create attributes nor break a link URL.
+  const highlighted = options.highlight ? highlightMatches(linked, options.highlight) : linked;
+
   // Sanitize with allowed tags for links, todos, and checkboxes
-  return DOMPurify.sanitize(linked, {
-    ALLOWED_TAGS: ['a', 'br', 'label', 'input', 'span'],
+  return DOMPurify.sanitize(highlighted, {
+    ALLOWED_TAGS: ['a', 'br', 'label', 'input', 'span', 'mark'],
     ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'type', 'checked', 'data-url', 'title'],
     KEEP_CONTENT: true
   });
@@ -113,6 +151,7 @@ const sanitizeUtils = {
   sanitize,
   sanitizeHTML,
   linkify,
+  highlightMatches,
   sanitizeAndLinkify,
   parseTodos
 };

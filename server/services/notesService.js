@@ -334,6 +334,17 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   const activeQuery = buildNotesQuery({ userId, isArchived: false });
   const archivedQuery = buildNotesQuery({ userId, isArchived: true });
 
+  const searchTerm = typeof search === 'string' ? search.trim() : '';
+  const isSearch = searchTerm !== '';
+
+  // Tag-Counts zählen dieselbe Sicht wie die Liste — bei aktiver Suche also nur
+  // Treffer. Vorher zeigte die Sidebar die Gesamtzahlen, während die Liste nur
+  // Suchergebnisse enthielt.
+  const tagMatch = isArchived ? { ...archivedQuery } : { ...activeQuery };
+  if (isSearch) {
+    tagMatch.$text = { $search: searchTerm };
+  }
+
   const skip = (safePage - 1) * safeLimit;
   const [total, activeCount, archivedCount, trashCount, tags] = await Promise.all([
     Note.countDocuments(query),
@@ -341,7 +352,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     Note.countDocuments(archivedQuery),
     Note.countDocuments({ userId, deletedAt: { $ne: null } }),
     Note.aggregate([
-      { $match: isArchived ? archivedQuery : activeQuery },
+      { $match: tagMatch },
       { $unwind: '$tags' },
       { $group: { _id: '$tags', count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
@@ -349,14 +360,21 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     ])
   ]);
 
-  const notes = await Note.find(query)
+  // Bei einer Suche zählt Relevanz (gewichteter textScore) mehr als Recency;
+  // angeheftete Notizen bleiben oben. Ohne Suche gilt die gewohnte Ordnung.
+  const listQuery = isSearch
+    ? Note.find(query, { score: { $meta: 'textScore' } })
+    : Note.find(query);
+  const notes = await listQuery
     .populate('userId', 'username email')
     .populate('sharedWith', 'username email')
     .populate('lastEditedBy', 'username')
     // Same recency key the client uses to order a page (useNotesManager sorts by
     // updatedAt): sorting by createdAt here made recently edited older notes
     // land on later pages, so the visible order contradicted the pagination.
-    .sort({ isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 })
+    .sort(isSearch
+      ? { isPinned: -1, score: { $meta: 'textScore' } }
+      : { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(safeLimit);
 

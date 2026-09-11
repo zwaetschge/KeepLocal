@@ -101,7 +101,7 @@
 .error-boundary-details summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   margin-bottom: var(--space-3);
   user-select: none;
 }

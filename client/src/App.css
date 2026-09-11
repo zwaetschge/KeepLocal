@@ -385,7 +385,7 @@ body.eink-mode::before {
 .btn-secondary:hover:not(:disabled) {
   background: var(--bg-elevated);
   border-color: var(--accent-color);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
@@ -448,7 +448,7 @@ body.eink-mode::before {
 
 .btn-icon.active {
   background: var(--accent-light);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 /* Danger Button */
@@ -713,7 +713,7 @@ body.eink-mode::before {
 .pagination button:hover:not(:disabled) {
   background: var(--bg-elevated);
   border-color: var(--accent-color);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   box-shadow: var(--shadow-sm);
   transform: translateY(-2px) scale(1.03);
 }
@@ -762,7 +762,7 @@ body.eink-mode::before {
 }
 
 .keyboard-shortcuts-hint summary:hover {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .keyboard-shortcuts-hint ul {
