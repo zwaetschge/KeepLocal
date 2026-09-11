@@ -69,7 +69,7 @@ function Sidebar({
               onSettingsClick();
               onMobileClose();
             }}
-            aria-label="Einstellungen"
+            aria-label={t('settings')}
           >
             <span className="mobile-user-icon">👤</span>
             <span className="mobile-user-name">{user?.username}</span>

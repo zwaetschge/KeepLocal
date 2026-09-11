@@ -9,6 +9,7 @@ const ApiKey = require('../models/ApiKey');
 const Settings = require('../models/Settings');
 const { errorMessages } = require('../constants');
 const { deleteNoteImages } = require('./notesService');
+const { escapeRegex } = require('../utils/sanitize');
 
 /**
  * Get all users
@@ -30,8 +31,16 @@ async function getAllUsers() {
 async function createUser(userData) {
   const { username, email, password, isAdmin } = userData;
 
-  // Check if user already exists
-  const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+  // Check if user already exists. Usernames are stored case-sensitively but
+  // searched case-insensitively, so a duplicate in different casing has to be
+  // rejected here as well ("ALICE" next to "alice").
+  const existingUser = await User.findOne({
+    $or: [
+      { email },
+      { username },
+      { username: { $regex: new RegExp(`^${escapeRegex(username)}$`, 'i') } }
+    ]
+  });
   if (existingUser) {
     const error = new Error(
       existingUser.email === email

@@ -15,10 +15,46 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  z-index: var(--z-modal);
+  z-index: var(--z-lightbox, 3000);
   animation: toastSlideIn 0.4s var(--ease-bounce);
   border: 1px solid var(--border-color);
   overflow: hidden;
+}
+
+/* ============================================
+   Toast Stack (queue via toastBus / <ToastStack />)
+   Sits above the single app-level toast so both can coexist.
+   ============================================ */
+.toast-stack {
+  position: fixed;
+  bottom: calc(var(--space-8) + 92px); /* above the single app toast */
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse; /* newest toast closest to the bottom edge */
+  gap: var(--space-2);
+  z-index: calc(var(--z-lightbox, 3000) + 1000);
+  pointer-events: none;
+  width: max-content;
+  max-width: min(500px, calc(100vw - 2 * var(--space-4)));
+}
+
+.toast-stack .toast {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+  animation: toastStackIn 0.3s var(--ease-default);
+}
+
+@keyframes toastStackIn {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Progress bar for auto-dismiss */
@@ -169,6 +205,15 @@
     transform: none;
     max-width: none;
     bottom: var(--space-4);
+  }
+
+  .toast-stack {
+    left: var(--space-4);
+    right: var(--space-4);
+    transform: none;
+    width: auto;
+    max-width: none;
+    bottom: calc(var(--space-4) + 92px);
   }
 
   @keyframes toastSlideIn {

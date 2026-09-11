@@ -28,8 +28,11 @@ def transcribe():
 
     audio_file = request.files['audio']
 
-    # Get optional language parameter
+    # Get optional language parameter. 'auto' is what the app stores for
+    # "detect automatically" - treat it as "no hint" instead of rejecting it.
     language = request.form.get('language', None)
+    if language == 'auto':
+        language = None
     if language and not re.fullmatch(r'[a-z]{2,3}(?:-[A-Z]{2})?', language):
         return jsonify({'error': 'Invalid language code'}), 400
 

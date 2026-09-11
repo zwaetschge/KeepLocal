@@ -62,8 +62,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(event.request)
         .catch(() => {
+          // Language-neutral on purpose: apiUtils turns a payload with a `code`
+          // and no `error` text into an empty message, so callers fall back to
+          // their translated strings instead of showing a hardcoded one.
           return new Response(
-            JSON.stringify({ error: 'Offline - API nicht verfügbar' }),
+            JSON.stringify({ code: 'OFFLINE' }),
             {
               headers: { 'Content-Type': 'application/json' },
               status: 503
@@ -82,7 +85,8 @@ self.addEventListener('fetch', event => {
 
   // The standalone recovery path must always come from the network so it can
   // repair a stale app shell or service worker without depending on React.
-  if (['/recover.html', '/recover.js', '/recover.css'].includes(url.pathname)) {
+  // guard.js belongs to that path: it forwards a dead bundle to /recover.html.
+  if (['/recover.html', '/recover.js', '/recover.css', '/guard.js'].includes(url.pathname)) {
     event.respondWith(fetch(event.request, { cache: 'no-store' }));
     return;
   }

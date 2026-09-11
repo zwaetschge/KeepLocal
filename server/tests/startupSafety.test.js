@@ -17,3 +17,24 @@ test('health endpoint reports database disconnects', () => {
   assert.match(serverSource, /database: databaseReady \? 'connected' : 'disconnected'/);
   assert.match(serverSource, /databaseReady \? 200 : 503/);
 });
+
+test('server shuts down gracefully on SIGTERM and SIGINT', () => {
+  assert.match(serverSource, /process\.on\('SIGTERM'/);
+  assert.match(serverSource, /process\.on\('SIGINT'/);
+  // Laufende Requests abschließen, DB schließen, aber nie endlos hängen bleiben.
+  assert.match(serverSource, /httpServer\.close\(/);
+  assert.match(serverSource, /mongoose\.connection\.close\(/);
+  assert.match(serverSource, /setTimeout\([\s\S]*?,\s*10000\)/);
+});
+
+test('API documentation stays disabled in production unless explicitly enabled', () => {
+  // Alle Deployment-Varianten setzen NODE_ENV=production — Swagger darf dort
+  // nicht ohne Opt-in exponiert werden.
+  assert.match(serverSource, /ENABLE_API_DOCS === 'true'/);
+  assert.match(serverSource, /ENABLE_API_DOCS !== 'false' && process\.env\.NODE_ENV !== 'production'/);
+  // Beide Dokumentations-Routen müssen innerhalb des Gates liegen.
+  const gate = serverSource.match(/const apiDocsEnabled[\s\S]*?\n\}/);
+  assert.ok(gate, 'apiDocsEnabled gate must exist');
+  assert.match(gate[0], /app\.use\('\/api\/docs', swaggerUi/);
+  assert.match(gate[0], /app\.get\('\/api\/docs\.json'/);
+});

@@ -347,6 +347,19 @@ input:checked + .toggle-slider:before {
   margin-bottom: 1.5rem;
 }
 
+/* UI language row (LanguageSelector mounted inside the settings modal) */
+.settings-language {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-language .language-toggle {
+  font-size: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full, 999px);
+}
+
 .settings-input-label {
   display: block;
   font-size: 0.875rem;
@@ -629,4 +642,9 @@ input:checked + .toggle-slider:before {
   .settings-code-block {
     font-size: 0.75rem;
   }
+}
+
+/* Programmatic focus target for the focus trap — never shows a ring itself. */
+.settings-modal:focus {
+  outline: none;
 }

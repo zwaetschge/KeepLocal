@@ -3,6 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { API_BASE_URL } from '../constants/api';
 import { parseResponse } from '../services/api/apiUtils';
 import './Auth.css';
+import LanguageSelector from './LanguageSelector';
 
 function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
   const { t } = useLanguage();
@@ -92,6 +93,7 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
 
   return (
     <div className="auth-container">
+      <div className="auth-language"><LanguageSelector /></div>
       <div className="auth-box">
         <div className="auth-header">
           <h1>KeepLocal</h1>

@@ -6,6 +6,44 @@ export { API_BASE_URL };
 // Store CSRF token in memory (not in cookie!)
 let csrfToken = null;
 
+// Session-Expiry (P16): Name des globalen Events, das bei einem 401 gefeuert
+// wird. Der AuthContext hört darauf und loggt den Nutzer mit Hinweis aus.
+export const UNAUTHORIZED_EVENT = 'keeplocal:unauthorized';
+// Throttle: nicht jeder parallele Request soll ein Event feuern (30s-Fenster).
+const UNAUTHORIZED_EVENT_THROTTLE_MS = 30000;
+let lastUnauthorizedEventAt = 0;
+
+function notifyUnauthorizedOncePerWindow(endpoint) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return false;
+  }
+  const now = Date.now();
+  if (now - lastUnauthorizedEventAt < UNAUTHORIZED_EVENT_THROTTLE_MS) {
+    return false;
+  }
+  lastUnauthorizedEventAt = now;
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: { endpoint } }));
+  return true;
+}
+
+/**
+ * HTTP-Fehler mit Status und geparstem Body anreichern, damit Aufrufer
+ * gezielt reagieren können (z.B. 409 { error, currentNote } in NoteModal/B2).
+ *
+ * Antworten mit einem `code` aber ohne `error`-Text (z.B. die Offline-Antwort
+ * des Service Workers) erzeugen bewusst keine Nachricht: Die Aufrufer fallen
+ * dann auf ihre übersetzten `t(...)`-Meldungen zurück, statt einen rohen
+ * Server-String in der falschen Sprache zu zeigen.
+ */
+function createHttpError(payload, status) {
+  const message = payload.error || (payload.code ? '' : `HTTP ${status}`);
+  const error = new Error(message);
+  error.status = status;
+  error.code = payload.code;
+  error.data = payload;
+  return error;
+}
+
 /**
  * Get CSRF token from memory
  * @returns {string|null} The current CSRF token
@@ -31,33 +69,53 @@ export function setCsrfToken(token) {
  * @throws {Error} If the request fails
  */
 export async function fetchWithAuth(url, options = {}) {
-  const csrf = getCsrfToken();
+  const doFetch = async () => {
+    const csrf = getCsrfToken();
 
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    // Add CSRF token for state-changing operations
+    if (csrf && CSRF_METHODS.includes(options.method)) {
+      headers['X-CSRF-Token'] = csrf;
+    }
+
+    return fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
   };
 
-  // Add CSRF token for state-changing operations
-  if (csrf && CSRF_METHODS.includes(options.method)) {
-    headers['X-CSRF-Token'] = csrf;
+  let response = await doFetch();
+
+  // A 403 with a CSRF mismatch means the in-memory token no longer matches
+  // the cookie (e.g. the cookie expired after 8h while the session lives on,
+  // or a previous logout cleared the cookie but not our token). Fetch a fresh
+  // token once and retry instead of failing every mutation until a reload.
+  if (response.status === 403 && CSRF_METHODS.includes(options.method)) {
+    setCsrfToken(null);
+    await initializeCSRF();
+    if (getCsrfToken()) {
+      response = await doFetch();
+    }
   }
 
-  const response = await fetch(`${API_BASE_URL}${url}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
-
-  // Handle 401 Unauthorized - token expired or invalid
+  // Handle 401 Unauthorized - token expired or invalid.
+  // Event (gedrosselt) feuern, damit der AuthContext die Session beenden kann.
   if (response.status === 401) {
-    throw new Error(ERROR_MESSAGES.UNAUTHORIZED);
+    notifyUnauthorizedOncePerWindow(url);
+    const error = new Error(ERROR_MESSAGES.UNAUTHORIZED);
+    error.status = 401;
+    throw error;
   }
 
-  // Handle other errors
+  // Handle other errors (inkl. 409-Konflikt: Status/Body durchreichen)
   if (!response.ok) {
-    const error = await parseResponse(response);
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const payload = await parseResponse(response);
+    throw createHttpError(payload, response.status);
   }
 
   return parseResponse(response);

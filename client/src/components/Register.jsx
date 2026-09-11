@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import './Auth.css';
+import LanguageSelector from './LanguageSelector';
+import { useLanguage } from '../contexts/LanguageContext';
 
 function Register({ onRegister, onSwitchToLogin }) {
+  const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -11,19 +14,19 @@ function Register({ onRegister, onSwitchToLogin }) {
 
   const validatePassword = (pwd) => {
     if (pwd.length < 8) {
-      return 'Passwort muss mindestens 8 Zeichen lang sein';
+      return t('passwordMinLength');
     }
     if (pwd.length > 128) {
-      return 'Passwort darf maximal 128 Zeichen lang sein';
+      return t('passwordMaxLength');
     }
     if (!/[a-z]/.test(pwd)) {
-      return 'Passwort muss mindestens einen Kleinbuchstaben enthalten';
+      return t('passwordNeedsLower');
     }
     if (!/[A-Z]/.test(pwd)) {
-      return 'Passwort muss mindestens einen Großbuchstaben enthalten';
+      return t('passwordNeedsUpper');
     }
     if (!/[0-9]/.test(pwd)) {
-      return 'Passwort muss mindestens eine Zahl enthalten';
+      return t('passwordNeedsNumber');
     }
     return null;
   };
@@ -33,12 +36,12 @@ function Register({ onRegister, onSwitchToLogin }) {
     setError('');
 
     if (!username || !email || !password || !confirmPassword) {
-      setError('Bitte füllen Sie alle Felder aus');
+      setError(t('fillAllFields'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwörter stimmen nicht überein');
+      setError(t('passwordsDontMatch'));
       return;
     }
 
@@ -53,7 +56,7 @@ function Register({ onRegister, onSwitchToLogin }) {
     try {
       await onRegister(username, email, password);
     } catch (err) {
-      setError(err.message || 'Registrierung fehlgeschlagen');
+      setError(err.message || t('registerFailed'));
     } finally {
       setLoading(false);
     }
@@ -61,10 +64,11 @@ function Register({ onRegister, onSwitchToLogin }) {
 
   return (
     <div className="auth-container">
+      <div className="auth-language"><LanguageSelector /></div>
       <div className="auth-box">
         <div className="auth-header">
           <h1>📝 KeepLocal</h1>
-          <p>Erstellen Sie ein Konto, um zu beginnen</p>
+          <p>{t('createAccountSubtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
@@ -75,13 +79,13 @@ function Register({ onRegister, onSwitchToLogin }) {
           )}
 
           <div className="form-group">
-            <label htmlFor="username">Benutzername</label>
+            <label htmlFor="username">{t('username')}</label>
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="benutzername"
+              placeholder={t('usernamePlaceholder')}
               disabled={loading}
               autoComplete="username"
               autoFocus
@@ -89,12 +93,12 @@ function Register({ onRegister, onSwitchToLogin }) {
               minLength={3}
               maxLength={50}
               pattern="[a-zA-Z0-9_\-]+"
-              title="Nur Buchstaben, Zahlen, Bindestriche und Unterstriche"
+              title={t('usernamePatternTitle')}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">E-Mail</label>
+            <label htmlFor="email">{t('email')}</label>
             <input
               id="email"
               type="email"
@@ -109,7 +113,7 @@ function Register({ onRegister, onSwitchToLogin }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Passwort</label>
+            <label htmlFor="password">{t('password')}</label>
             <input
               id="password"
               type="password"
@@ -123,12 +127,12 @@ function Register({ onRegister, onSwitchToLogin }) {
               maxLength={128}
             />
             <small className="form-hint">
-              Mindestens 8 Zeichen, ein Groß- und Kleinbuchstabe, eine Zahl
+              {t('passwordRuleHint')}
             </small>
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Passwort bestätigen</label>
+            <label htmlFor="confirmPassword">{t('confirmPasswordLabel')}</label>
             <input
               id="confirmPassword"
               type="password"
@@ -147,20 +151,20 @@ function Register({ onRegister, onSwitchToLogin }) {
             className="auth-button"
             disabled={loading}
           >
-            {loading ? 'Registrierung läuft...' : 'Registrieren'}
+            {loading ? t('registering') : t('register')}
           </button>
         </form>
 
         <div className="auth-footer">
           <p>
-            Haben Sie bereits ein Konto?{' '}
+            {t('haveAccount')}{' '}
             <button
               type="button"
               className="auth-link"
               onClick={onSwitchToLogin}
               disabled={loading}
             >
-              Jetzt anmelden
+              {t('loginNow')}
             </button>
           </p>
         </div>

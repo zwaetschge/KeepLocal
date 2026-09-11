@@ -101,6 +101,43 @@ For named volumes, use your platform's volume backup tooling or `mongodump` for
 MongoDB plus a separate archive of `uploads_data`. Verify that the backup can be
 listed and restored before upgrading.
 
+Split deployment (running services, no downtime). The MongoDB container ships
+the database tools, so both directions run through `docker exec`:
+
+```bash
+# Database
+docker exec keeplocal-mongodb mongodump --db keeplocal --archive --gzip > keeplocal-$(date +%F).archive.gz
+# Uploads (named volume -> tarball)
+docker run --rm -v uploads_data:/data -v "$PWD:/backup" alpine \
+  tar czf /backup/keeplocal-uploads-$(date +%F).tgz -C /data .
+```
+
+Restore into a stopped stack (verify the archive restores before you need it):
+
+```bash
+docker compose -f docker-compose.yml stop server client
+docker exec -i keeplocal-mongodb mongorestore --archive --gzip --drop < keeplocal-$(date +%F).archive.gz
+docker run --rm -v uploads_data:/data -v "$PWD:/backup" alpine \
+  sh -c "rm -rf /data/* && tar xzf /backup/keeplocal-uploads-$(date +%F).tgz -C /data"
+docker compose -f docker-compose.yml up -d
+```
+
+### Email canonicalization migration (pre-2026-08 accounts)
+
+Accounts created through the admin console or OAuth before 2026-08 may store
+non-canonical email forms (dotted Gmail, `+tags`) that can never log in. Check
+and repair them with the one-off migration script — dry run first:
+
+```bash
+docker exec -it keeplocal-server sh -c \
+  'MONGODB_URI=$MONGODB_URI node scripts/normalize-emails.js'          # dry run
+docker exec -it keeplocal-server sh -c \
+  'MONGODB_URI=$MONGODB_URI node scripts/normalize-emails.js --write'  # apply
+```
+
+Collisions (two accounts canonicalizing to the same address) are reported, never
+rewritten automatically.
+
 ## Update
 
 1. Record the currently running immutable tag or digest.

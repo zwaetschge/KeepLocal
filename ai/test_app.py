@@ -8,10 +8,14 @@ class FakeWhisperModel:
     def __init__(self, *args, **kwargs):
         pass
 
-    def transcribe(self, _path, **_options):
+    def transcribe(self, _path, **options):
+        RECORDED_OPTIONS.append(options)
         segments = [types.SimpleNamespace(text="x" * 10001)]
         info = types.SimpleNamespace(language="de", language_probability=0.99)
         return segments, info
+
+
+RECORDED_OPTIONS = []
 
 
 fake_whisper = types.ModuleType("faster_whisper")
@@ -50,6 +54,19 @@ class TranscriptionApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.get_json()["text"]), 10000)
+
+    def test_auto_language_means_no_hint(self):
+        # "auto" is what the web app stores for "detect automatically"; it must
+        # not be rejected as an invalid code nor passed to Whisper as a hint.
+        RECORDED_OPTIONS.clear()
+        response = self.client.post(
+            "/transcribe",
+            data={"audio": (io.BytesIO(b"audio"), "sample.webm"), "language": "auto"},
+            content_type="multipart/form-data"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("language", RECORDED_OPTIONS[-1])
+        self.assertEqual(RECORDED_OPTIONS[-1]["beam_size"], 5)
 
 
 if __name__ == "__main__":

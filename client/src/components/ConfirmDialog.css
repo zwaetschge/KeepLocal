@@ -105,3 +105,8 @@
     font-size: 0.95rem;
   }
 }
+
+/* Programmatic focus target for the focus trap — never shows a ring itself. */
+.confirm-dialog:focus {
+  outline: none;
+}

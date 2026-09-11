@@ -57,6 +57,10 @@ export function useAsync(asyncFunction, immediate = true) {
 
   // Execute immediately if requested
   useEffect(() => {
+    // The cleanup below flips this to false; nothing previously set it back to
+    // true, so any effect re-run (new asyncFunction identity, StrictMode)
+    // permanently disabled all state updates — spinner stuck forever.
+    mountedRef.current = true;
     if (immediate) {
       execute();
     }

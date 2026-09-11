@@ -23,6 +23,27 @@ if [ ${#JWT_SECRET} -lt 32 ]; then
 fi
 echo "✓ JWT_SECRET is configured correctly"
 
+# Validate CSRF_SECRET length when explicitly set. The server falls back to
+# JWT_SECRET when unset, but a short explicit CSRF_SECRET only fails later at
+# request time — every mutation returns 500 while /api/health stays green.
+if [ -n "$CSRF_SECRET" ] && [ ${#CSRF_SECRET} -lt 32 ]; then
+    echo "ERROR: CSRF_SECRET must be at least 32 characters long!"
+    echo "Current length: ${#CSRF_SECRET}"
+    echo "Leave it unset to reuse JWT_SECRET, or use: openssl rand -base64 32"
+    exit 1
+fi
+echo "✓ CSRF_SECRET is configured correctly"
+
+# The all-in-one image bakes the Whisper model at build time. Overriding
+# WHISPER_MODEL at runtime would force a download at every boot and can leave
+# the AI service dead on offline hosts — fail fast with instructions instead.
+if [ -n "$BAKED_WHISPER_MODEL" ] && [ -n "$WHISPER_MODEL" ] && [ "$WHISPER_MODEL" != "$BAKED_WHISPER_MODEL" ]; then
+    echo "ERROR: WHISPER_MODEL=$WHISPER_MODEL does not match the model baked into this image ($BAKED_WHISPER_MODEL)."
+    echo "The model is downloaded during the image build; a runtime change is not supported."
+    echo "Rebuild with --build-arg WHISPER_MODEL=$WHISPER_MODEL, or unset the variable to use the baked model."
+    exit 1
+fi
+
 # Fix MongoDB data directory permissions
 echo "Checking /data/db permissions..."
 if [ -d "/data/db" ]; then

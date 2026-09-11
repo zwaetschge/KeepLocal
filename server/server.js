@@ -13,7 +13,6 @@ const friendsRouter = require('./routes/friends');
 const apiKeysRouter = require('./routes/apiKeys');
 const v1Router = require('./routes/v1');
 const errorHandler = require('./middleware/errorHandler');
-const sanitizeInputMiddleware = require('./middleware/sanitizeInput');
 const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
 const noStore = require('./middleware/noStore');
@@ -138,9 +137,6 @@ app.use(['/api/auth/login', '/api/auth/register', '/api/auth/demo'], authLimiter
 app.use(passport.initialize());
 configurePassport();
 
-// Sicherheit: XSS-Schutz durch Input-Sanitization
-app.use(sanitizeInputMiddleware);
-
 // Secure file serving for uploaded images - requires authentication and authorization
 // Users can only access files from notes they own or have access to
 app.get('/uploads/*', authenticateToken, secureFileServe);
@@ -151,19 +147,26 @@ app.get('/api/csrf-token', (req, res) => {
 });
 
 // --- API Documentation (Swagger UI) ---
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'KeepLocal API Docs',
-  swaggerOptions: {
-    persistAuthorization: true
-  }
-}));
+// In Produktion standardmäßig deaktiviert (vermeidet öffentliche Endpoint-Aufklärung);
+// explizit aktivierbar über ENABLE_API_DOCS=true.
+const apiDocsEnabled = process.env.ENABLE_API_DOCS === 'true'
+  || (process.env.ENABLE_API_DOCS !== 'false' && process.env.NODE_ENV !== 'production');
 
-// OpenAPI spec as JSON
-app.get('/api/docs.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+if (apiDocsEnabled) {
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'KeepLocal API Docs',
+    swaggerOptions: {
+      persistAuthorization: true
+    }
+  }));
+
+  // OpenAPI spec as JSON
+  app.get('/api/docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+}
 
 // --- External API v1 (API-Key auth, no CSRF) ---
 app.use('/api/v1', v1Router);
@@ -182,7 +185,7 @@ app.get('/', (req, res) => {
   res.json({
     message: 'KeepLocal API Server',
     version: '2.0.0',
-    documentation: '/api/docs',
+    documentation: apiDocsEnabled ? '/api/docs' : undefined,
     api: {
       v1: '/api/v1',
       notes: '/api/v1/notes',
@@ -214,16 +217,50 @@ app.use('/api', (req, res) => {
 // Error Handler (muss am Ende sein)
 app.use(errorHandler);
 
+let httpServer;
+
 async function startServer() {
   await connectDB();
   await Promise.all(Object.values(mongoose.models).map(model => model.init()));
 
-  return app.listen(PORT, HOST, () => {
+  return (httpServer = app.listen(PORT, HOST, () => {
     console.log(`Server laeuft auf ${HOST}:${PORT}`);
     console.log(`API verfuegbar unter: http://localhost:${PORT}/api/v1`);
-    console.log(`API-Dokumentation: http://localhost:${PORT}/api/docs`);
-  });
+    if (apiDocsEnabled) {
+      console.log(`API-Dokumentation: http://localhost:${PORT}/api/docs`);
+    }
+  }));
 }
+
+// Graceful Shutdown: laufende Requests abschließen, DB-Verbindung schließen.
+// Docker/Kubernetes senden SIGTERM (docker stop) — ohne Handler bricht der
+// Prozess sofort ab und schneidet in-flight Responses ab.
+function shutdown(signal) {
+  console.log(`${signal} erhalten — fahre Server herunter...`);
+  const forceExit = setTimeout(() => {
+    console.error('Graceful Shutdown Timeout — erzwinge Exit.');
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+
+  if (httpServer) {
+    httpServer.close(async () => {
+      try {
+        await mongoose.connection.close(false);
+        console.log('Datenbankverbindung geschlossen. Server gestoppt.');
+        process.exit(0);
+      } catch (error) {
+        console.error('Fehler beim Schließen der Datenbankverbindung:', error.message);
+        process.exit(1);
+      }
+    });
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 if (require.main === module) {
   startServer().catch(error => {

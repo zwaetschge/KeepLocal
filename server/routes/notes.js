@@ -113,6 +113,15 @@ router.put('/:id', noteValidation.update, rejectDemoNoteCapabilities, async (req
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
     }
+    if (error.statusCode === httpStatus.CONFLICT) {
+      // Optimistic locking: return the stored version alongside the error so
+      // clients can merge or reload. currentNote is serialized by res.json
+      // exactly like the note in a successful PUT response.
+      return res.status(httpStatus.CONFLICT).json({
+        error: error.message,
+        currentNote: error.currentNote
+      });
+    }
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });
     }
@@ -224,7 +233,14 @@ router.post('/link-preview', blockDemoLinkPreview, async (req, res, next) => {
     const preview = await fetchLinkPreview(url.trim());
     res.json(preview);
   } catch (error) {
-    console.error('Error fetching link preview:', error);
+    // Expected upstream conditions (dead link, non-HTML answer, redirect loop)
+    // are not server faults: log them without a stack trace so a user pasting a
+    // 404 link does not bury the log.
+    if (error.statusCode) {
+      console.warn('Link preview skipped:', error.message);
+    } else {
+      console.error('Error fetching link preview:', error);
+    }
     const status = error.statusCode || httpStatus.INTERNAL_SERVER_ERROR;
     res.status(status).json({
       error: status === httpStatus.INTERNAL_SERVER_ERROR
@@ -443,8 +459,11 @@ router.post('/:id/transcribe', blockDemoTranscription, noteValidation.getOne, re
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Audio-Datei gesendet' });
     }
 
-    // Get language parameter from request body (optional)
-    const language = req.body.language || null;
+    // Get language parameter from request body (optional).
+    // 'auto' is the value the app stores for "detect automatically" — it means
+    // "no language hint", so it must not be rejected as an invalid code.
+    const rawLanguage = req.body.language || null;
+    const language = rawLanguage === 'auto' ? null : rawLanguage;
     if (language && !/^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(language)) {
       await fs.promises.rm(req.file.path, { force: true });
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungueltiger Sprachcode' });

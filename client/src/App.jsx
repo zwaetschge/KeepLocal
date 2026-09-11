@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import './App.css';
 import './DoodleTheme.css';
 import NoteForm from './components/NoteForm';
@@ -6,67 +6,130 @@ import NoteList from './components/NoteList';
 import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
-import Toast from './components/Toast';
+import ToastStack, { toastBus } from './components/ToastStack';
 import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
-import AdminConsole from './components/AdminConsole';
 import Logo from './components/Logo';
 import NoteModal from './components/NoteModal';
 import FriendsModal from './components/FriendsModal';
 import CollaborateModal from './components/CollaborateModal';
-import Settings from './components/Settings';
-import OAuthCallback from './components/OAuthCallback';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
-import { useKeyboardShortcuts } from './hooks';
+import { useKeyboardShortcuts, useNotesManager } from './hooks';
 import { readLocalStorage, writeLocalStorage } from './utils/localStorage.mjs';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
-import { normalizeNote, normalizeNotesPayload } from './utils/notesPayload.mjs';
+
+// Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden
+const AdminConsole = React.lazy(() => import('./components/AdminConsole.jsx'));
+const Settings = React.lazy(() => import('./components/Settings.jsx'));
+const OAuthCallback = React.lazy(() => import('./components/OAuthCallback.jsx'));
 
 const THEMES = new Set(['light', 'dark', 'oled', 'eink', 'doodle']);
 
-function AppContent() {
-  const { user, isLoggedIn, loading: authLoading, setupNeeded, login, demoLogin, register, logout, setup, completeOAuthLogin } = useAuth();
+// Inline-Styles (App.css bleibt bei diesem Refactoring unangetastet)
+const REFRESHING_STYLE = { opacity: 0.6, transition: 'opacity 0.2s ease' };
+const SESSION_BANNER_STYLE = {
+  maxWidth: '420px', margin: '0 auto 16px', padding: '12px 16px', textAlign: 'center',
+  borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--error-color, #DC2626)',
+  background: 'var(--bg-secondary, #f6f5f2)', color: 'var(--text-primary, inherit)', fontSize: '0.95rem',
+};
+// Ladeindikator für lazy Routen/Modals (Suspense-Fallback)
+const LAZY_FALLBACK = (
+  <div className="loading" role="status" aria-live="polite"><div className="loading-spinner" aria-hidden="true"></div></div>
+);
+
+// Skeleton-Karten für den ersten Ladevorgang (P15b). Die Shimmer-Klassen
+// (.skeleton/.skeleton-card/.skeleton-text) existieren bereits in App.css.
+function NotesSkeleton({ count = 8 }) {
+  return (
+    <div className="notes-skeleton" role="status" aria-busy="true" aria-live="polite">
+      {Array.from({ length: count }).map((_, index) => (
+        <div className="skeleton skeleton-card" key={index}>
+          <div className="skeleton skeleton-text" style={{ width: '65%', margin: 'var(--space-4) var(--space-4) var(--space-2)' }} />
+          <div className="skeleton skeleton-text" style={{ width: '92%', margin: '0 var(--space-4) var(--space-2)' }} />
+          <div className="skeleton skeleton-text short" style={{ margin: '0 var(--space-4)' }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Leerer Zustand der Notizliste (Grund wird aus useNotesManager berechnet)
+function EmptyState({ emoji, title, hint, kbd }) {
   const { t } = useLanguage();
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  return (
+    <div className="empty-state" role="status">
+      <p>{emoji} {title}</p>
+      <p className="empty-hint">{hint}{kbd ? <> <kbd>{t('shortcutCtrlN')}</kbd></> : null}</p>
+    </div>
+  );
+}
+
+// Notiz-Sektion (angeheftet/sonstige) mit gemeinsamen Listen-Props
+function NotesSection({ title, notes, actions }) {
+  return (
+    <div className="notes-section">
+      {title && <h2 className="section-title">{title}</h2>}
+      <NoteList notes={notes} {...actions} />
+    </div>
+  );
+}
+
+function AppContent() {
+  const {
+    user, isLoggedIn, loading: authLoading, setupNeeded, sessionExpired,
+    login, demoLogin, register, logout, setup, completeOAuthLogin,
+  } = useAuth();
+  const { t } = useLanguage();
+
+  // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState(null);
-  const [toast, setToast] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
-  const [noteCounts, setNoteCounts] = useState({ active: 0, archived: 0 });
-  const [allTags, setAllTags] = useState([]);
-  const [operationLoading, setOperationLoading] = useState({});
   const [theme, setTheme] = useState(() => {
     const savedTheme = readLocalStorage('theme');
     return THEMES.has(savedTheme) ? savedTheme : 'light';
   });
-  const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showCollaborateModal, setShowCollaborateModal] = useState(false);
   const [collaborateNote, setCollaborateNote] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  // Der OAuth-Callback bleibt sichtbar, bis die Session geladen ist: nach dem
+  // history.replaceState('/') würde sonst für die Dauer von /api/auth/me das
+  // Login-Formular aufblitzen.
+  const [oauthCallback, setOauthCallback] = useState(() => getBrowserPathname() === '/oauth/callback');
 
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
-  const fetchSequenceRef = useRef(0);
+
+  // Stabil, damit der Fetch-Effekt im Hook nicht bei jedem Render neu triggert.
+  // Meldungen laufen über den toastBus: <ToastStack /> (App-Root) rendert die
+  // Queue als Portal, jede Meldung behält ihren eigenen Timer und geht nicht
+  // verloren, wenn kurz darauf die nächste kommt.
+  const showToast = useCallback((message, type = 'info') => {
+    toastBus.publish(message, type);
+  }, []);
+
+  const {
+    notes, loading, refreshing, pagination, noteCounts, allTags, operationLoading,
+    pinnedNotes, otherNotes, emptyStateReason, fetchNotes,
+    createNote, updateNote, deleteNote, togglePinNote, toggleArchiveNote, handleNoteShared,
+    handleDragStart, handleDragEnd, handleDragOver, handleDrop,
+  } = useNotesManager({
+    api: notesAPI, isLoggedIn, authLoading, showToast, t,
+    showArchived, selectedTag, searchTerm,
+  });
 
   // Initialize CSRF token on mount
   useEffect(() => {
     initializeCSRF();
-  }, []);
-
-  // Toast-Benachrichtigung anzeigen
-  const showToast = useCallback((message, type = 'info') => {
-    setToast({ message, type });
   }, []);
 
   // Theme anwenden
@@ -75,221 +138,23 @@ function AppContent() {
     writeLocalStorage('theme', theme);
   }, [theme]);
 
-  // Notizen vom Server laden
-  const fetchNotes = useCallback(async (search = '', page = 1) => {
-    if (!isLoggedIn) return;
-    const requestSequence = ++fetchSequenceRef.current;
-
-    try {
-      setLoading(true);
-      const params = {
-        page,
-        limit: 50,
-        archived: showArchived ? 'true' : 'false'
-      };
-      if (search) params.search = search;
-      if (selectedTag) params.tag = selectedTag;
-
-      const response = await notesAPI.getAll(params);
-      if (requestSequence !== fetchSequenceRef.current) return;
-      const normalized = normalizeNotesPayload(response);
-      setNotes(normalized.notes);
-      setPagination(normalized.pagination);
-      setNoteCounts(normalized.counts);
-      setAllTags(normalized.tags);
-    } catch (error) {
-      if (requestSequence !== fetchSequenceRef.current) return;
-      console.error('Fehler beim Laden der Notizen:', error);
-      showToast(error.message || 'Fehler beim Laden der Notizen', 'error');
-    } finally {
-      if (requestSequence === fetchSequenceRef.current) setLoading(false);
-    }
-  }, [isLoggedIn, showToast, showArchived, selectedTag]);
-
-  // Notizen laden wenn eingeloggt, showArchived oder selectedTag ändert
-  useEffect(() => {
-    if (isLoggedIn && !authLoading) {
-      fetchNotes(searchTerm);
-    }
-  }, [isLoggedIn, authLoading, showArchived, selectedTag, searchTerm, fetchNotes]);
-
-  // Neue Notiz erstellen
-  const createNote = async (noteData) => {
-    setOperationLoading(prev => ({ ...prev, create: true }));
-    try {
-      const response = await notesAPI.create(noteData);
-      await fetchNotes(searchTerm, 1);
-      showToast('Notiz erfolgreich erstellt', 'success');
-      return response;
-    } catch (error) {
-      console.error('Fehler beim Erstellen der Notiz:', error);
-      showToast(error.message || 'Fehler beim Erstellen der Notiz', 'error');
-      return null;
-    } finally {
-      setOperationLoading(prev => ({ ...prev, create: false }));
-    }
-  };
-
-  // Notiz löschen
-  const deleteNote = async (id) => {
-    setOperationLoading(prev => ({ ...prev, [id]: 'delete' }));
-    try {
-      await notesAPI.delete(id);
-      const nextPage = notes.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page;
-      await fetchNotes(searchTerm, nextPage);
-      showToast('Notiz gelöscht', 'success');
-      return true;
-    } catch (error) {
-      console.error('Fehler beim Löschen der Notiz:', error);
-      showToast(error.message || 'Fehler beim Löschen der Notiz', 'error');
-      return false;
-    } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  // Notiz aktualisieren
-  const updateNote = async (id, updatedData) => {
-    setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
-    try {
-      const response = await notesAPI.update(id, updatedData);
-      await fetchNotes(searchTerm, pagination.page);
-      showToast('Notiz aktualisiert', 'success');
-      return response;
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren der Notiz:', error);
-      showToast(error.message || 'Fehler beim Aktualisieren der Notiz', 'error');
-      return null;
-    } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  // Notiz anheften/abheften
-  const togglePinNote = async (id) => {
-    setOperationLoading(prev => ({ ...prev, [id]: 'pin' }));
-    try {
-      const response = normalizeNote(await notesAPI.togglePin(id));
-      if (!response) throw new Error('Ungültige Serverantwort');
-      setNotes(prev => prev.map(note => note._id === id ? response : note));
-      const message = response.isPinned ? t('notePinned') : t('noteUnpinned');
-      showToast(message, 'success');
-      return response;
-    } catch (error) {
-      console.error('Fehler beim Anheften der Notiz:', error);
-      showToast(error.message || 'Fehler beim Anheften der Notiz', 'error');
-      return null;
-    } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  // Notiz archivieren/dearchivieren
-  const toggleArchiveNote = async (id) => {
-    setOperationLoading(prev => ({ ...prev, [id]: 'archive' }));
-    try {
-      const response = await notesAPI.toggleArchive(id);
-      const message = response.isArchived ? t('noteArchived') : t('noteUnarchived');
-      showToast(message, 'success');
-
-      const nextPage = notes.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page;
-      await fetchNotes(searchTerm, nextPage);
-      return response;
-    } catch (error) {
-      console.error('Fehler beim Archivieren der Notiz:', error);
-      showToast(error.message || t('errorUpdating'), 'error');
-      return null;
-    } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
-    }
-  };
-
-  // Collaborate Modal öffnen
   const openCollaborateModal = (note) => {
     setCollaborateNote(note);
     setShowCollaborateModal(true);
   };
+  // Ein offener Editor darf nicht von "Neue Notiz" (Button oder Ctrl+N)
+  // übernommen werden: noteModal.note kippt auf null, während das Formular noch
+  // die Werte der geöffneten Notiz zeigt — Speichern würde dann ein Duplikat
+  // anlegen statt die Notiz zu aktualisieren.
+  const openNoteModal = (note = null) => setNoteModal(prev => (prev.isOpen ? prev : { isOpen: true, note }));
+  const closeNoteModal = () => setNoteModal({ isOpen: false, note: null });
+  const handleModalSave = async (noteData) => (
+    noteModal.note ? updateNote(noteModal.note._id, noteData) : createNote(noteData)
+  );
+  const handleSearch = (search) => setSearchTerm(search);
 
-  // Wenn eine Notiz geteilt wurde, aktualisieren
-  const handleNoteShared = (updatedNote) => {
-    const normalized = normalizeNote(updatedNote);
-    if (!normalized) return;
-    setNotes(prev => prev.map(note => note._id === normalized._id ? normalized : note));
-  };
-
-  // Modal handlers
-  const openNoteModal = (note = null) => {
-    setNoteModal({ isOpen: true, note });
-  };
-
-  const closeNoteModal = () => {
-    setNoteModal({ isOpen: false, note: null });
-  };
-
-  const handleModalSave = async (noteData) => {
-    if (noteModal.note) {
-      return updateNote(noteModal.note._id, noteData);
-    }
-    return createNote(noteData);
-  };
-
-  // Drag & Drop Handlers
-  const handleDragStart = (noteId, _event) => {
-    setDraggedNoteId(noteId);
-  };
-
-  const handleDragEnd = (_event) => {
-    setDraggedNoteId(null);
-  };
-
-  const handleDragOver = (_noteId, _event) => {
-    // Allow drop
-  };
-
-  const handleDrop = async (targetNoteId, _event) => {
-    if (!draggedNoteId || draggedNoteId === targetNoteId) {
-      return;
-    }
-
-    // Find the dragged note and target note
-    const draggedNote = notes.find(n => n._id === draggedNoteId);
-    const targetNote = notes.find(n => n._id === targetNoteId);
-
-    if (!draggedNote || !targetNote) {
-      return;
-    }
-
-    // If dropped in different section, toggle pin status
-    if (draggedNote.isPinned !== targetNote.isPinned) {
-      await togglePinNote(draggedNoteId);
-      showToast(
-        targetNote.isPinned ? t('noteWasPinned') : t('noteWasUnpinned'),
-        'success'
-      );
-      return;
-    }
-
-    // Reorder notes array within same section
-    const newNotes = [...notes];
-    const draggedIndex = newNotes.findIndex(n => n._id === draggedNoteId);
-    const targetIndex = newNotes.findIndex(n => n._id === targetNoteId);
-
-    // Remove dragged note and insert at target position
-    const [removed] = newNotes.splice(draggedIndex, 1);
-    newNotes.splice(targetIndex, 0, removed);
-
-    setNotes(newNotes);
-    setDraggedNoteId(null);
-  };
-
-  // Suche durchführen
-  const handleSearch = (search) => {
-    setSearchTerm(search);
-  };
-
-  // Theme umschalten
+  // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
-    // Cycle through themes: light -> dark -> oled -> eink -> doodle -> light
     setTheme(prevTheme => {
       if (prevTheme === 'light') return 'dark';
       if (prevTheme === 'dark') return 'oled';
@@ -300,76 +165,41 @@ function AppContent() {
     });
   };
 
-  // Logout handler
+  // Logout — der Notiz-Zustand räumt der Hook beim isLoggedIn-Wechsel selbst ab
   const handleLogout = async () => {
     await logout();
-    setNotes([]);
-    showToast('Erfolgreich abgemeldet', 'info');
+    showToast(t('loggedOut'), 'info');
   };
 
-  // Keyboard shortcuts
-  useKeyboardShortcuts(
-    {
-      'Ctrl+n': () => noteFormRef.current?.focus(),
-      'Ctrl+f': () => searchBarRef.current?.focus(),
-      'Ctrl+k': toggleTheme,
-      'Ctrl+Shift+L': () => handleLogout(),
-    },
-    isLoggedIn
-  );
+  useKeyboardShortcuts({
+    'Ctrl+n': () => noteFormRef.current?.focus(),
+    'Ctrl+f': () => searchBarRef.current?.focus(),
+    'Ctrl+k': toggleTheme,
+    'Ctrl+Shift+L': () => handleLogout(),
+  }, isLoggedIn);
 
-  // Filter notes by selected tag and separate into pinned/other categories
-  const { pinnedNotes, otherNotes } = useMemo(() => {
-    let filtered = selectedTag
-      ? notes.filter(note => note.tags && note.tags.includes(selectedTag))
-      : notes;
-
-    const pinned = filtered
-      .filter(note => note.isPinned)
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
-
-    const other = filtered
-      .filter(note => !note.isPinned)
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
-
-    return { pinnedNotes: pinned, otherNotes: other };
-  }, [notes, selectedTag]);
-
-  // Auth handlers
-  const handleLogin = async (email, password) => {
-    await login(email, password);
-    showToast('Erfolgreich angemeldet', 'success');
-  };
-
-  const handleDemoLogin = async () => {
-    await demoLogin();
-    showToast(t('loginSuccess'), 'success');
-  };
-
-  const handleRegister = async (username, email, password) => {
-    await register(username, email, password);
-    showToast('Erfolgreich registriert', 'success');
-  };
-
-  const handleSetup = async (username, email, password) => {
-    await setup(username, email, password);
-    showToast('Administrator-Konto erfolgreich erstellt', 'success');
-  };
+  const handleLogin = async (email, password) => { await login(email, password); showToast(t('loggedIn'), 'success'); };
+  const handleDemoLogin = async () => { await demoLogin(); showToast(t('loginSuccess'), 'success'); };
+  const handleRegister = async (username, email, password) => { await register(username, email, password); showToast(t('registerSuccess'), 'success'); };
+  const handleSetup = async (username, email, password) => { await setup(username, email, password); showToast(t('adminAccountCreated'), 'success'); };
 
   // Handle OAuth callback route
-  const isOAuthCallback = getBrowserPathname() === '/oauth/callback';
-  if (isOAuthCallback) {
+  if (oauthCallback) {
     return (
-      <OAuthCallback
-        onOAuthSuccess={async () => {
-          try {
-            await completeOAuthLogin();
-            showToast(t('loginSuccess') || 'Logged in successfully', 'success');
-          } catch {
-            showToast(t('oauthFailed') || 'OAuth login failed', 'error');
-          }
-        }}
-      />
+      <Suspense fallback={<NotesSkeleton />}>
+        <OAuthCallback
+          onOAuthSuccess={async () => {
+            try {
+              await completeOAuthLogin();
+              setOauthCallback(false);
+              showToast(t('loginSuccess'), 'success');
+            } catch {
+              setOauthCallback(false);
+              showToast(t('oauthFailed'), 'error');
+            }
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -377,8 +207,7 @@ function AppContent() {
   if (authLoading) {
     return (
       <div className="auth-loading">
-        <div className="loading-spinner"></div>
-        <p>Lade...</p>
+        <div className="loading-spinner"></div><p>{t('loadingApp')}</p>
       </div>
     );
   }
@@ -387,17 +216,8 @@ function AppContent() {
   if (setupNeeded) {
     return (
       <>
-        <div className="floating-controls">
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        </div>
+        <div className="floating-controls"><ThemeToggle theme={theme} onToggle={toggleTheme} /></div>
         <Setup onSetup={handleSetup} />
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        )}
       </>
     );
   }
@@ -406,52 +226,49 @@ function AppContent() {
   if (!isLoggedIn) {
     return (
       <>
-        <div className="floating-controls">
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        </div>
-        {showRegister ? (
-          <Register
-            onRegister={handleRegister}
-            onSwitchToLogin={() => setShowRegister(false)}
-          />
-        ) : (
-          <Login
-            onLogin={handleLogin}
-            onDemoLogin={handleDemoLogin}
-            onSwitchToRegister={() => setShowRegister(true)}
-          />
+        <div className="floating-controls"><ThemeToggle theme={theme} onToggle={toggleTheme} /></div>
+        {sessionExpired && (
+          <div className="session-expired-banner" role="alert" style={SESSION_BANNER_STYLE}>
+            {t('sessionExpired')}
+          </div>
         )}
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
+        {showRegister ? (
+          <Register onRegister={handleRegister} onSwitchToLogin={() => setShowRegister(false)} />
+        ) : (
+          <Login onLogin={handleLogin} onDemoLogin={handleDemoLogin}
+            onSwitchToRegister={() => setShowRegister(true)} />
         )}
       </>
     );
   }
 
   // Main app (authenticated)
+  const listActions = {
+    onDeleteNote: deleteNote, onUpdateNote: updateNote,
+    onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
+    onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
+    onOpenModal: openNoteModal,
+    onDragStart: handleDragStart, onDragEnd: handleDragEnd,
+    onDragOver: handleDragOver, onDrop: handleDrop,
+    operationLoading,
+  };
+  const emptyStateContent = {
+    noNotes: { emoji: '📝', title: t('noNotesAvailable'), hint: t('createFirstNote'), kbd: true },
+    noTagResults: { emoji: '🏷️', title: t('noNotesWithTag'), hint: t('selectOtherTagOrCreate') },
+    noSearchResults: { emoji: '🔍', title: t('noNotesFound'), hint: t('tryDifferentSearch') },
+  }[emptyStateReason];
+
   return (
     <div className="App">
       <header className="App-header">
         <div className="header-content">
-          <button
-            className="mobile-menu-toggle"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Menu"
-          >
+          <button className="mobile-menu-toggle" onClick={() => setIsMobileMenuOpen(true)} aria-label={t('openMenu')}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 12h18M3 6h18M3 18h18"/>
             </svg>
           </button>
           <Logo size={36} />
-          <SearchBar
-            onSearch={handleSearch}
-            ref={searchBarRef}
-            aria-label={t('searchNotes')}
-          />
+          <SearchBar onSearch={handleSearch} ref={searchBarRef} aria-label={t('searchNotes')} />
           <div className="user-info">
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
             {user?.isDemo ? (
@@ -464,21 +281,13 @@ function AppContent() {
                 <span className="demo-user-badge">{t('demoBadge')}</span>
               </div>
             ) : (
-              <button
-                className="user-name clickable"
-                onClick={() => setShowSettings(true)}
+              <button className="user-name clickable" onClick={() => setShowSettings(true)}
                 title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
-                aria-label={t('settings') || 'Einstellungen'}
-              >
+                aria-label={t('settings')}>
                 👤 {user?.username}
               </button>
             )}
-            <button
-              onClick={handleLogout}
-              className="btn-logout"
-              title={t('logout')}
-              aria-label={t('logout')}
-            >
+            <button onClick={handleLogout} className="btn-logout" title={t('logout')} aria-label={t('logout')}>
               {t('logout')}
             </button>
           </div>
@@ -496,180 +305,85 @@ function AppContent() {
 
       <div className="App-container">
         <Sidebar
-          allTags={allTags}
-          selectedTag={selectedTag}
-          onTagSelect={setSelectedTag}
+          allTags={allTags} selectedTag={selectedTag} onTagSelect={setSelectedTag}
           noteCount={noteCounts.active}
-          isAdmin={user?.isAdmin}
-          onAdminClick={() => setShowAdminConsole(true)}
           onSettingsClick={user?.isDemo ? undefined : () => setShowSettings(true)}
-          user={user}
-          onLogout={handleLogout}
-          theme={theme}
-          onThemeToggle={toggleTheme}
-          isMobileOpen={isMobileMenuOpen}
-          onMobileClose={() => setIsMobileMenuOpen(false)}
-          archivedCount={noteCounts.archived}
-          showArchived={showArchived}
+          user={user} onLogout={handleLogout} theme={theme} onThemeToggle={toggleTheme}
+          isMobileOpen={isMobileMenuOpen} onMobileClose={() => setIsMobileMenuOpen(false)}
+          archivedCount={noteCounts.archived} showArchived={showArchived}
           onShowArchivedToggle={() => setShowArchived(!showArchived)}
           onOpenFriends={user?.isDemo ? undefined : () => setShowFriendsModal(true)}
         />
 
-        <main className="App-main" role="main">
-        <NoteForm
-          onOpenModal={() => openNoteModal()}
-          ref={noteFormRef}
-          aria-label="Neue Notiz erstellen"
-        />
+        <main className="App-main" role="main" aria-busy={refreshing}
+          style={refreshing ? REFRESHING_STYLE : undefined}>
+          <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
 
-        {loading ? (
-          <div className="loading" role="status" aria-live="polite">
-            <div className="loading-spinner" aria-hidden="true"></div>
-            <p>Lade Notizen...</p>
-          </div>
-        ) : (
-          <>
-            {pinnedNotes.length > 0 && (
-              <div className="notes-section">
-                <h2 className="section-title">{t('pinnedSection')}</h2>
-                <NoteList
-                  notes={pinnedNotes}
-                  onDeleteNote={deleteNote}
-                  onUpdateNote={updateNote}
-                  onTogglePin={togglePinNote}
-                  onToggleArchive={toggleArchiveNote}
-                  onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
-                  onOpenModal={openNoteModal}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                  operationLoading={operationLoading}
-                />
-              </div>
-            )}
-            {otherNotes.length > 0 && (
-              <div className="notes-section">
-                {pinnedNotes.length > 0 && <h2 className="section-title">{t('otherSection')}</h2>}
-                <NoteList
-                  notes={otherNotes}
-                  onDeleteNote={deleteNote}
-                  onUpdateNote={updateNote}
-                  onTogglePin={togglePinNote}
-                  onToggleArchive={toggleArchiveNote}
-                  onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
-                  onOpenModal={openNoteModal}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                  operationLoading={operationLoading}
-                />
-              </div>
-            )}
-            {pinnedNotes.length === 0 && otherNotes.length === 0 && !selectedTag && !searchTerm && (
-              <div className="empty-state" role="status">
-                <p>📝 {t('noNotesAvailable')}</p>
-                <p className="empty-hint">
-                  {t('createFirstNote')} <kbd>Strg+N</kbd>
-                </p>
-              </div>
-            )}
-            {pinnedNotes.length === 0 && otherNotes.length === 0 && selectedTag && (
-              <div className="empty-state" role="status">
-                <p>🏷️ {t('noNotesWithTag')}</p>
-                <p className="empty-hint">
-                  {t('selectOtherTagOrCreate')}
-                </p>
-              </div>
-            )}
-            {pinnedNotes.length === 0 && otherNotes.length === 0 && searchTerm && !selectedTag && (
-              <div className="empty-state" role="status">
-                <p>🔍 {t('noNotesFound')}</p>
-                <p className="empty-hint">
-                  {t('tryDifferentSearch')}
-                </p>
-              </div>
-            )}
-            {pagination.pages > 1 && (
-              <div className="pagination" role="navigation" aria-label="Seitennavigation">
-                <button
-                  onClick={() => fetchNotes(searchTerm, pagination.page - 1)}
-                  disabled={pagination.page === 1}
-                  aria-label="Vorherige Seite"
-                >
-                  ← Zurück
-                </button>
-                <span aria-current="page">
-                  Seite {pagination.page} von {pagination.pages}
-                </span>
-                <button
-                  onClick={() => fetchNotes(searchTerm, pagination.page + 1)}
-                  disabled={pagination.page === pagination.pages}
-                  aria-label="Nächste Seite"
-                >
-                  Weiter →
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </main>
+          {/* P15b: erster Load zeigt Skeletons; Hintergrund-Refresh dimmt die Liste nur */}
+          {loading && notes.length === 0 ? (
+            <NotesSkeleton />
+          ) : (
+            <>
+              {pinnedNotes.length > 0 && (
+                <NotesSection title={t('pinnedSection')} notes={pinnedNotes} actions={listActions} />
+              )}
+              {otherNotes.length > 0 && (
+                <NotesSection title={pinnedNotes.length > 0 ? t('otherSection') : null}
+                  notes={otherNotes} actions={listActions} />
+              )}
+              {emptyStateContent && (
+                <EmptyState emoji={emptyStateContent.emoji} title={emptyStateContent.title}
+                  hint={emptyStateContent.hint} kbd={emptyStateContent.kbd} />
+              )}
+              {pagination.pages > 1 && (
+                <div className="pagination" role="navigation" aria-label={t('paginationNavigation')}>
+                  <button onClick={() => fetchNotes(searchTerm, pagination.page - 1, { background: true })}
+                    disabled={pagination.page === 1} aria-label={t('previousPageAria')}>
+                    ← {t('previousPage')}
+                  </button>
+                  <span aria-current="page">{t('pageLabel')} {pagination.page} {t('pageOf')} {pagination.pages}</span>
+                  <button onClick={() => fetchNotes(searchTerm, pagination.page + 1, { background: true })}
+                    disabled={pagination.page === pagination.pages} aria-label={t('nextPageAria')}>
+                    {t('nextPage')} →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </main>
       </div>
 
-      <ThemeToggle
-        theme={theme}
-        onToggle={toggleTheme}
-        aria-label="Toggle theme"
-      />
-
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <ThemeToggle theme={theme} onToggle={toggleTheme} aria-label={t('toggleTheme')} />
 
       {showAdminConsole && user?.isAdmin && !user?.isDemo && (
-        <AdminConsole onClose={() => setShowAdminConsole(false)} />
+        <Suspense fallback={LAZY_FALLBACK}>
+          <AdminConsole onClose={() => setShowAdminConsole(false)} />
+        </Suspense>
       )}
-
       {noteModal.isOpen && (
         <NoteModal
-          note={noteModal.note}
-          onSave={handleModalSave}
-          onClose={closeNoteModal}
-          onToggleArchive={toggleArchiveNote}
+          note={noteModal.note} onSave={handleModalSave} onClose={closeNoteModal}
+          onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
           onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
-          onDelete={deleteNote}
         />
       )}
 
       {!user?.isDemo && (
         <>
-          <FriendsModal
-            isOpen={showFriendsModal}
-            onClose={() => setShowFriendsModal(false)}
-            isAdmin={user?.isAdmin}
-          />
-
-          <CollaborateModal
-            isOpen={showCollaborateModal}
-            onClose={() => setShowCollaborateModal(false)}
-            note={collaborateNote}
-            onNoteUpdate={handleNoteShared}
-          />
+          <FriendsModal isOpen={showFriendsModal} onClose={() => setShowFriendsModal(false)}
+            isAdmin={user?.isAdmin} />
+          <CollaborateModal isOpen={showCollaborateModal} onClose={() => setShowCollaborateModal(false)}
+            note={collaborateNote} onNoteUpdate={handleNoteShared} />
         </>
       )}
 
       {showSettings && !user?.isDemo && (
-        <Settings
-          onClose={() => setShowSettings(false)}
-          isAdmin={user?.isAdmin}
-          onAdminClick={() => setShowAdminConsole(true)}
-        />
+        <Suspense fallback={LAZY_FALLBACK}>
+          <Settings onClose={() => setShowSettings(false)} isAdmin={user?.isAdmin}
+            onAdminClick={() => setShowAdminConsole(true)} />
+        </Suspense>
       )}
+
     </div>
   );
 }
@@ -678,6 +392,7 @@ function AppContent() {
 function App() {
   return (
     <LanguageProvider>
+      <ToastStack /> {/* single app-wide toastBus host; claim mechanism dedupes */}
       <AuthProvider>
         <SettingsProvider>
           <AppContent />

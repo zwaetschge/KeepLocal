@@ -11,6 +11,8 @@ const ApiKey = require('../models/ApiKey');
 const { authenticateToken } = require('../middleware/auth');
 const { blockDemoUser } = require('../middleware/demoPolicy');
 
+const MAX_KEYS_PER_USER = 10;
+
 // All routes require JWT authentication
 router.use(authenticateToken);
 router.use(blockDemoUser('api_keys'));
@@ -94,7 +96,7 @@ router.post('/', async (req, res, next) => {
 
     // Limit keys per user
     const existingCount = await ApiKey.countDocuments({ userId: req.user._id });
-    if (existingCount >= 10) {
+    if (existingCount >= MAX_KEYS_PER_USER) {
       return res.status(400).json({
         success: false,
         error: 'Maximal 10 API-Keys pro Benutzer erlaubt'
@@ -119,6 +121,17 @@ router.post('/', async (req, res, next) => {
     });
 
     await apiKey.save();
+
+    // The count check above is not atomic; two parallel creates can both pass
+    // it. Roll the loser back so the 10-key quota holds (BUG_REPORT, #28).
+    const countAfterSave = await ApiKey.countDocuments({ userId: req.user._id });
+    if (countAfterSave > MAX_KEYS_PER_USER) {
+      await ApiKey.deleteOne({ _id: apiKey._id, userId: req.user._id });
+      return res.status(400).json({
+        success: false,
+        error: 'Maximal 10 API-Keys pro Benutzer erlaubt'
+      });
+    }
 
     res.status(201).json({
       success: true,

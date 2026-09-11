@@ -104,6 +104,15 @@
           "value": "private, no-store, max-age=0"
         }
       ]
+    },
+    {
+      "source": "/guard.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
     }
   ]
 }

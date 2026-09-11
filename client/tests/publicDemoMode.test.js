@@ -53,10 +53,12 @@ test('authenticated demo mode stays visibly labelled and removes restricted entr
   assert.match(app, /onOpenCollaborate=\{user\?\.isDemo \? undefined/);
   assert.match(app, /showSettings && !user\?\.isDemo/);
   assert.match(sidebar, /\{onOpenFriends && \(/);
-  assert.match(note, /\{onOpenCollaborate && \(/);
+  // Audit 2026-09-10: Besitzer-gating kommt vor dem Demo-gating, beide müssen
+  // zusammenwirken (Mitbearbeiter ohne Besitz dürfen nicht teilen).
+  assert.match(note, /\{canManage && onOpenCollaborate && \(/);
   assert.match(modal, /useLinkPreview\(content, !isTodoList && !isDemo\)/);
   assert.match(modal, /!isDemo && note && images/);
-  assert.match(modal, /!isDemo && note && settings\.aiFeatures\.voiceTranscription/);
+  assert.match(modal, /!isDemo && note && canManage && settings\.aiFeatures\.voiceTranscription/);
 });
 
 test('demo call to action has a visible keyboard focus treatment', () => {

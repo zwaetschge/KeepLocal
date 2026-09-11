@@ -6,6 +6,8 @@ const Note = require('../models/Note');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
 const adminService = require('../services/adminService');
+const normalizeEmailAddress = require('../utils/normalizeEmail');
+const { escapeRegex } = require('../utils/sanitize');
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -38,7 +40,7 @@ router.post('/users', async (req, res) => {
   try {
     const { username, email, password, isAdmin } = req.body;
     const isAdminFlag = isAdmin === true || isAdmin === 'true';
-    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedEmail = normalizeEmailAddress(email);
     const normalizedUsername = username?.trim();
 
     // Validation
@@ -70,9 +72,15 @@ router.post('/users', async (req, res) => {
       });
     }
 
-    // Check if user already exists
+    // Check if user already exists. Usernames are stored case-sensitively but
+    // searched case-insensitively (friend search), so "DAVE" next to "dave"
+    // would produce two interchangeable identities and has to be rejected.
     const existingUser = await User.findOne({
-      $or: [{ email: normalizedEmail }, { username: normalizedUsername }]
+      $or: [
+        { email: normalizedEmail },
+        { username: normalizedUsername },
+        { username: { $regex: new RegExp(`^${escapeRegex(normalizedUsername)}$`, 'i') } }
+      ]
     });
     if (existingUser) {
       if (existingUser.email === normalizedEmail) {

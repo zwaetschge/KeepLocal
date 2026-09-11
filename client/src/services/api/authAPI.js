@@ -1,5 +1,5 @@
 import { API_BASE_URL, API_ENDPOINTS, ERROR_MESSAGES } from '../../constants/api';
-import { fetchWithAuth, getCsrfToken, initializeCSRF, parseResponse } from './apiUtils';
+import { fetchWithAuth, getCsrfToken, setCsrfToken, initializeCSRF, parseResponse } from './apiUtils';
 
 async function authCsrfHeaders() {
   if (!getCsrfToken()) {
@@ -12,6 +12,36 @@ async function authCsrfHeaders() {
   }
 
   return { 'X-CSRF-Token': csrfToken };
+}
+
+/**
+ * POST with one CSRF recovery retry. The in-memory token can go stale without
+ * the page reloading (previous logout cleared the cookie but not our token, or
+ * the cookie expired while the tab stayed open); a 403 then fails every auth
+ * mutation until a manual reload. Refetch the token once and retry instead.
+ */
+async function postWithCsrfRetry(url, body) {
+  const doFetch = async () => {
+    const csrfHeaders = await authCsrfHeaders();
+    return fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: body === undefined
+        ? csrfHeaders
+        : { 'Content-Type': 'application/json', ...csrfHeaders },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      credentials: 'include',
+    });
+  };
+
+  let response = await doFetch();
+  if (response.status === 403) {
+    setCsrfToken(null);
+    await initializeCSRF();
+    if (getCsrfToken()) {
+      response = await doFetch();
+    }
+  }
+  return response;
 }
 
 function requireUserPayload(data, fallbackMessage) {
@@ -58,13 +88,7 @@ const authAPI = {
    * @throws {Error} If registration fails
    */
   register: async (username, email, password) => {
-    const csrfHeaders = await authCsrfHeaders();
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.REGISTER}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...csrfHeaders },
-      body: JSON.stringify({ username, email, password }),
-      credentials: 'include',
-    });
+    const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.REGISTER, { username, email, password });
 
     if (!response.ok) {
       const error = await parseResponse(response);
@@ -87,13 +111,7 @@ const authAPI = {
    * @throws {Error} If login fails
    */
   login: async (email, password) => {
-    const csrfHeaders = await authCsrfHeaders();
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...csrfHeaders },
-      body: JSON.stringify({ email, password }),
-      credentials: 'include',
-    });
+    const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.LOGIN, { email, password });
 
     if (!response.ok) {
       const error = await parseResponse(response);
@@ -115,12 +133,7 @@ const authAPI = {
    * @throws {Error} If demo mode is unavailable or the session cannot be created
    */
   demoLogin: async () => {
-    const csrfHeaders = await authCsrfHeaders();
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.DEMO}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...csrfHeaders },
-      credentials: 'include',
-    });
+    const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.DEMO);
 
     if (!response.ok) {
       const error = await parseResponse(response);
@@ -141,14 +154,13 @@ const authAPI = {
    */
   logout: async () => {
     try {
-      const csrfHeaders = await authCsrfHeaders();
-      await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`, {
-        method: 'POST',
-        headers: csrfHeaders,
-        credentials: 'include'
-      });
+      await postWithCsrfRetry(API_ENDPOINTS.AUTH.LOGOUT);
     } catch {
       // Local session state is cleared even when the server is unavailable.
+    } finally {
+      // The server cleared the kl_csrf cookie; drop our in-memory copy too so
+      // the next login does not send a stale token that no longer matches.
+      setCsrfToken(null);
     }
   },
 

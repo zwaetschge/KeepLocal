@@ -54,7 +54,7 @@ test('Nginx deployments keep recovery assets and the service worker out of immut
 
     assert.match(config, /location = \/service-worker\.js\s*\{[\s\S]*?no-cache/);
     assert.match(config, /location = \/recover\.html\s*\{[\s\S]*?no-store/);
-    assert.match(config, /location ~ \^\/recover\\\.\(css\|js\)\$\s*\{[\s\S]*?no-store/);
+    assert.match(config, /location ~ \^\/\(recover\\\.\(css\|js\)\|guard\\\.js\)\$\s*\{[\s\S]*?no-store/);
     assert.match(config, /X-Frame-Options\s+"SAMEORIGIN"/);
     assert.match(config, /X-Content-Type-Options\s+"nosniff"/);
     assert.match(config, /Permissions-Policy\s+/);
@@ -78,6 +78,33 @@ test('all-in-one internal services bind to loopback and production CORS is not w
   const nginx = fs.readFileSync(path.join(root, 'nginx-allinone.conf'), 'utf8');
   assert.match(nginx, /Content-Security-Policy\s+"default-src 'self'/);
   assert.match(nginx, /font-src 'self' data:/);
+});
+
+test('every long-running all-in-one log stream is size-capped', () => {
+  const supervisor = fs.readFileSync(path.join(root, 'supervisord.conf'), 'utf8');
+
+  // mongod ohne --logpath loggt auf stdout — sonst wächst die Datei im
+  // Container unbegrenzt (mongod rotiert nur auf Signal).
+  assert.doesNotMatch(supervisor, /--logpath/);
+
+  for (const stream of ['stdout_logfile_maxbytes', 'stderr_logfile_maxbytes']) {
+    const caps = supervisor.match(new RegExp(`${stream}=\\d+`, 'g')) || [];
+    assert.equal(caps.length, 5, `each of the 5 programs must cap ${stream}`);
+  }
+  assert.match(supervisor, /logfile_maxbytes=\d+MB/);
+});
+
+test('CI runs the full test, lint and build suites before images are published', () => {
+  const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+
+  assert.match(ci, /on:\n\s+push:\n\s+branches: \[main\]\n\s+pull_request:/);
+  for (const job of ['server:', 'client:']) {
+    assert.match(ci, new RegExp(`\\n  ${job}\\n`), `CI must define a ${job} job`);
+  }
+  // Beide Jobs müssen echte Installations- und Test-Schritte haben.
+  assert.match(ci, /server[\s\S]*?run: npm ci\n[\s\S]*?run: npm test/);
+  assert.match(ci, /client[\s\S]*?run: npm ci\n[\s\S]*?run: npm test\n[\s\S]*?run: npm run lint\n[\s\S]*?run: npm run build/);
+  assert.match(ci, /uses: actions\/setup-node@v4/);
 });
 
 test('split deployments persist the upload directory actually used by the server', () => {

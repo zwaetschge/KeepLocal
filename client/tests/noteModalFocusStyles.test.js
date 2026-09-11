@@ -16,17 +16,15 @@ function declarationsFor(selector) {
   return match[1].replace(/\s+/g, ' ');
 }
 
-test('note modal title focus-visible does not render the global input focus frame', () => {
+// Focus must stay visible in the note editor (WCAG 2.4.7). The global input
+// focus frame is suppressed, but every field replaces it with its own visible
+// indicator — an accent outline, or the accent underline for the title.
+test('note modal title focus-visible shows the accent underline instead of the global input focus frame', () => {
   const declarations = declarationsFor('.note-modal-title:focus-visible');
 
   assert.match(declarations, /outline:\s*none/);
   assert.match(declarations, /box-shadow:\s*none/);
-});
-
-test('note modal title focus does not draw a visible underline', () => {
-  const declarations = declarationsFor('.note-modal-title:focus');
-
-  assert.match(declarations, /border-bottom-color:\s*transparent/);
+  assert.match(declarations, /border-bottom-color:\s*var\(--accent-color/);
 });
 
 test('e-ink mode does not force a visible note modal title underline', () => {
@@ -35,16 +33,9 @@ test('e-ink mode does not force a visible note modal title underline', () => {
   assert.match(declarations, /border-bottom-color:\s*transparent/);
 });
 
-test('note modal content focus-visible does not render the global textarea focus frame', () => {
-  const declarations = declarationsFor('.note-modal-content:focus-visible');
-
-  assert.match(declarations, /outline:\s*none/);
-  assert.match(declarations, /box-shadow:\s*none/);
-});
-
-test('all note modal text entry fields suppress the global focus frame', () => {
+test('all note modal text entry fields keep a visible focus indicator', () => {
+  // The title uses the accent underline instead (covered by the test above).
   for (const selector of [
-    '.note-modal-title:focus-visible',
     '.note-modal-content:focus-visible',
     '.note-modal-tags-input:focus-visible',
     '.note-modal-tags:focus-visible',
@@ -52,7 +43,15 @@ test('all note modal text entry fields suppress the global focus frame', () => {
   ]) {
     const declarations = declarationsFor(selector);
 
+    // The global focus frame is replaced, not removed...
     assert.match(declarations, /outline:\s*none/, selector);
     assert.match(declarations, /box-shadow:\s*none/, selector);
+    // ...by a visible accent outline (the last outline declaration wins).
+    const outlines = declarations.match(/outline:\s*[^;]+;/g) || [];
+    assert.match(
+      outlines[outlines.length - 1],
+      /outline:\s*2px solid var\(--accent-color/,
+      selector
+    );
   }
 });

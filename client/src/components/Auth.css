@@ -62,6 +62,16 @@ body:not(.dark-mode):not(.oled-mode):not(.eink-mode):not(.doodle-mode) .auth-con
   }
 }
 
+.setup-info {
+  margin-top: 1rem;
+}
+
+.setup-info p {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .auth-header {
   text-align: center;
   margin-bottom: var(--space-8);
@@ -598,4 +608,12 @@ body.eink-mode .oauth-button:hover:not(:disabled) {
   .auth-box {
     padding: var(--space-6) var(--space-4);
   }
+}
+
+/* Language switcher in the top-right corner of the auth pages */
+.auth-language {
+  position: absolute;
+  top: calc(var(--space-3, 12px) + env(safe-area-inset-top, 0px));
+  right: calc(var(--space-3, 12px) + env(safe-area-inset-right, 0px));
+  z-index: 10;
 }

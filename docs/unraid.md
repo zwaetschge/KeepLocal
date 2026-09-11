@@ -105,7 +105,7 @@ clears only KeepLocal web caches and display preferences.
 
 ```bash
 docker logs KeepLocal
-docker exec KeepLocal tail -n 100 /var/log/mongodb/mongod.log
+docker exec KeepLocal tail -n 100 /var/log/supervisor/mongodb-stdout.log
 docker exec KeepLocal curl -fsS http://127.0.0.1:5001/health
 ```
 

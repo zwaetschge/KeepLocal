@@ -99,6 +99,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Pre-download the configured Whisper model into a cache readable by the AI user.
 ENV WHISPER_MODEL=${WHISPER_MODEL} \
+    BAKED_WHISPER_MODEL=${WHISPER_MODEL} \
     HF_HOME=/var/lib/keeplocal-ai
 RUN su -s /bin/sh node -c \
     "python3 -c \"import os; from faster_whisper import download_model; download_model(os.environ['WHISPER_MODEL'])\""

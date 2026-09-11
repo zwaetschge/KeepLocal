@@ -564,6 +564,40 @@ body.eink-mode::before {
 }
 
 /* Skeleton Loading - Paper feel */
+/* Same masonry geometry as .note-list (NoteList.css) so the placeholder grid
+   does not jump into a different layout when the real notes arrive. */
+.notes-skeleton {
+  column-count: 4;
+  column-gap: 16px;
+  margin-top: 24px;
+  padding: 0 16px;
+}
+
+@media (max-width: 1600px) {
+  .notes-skeleton {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 1200px) {
+  .notes-skeleton {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .notes-skeleton {
+    column-count: 1;
+    padding: 0 8px;
+  }
+}
+
+.notes-skeleton .skeleton-card {
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+}
+
 .skeleton {
   background: linear-gradient(
     90deg,

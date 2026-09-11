@@ -345,3 +345,21 @@
     width: 100%;
   }
 }
+
+/* Overlay shell — previously undefined anywhere, so the "modal" rendered as an
+   unstyled in-flow block without backdrop or centering (BUG_REPORT, #3). */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal, 2000);
+  padding: 16px;
+}
+
+/* Programmatic focus target for the focus trap — never shows a ring itself. */
+.friends-modal:focus {
+  outline: none;
+}

@@ -99,6 +99,7 @@ const noteSchema = new mongoose.Schema({
 // Index für schnellere Suche - Text search index includes title, content, and todo items
 noteSchema.index({ title: 'text', content: 'text', 'todoItems.text': 'text' });
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // Compound index für Benutzer-Notizen
+noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
 noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
 

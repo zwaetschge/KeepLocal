@@ -12,10 +12,17 @@ const Note = require('../../models/Note');
  * /api/v1/tags:
  *   get:
  *     summary: Alle Tags des Benutzers abrufen
- *     description: Gibt eine sortierte Liste aller Tags zurück, die der Benutzer in seinen Notizen verwendet, inklusive Anzahl.
+ *     description: Gibt eine sortierte Liste aller Tags zurück, die der Benutzer in seinen Notizen verwendet, inklusive Anzahl. Zählt standardmäßig nur aktive (nicht archivierte) Notizen — konsistent mit der Notizliste; mit ?archived=true werden archivierte Notizen gezählt.
  *     tags: [Tags]
  *     security:
  *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: archived
+ *         schema:
+ *           type: string
+ *           enum: ["true", "false"]
+ *         description: Zählt mit archived=true die Tags archivierter Notizen (Standard ist false)
  *     responses:
  *       200:
  *         description: Liste der Tags mit Anzahl
@@ -49,13 +56,17 @@ const Note = require('../../models/Note');
  */
 router.get('/', async (req, res, next) => {
   try {
+    // Match the browser tag list, which counts only the active (or only the
+    // archived) view — otherwise API counts disagree with the app.
+    const isArchived = req.query.archived === 'true';
     const tags = await Note.aggregate([
       {
         $match: {
           $or: [
             { userId: req.user._id },
             { sharedWith: req.user._id }
-          ]
+          ],
+          isArchived
         }
       },
       { $unwind: '$tags' },
