@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { isNoteOwner } from '../utils/noteAccess.mjs';
+import { isNoteOwner, lastEditorName } from '../utils/noteAccess.mjs';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import LinkPreview from './LinkPreview';
@@ -16,6 +16,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   // lehnt alles andere mit 404 ab, also dürfen die Buttons gar nicht erst
   // für Mitbearbeiter erscheinen.
   const canManage = isNoteOwner(note, user);
+  const editorName = lastEditorName(note);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverTag, setDragOverTag] = useState(false);
@@ -251,6 +252,10 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               )}
             </div>
           </div>
+        )}
+
+        {editorName && (
+          <div className="note-edited-by">{t('lastEditedBy', { name: editorName })}</div>
         )}
 
         <div className="note-hover-actions">

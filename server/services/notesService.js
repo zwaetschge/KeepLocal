@@ -32,9 +32,9 @@ function clientError(message) {
 
 /**
  * Access filter for collaborative edits: the owner and everyone the note is
- * shared with may change its content and pin state. Destructive or structural
- * operations (delete, archive, share/unshare, uploads, transcription) stay
- * owner-only via `getOwnedNoteById`.
+ * shared with may change its content — text, tags, colour, pin, images and
+ * transcriptions. Destructive or structural operations (delete, archive,
+ * share/unshare) filter explicitly on `userId` and therefore stay owner-only.
  */
 function noteEditQuery(noteId, userId) {
   return {
@@ -352,6 +352,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   const notes = await Note.find(query)
     .populate('userId', 'username email')
     .populate('sharedWith', 'username email')
+    .populate('lastEditedBy', 'username')
     // Same recency key the client uses to order a page (useNotesManager sorts by
     // updatedAt): sorting by createdAt here made recently edited older notes
     // land on later pages, so the visible order contradicted the pagination.
@@ -387,7 +388,8 @@ async function getNoteById(noteId, userId) {
       { sharedWith: userId }
     ]
   }).populate('userId', 'username email')
-    .populate('sharedWith', 'username email');
+    .populate('sharedWith', 'username email')
+    .populate('lastEditedBy', 'username');
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
@@ -398,8 +400,15 @@ async function getNoteById(noteId, userId) {
   return note;
 }
 
-async function getOwnedNoteById(noteId, userId) {
-  const note = await Note.findOne({ _id: noteId, userId, deletedAt: null });
+/**
+ * Note the user may edit: own or shared with them. Used for uploads and
+ * transcription, which collaborators may perform on a shared note.
+ * @param {string} noteId
+ * @param {string} userId
+ * @returns {Promise<Object>}
+ */
+async function getEditableNoteById(noteId, userId) {
+  const note = await Note.findOne(noteEditQuery(noteId, userId));
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
@@ -609,6 +618,9 @@ async function updateNote(noteId, noteData, userId) {
   if (todoItems !== undefined || isTodoList !== undefined) {
     note.todoItems = nextIsTodoList ? nextTodoItems : [];
   }
+
+  // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
+  note.lastEditedBy = userId;
 
   const updatedNote = await note.save();
 
@@ -852,8 +864,7 @@ async function addImages(noteId, userId, imageData) {
 
   const note = await Note.findOneAndUpdate(
     {
-      _id: noteId,
-      userId: userId,
+      ...noteEditQuery(noteId, userId),
       $expr: {
         $lte: [
           { $size: { $ifNull: ['$images', []] } },
@@ -894,8 +905,7 @@ async function addImages(noteId, userId, imageData) {
 async function removeImage(noteId, userId, filename) {
   const note = await Note.findOneAndUpdate(
     {
-      _id: noteId,
-      userId: userId,
+      ...noteEditQuery(noteId, userId),
       'images.filename': filename
     },
     {
@@ -920,7 +930,7 @@ async function removeImage(noteId, userId, filename) {
 module.exports = {
   getAllNotes,
   getNoteById,
-  getOwnedNoteById,
+  getEditableNoteById,
   createNote,
   updateNote,
   deleteNote,

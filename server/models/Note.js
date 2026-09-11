@@ -88,6 +88,13 @@ const noteSchema = new mongoose.Schema({
     required: [true, 'Benutzer-ID ist erforderlich'],
     index: true
   },
+  // Wer die Notiz zuletzt inhaltlich geändert hat — bei geteilten Notizen sonst
+  // nicht nachvollziehbar (der Besitzer ist nicht unbedingt der Autor).
+  lastEditedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   sharedWith: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

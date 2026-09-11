@@ -90,7 +90,9 @@ export function normalizeNote(note) {
       : [],
     sharedWith: Array.isArray(note.sharedWith)
       ? note.sharedWith.map(normalizeSharedUser).filter(Boolean)
-      : []
+      : [],
+    // Wer zuletzt geändert hat (ObjectId oder populated { _id, username }).
+    lastEditedBy: normalizeSharedUser(note.lastEditedBy)
   };
 }
 

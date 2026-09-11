@@ -68,7 +68,11 @@ and mobile.
 - Manual note ordering per section via drag & drop (persisted; new notes join on
   top once a section has been sorted, otherwise recency rules as before)
 - Private image uploads and optional local audio transcription
-- Friend requests and shared-note collaboration
+- Friend requests and shared-note collaboration: collaborators edit content,
+  tags, images and recordings; archiving, sharing and deleting stay with the
+  owner. Notes show who edited them last, and an editor that is open while
+  somebody else saves offers the conflict banner instead of silently
+  overwriting.
 - English and German interfaces with Light, Dark, OLED, E-Ink, and Doodle
   themes — theme, UI language, and AI preferences follow the **account**
   (`PUT /api/auth/preferences`), not the device; localStorage is only a cache

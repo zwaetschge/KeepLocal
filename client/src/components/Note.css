@@ -986,3 +986,9 @@
   background: var(--error-light, rgba(211, 47, 47, 0.15));
   color: var(--error-color, #d32f2f);
 }
+
+.note-edited-by {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}

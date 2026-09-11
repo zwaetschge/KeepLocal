@@ -28,7 +28,7 @@ function loadRouter({ getLinkPreview, transcribeAudio }) {
   }
   require.cache[servicePath] = {
     id: servicePath, filename: servicePath, loaded: true,
-    exports: { getOwnedNoteById: async () => ({ _id: NOTE_ID, userId: USER_ID, images: [] }) }
+    exports: { getEditableNoteById: async () => ({ _id: NOTE_ID, userId: USER_ID, images: [] }) }
   };
   require.cache[aiPath] = { id: aiPath, filename: aiPath, loaded: true, exports: { transcribeAudio } };
   require.cache[previewPath] = {

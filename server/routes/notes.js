@@ -92,9 +92,14 @@ const transcribeDayLimiter = rateLimit({
 // All routes require authentication
 router.use(authenticateToken);
 
-async function requireOwnedNote(req, res, next) {
+/**
+ * Zugriff für Mitbearbeiter: eigene oder geteilte Notiz. Wird für Uploads und
+ * Transkription verwendet — beides ändert den Inhalt, den auch geteilte Nutzer
+ * bearbeiten dürfen. Destruktives (Löschen, Archiv, Teilen) bleibt beim Besitzer.
+ */
+async function requireEditableNote(req, res, next) {
   try {
-    req.ownedNote = await notesService.getOwnedNoteById(req.params.id, req.user._id);
+    req.ownedNote = await notesService.getEditableNoteById(req.params.id, req.user._id);
     next();
   } catch (error) {
     if (error.statusCode === 404 || error.kind === 'ObjectId') {
@@ -387,7 +392,7 @@ router.post('/link-preview', blockDemoLinkPreview, linkPreviewLimiter, async (re
  * POST /api/notes/:id/images - Upload images to a note
  * Supports multiple files (max 5 images per request)
  */
-router.post('/:id/images', blockDemoUploads, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
+router.post('/:id/images', blockDemoUploads, noteValidation.getOne, requireEditableNote, (req, res, next) => {
   if ((req.ownedNote.images?.length || 0) >= 25) {
     return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Bilder pro Notiz erlaubt' });
   }
@@ -565,7 +570,7 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
  * POST /api/notes/:id/transcribe - Upload audio and append transcription to note
  * Uses Whisper AI service to convert speech to text
  */
-router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, transcribeDayLimiter, noteValidation.getOne, requireOwnedNote, (req, res, next) => {
+router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, transcribeDayLimiter, noteValidation.getOne, requireEditableNote, (req, res, next) => {
   uploadAudio.single('audio')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
