@@ -411,6 +411,7 @@ export const de = {
   administrationDescription: 'Erweiterte Verwaltungsfunktionen',
   openAdminConsole: 'Admin-Konsole öffnen',
   adminConsoleHint: 'Die Admin-Konsole ermöglicht die Verwaltung von Benutzern und System-Einstellungen.',
+  apiKeyExpiryLabel: 'Gültigkeitsdauer des API-Keys',
   languageSection: 'Sprache',
   languageSectionDescription: 'Sprache der Benutzeroberfläche',
   sharedNoteOwnerHint: 'Von {owner} geteilt. Inhalt, Titel, Tags, Farbe und Pin kannst du ändern — Archivieren, Teilen, Löschen, Bilder und Aufnahme bleiben beim Besitzer.',

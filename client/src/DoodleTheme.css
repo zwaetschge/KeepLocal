@@ -40,6 +40,10 @@ body.doodle-mode {
   --accent-color: #263D5B;
   --accent-hover: #1D2F48;
   --accent-active: #142239;
+  /* Already dark enough for accent-coloured small text on light backgrounds. */
+  --accent-text: #263D5B;
+  --accent-button-bg: #263D5B;
+  --accent-button-text: #FFFFFF;
   --accent-light: rgba(73, 182, 229, 0.18);
   --accent-lighter: rgba(73, 182, 229, 0.08);
 

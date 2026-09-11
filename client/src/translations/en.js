@@ -411,6 +411,7 @@ export const en = {
   administrationDescription: 'Advanced administration features',
   openAdminConsole: 'Open admin console',
   adminConsoleHint: 'The admin console lets you manage users and system settings.',
+  apiKeyExpiryLabel: 'API key expiry period',
   languageSection: 'Language',
   languageSectionDescription: 'User interface language',
   sharedNoteOwnerHint: 'Shared by {owner}. You can change the content, title, tags, colour and pin — archiving, sharing, deleting, images and recording stay with the owner.',

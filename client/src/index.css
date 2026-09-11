@@ -117,6 +117,12 @@
   --accent-color: #C4785D;
   --accent-hover: #B0684D;
   --accent-active: #9C5840;
+  /* Text on light accent backgrounds. --accent-color itself only reaches
+     ~2.6:1 on --accent-light (WCAG AA needs 4.5:1 for small text), so accent
+     coloured labels use this darker variant. */
+  --accent-text: #8A4A34;
+  --accent-button-bg: #9C5840;
+  --accent-button-text: #FFFFFF;
   --accent-light: rgba(196, 120, 93, 0.12);
   --accent-lighter: rgba(196, 120, 93, 0.06);
 
@@ -194,6 +200,9 @@ body.dark-mode {
   --accent-color: #D4906E;
   --accent-hover: #E0A080;
   --accent-active: #EBB090;
+  --accent-text: #E8A87C;
+  --accent-button-bg: #A85C3F;
+  --accent-button-text: #FFFFFF;
   --accent-light: rgba(212, 144, 110, 0.15);
   --accent-lighter: rgba(212, 144, 110, 0.08);
 
@@ -257,6 +266,9 @@ body.oled-mode {
   --text-tertiary: #8A8070;
   --text-muted: #5C5448;
   --text-inverse: #000000;
+  --accent-text: #E8A87C;
+  --accent-button-bg: #A85C3F;
+  --accent-button-text: #FFFFFF;
 
   --border-color: rgba(245, 241, 234, 0.08);
   --border-color-strong: rgba(245, 241, 234, 0.15);
@@ -304,6 +316,9 @@ body.eink-mode {
   --accent-color: #000000;
   --accent-hover: #333333;
   --accent-active: #000000;
+  --accent-text: #000000;
+  --accent-button-bg: #000000;
+  --accent-button-text: #FFFFFF;
   --accent-light: #e8e8e8;
   --accent-lighter: #f0f0f0;
 

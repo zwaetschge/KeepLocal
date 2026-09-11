@@ -8,9 +8,9 @@
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource/delius-swash-caps": "^5.2.8",
+    "dompurify": "^3.0.6",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "dompurify": "^3.0.6"
+    "react-dom": "^18.2.0"
   },
   "scripts": {
     "start": "cross-env NODE_ENV=development vite --host 0.0.0.0",
@@ -18,11 +18,16 @@
     "build": "cross-env NODE_ENV=production vite build",
     "lint": "eslint src",
     "test:regression": "node --test tests/*.test.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "pretest:e2e": "npm run build",
+    "test:e2e": "node ../server/scripts/e2e-reset-db.js && playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.63.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "axe-core": "^4.13.0",
     "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
     "eslint-plugin-react": "^7.0.0",

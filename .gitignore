@@ -50,3 +50,9 @@ client/artifacts/
 patches/
 *.patch
 *.bundle
+
+# Playwright (E2E smoke suite)
+client/test-results/
+client/playwright-report/
+client/blob-report/
+client/playwright/.cache/

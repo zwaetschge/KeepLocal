@@ -182,6 +182,7 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
                   className="settings-input api-key-expiry-select"
                   value={newKeyExpiry}
                   onChange={(e) => setNewKeyExpiry(e.target.value)}
+                  aria-label={t('apiKeyExpiryLabel')}
                 >
                   <option value="never">{t('apiKeyExpiryNever')}</option>
                   <option value="30">{t('apiKeyExpiry30')}</option>

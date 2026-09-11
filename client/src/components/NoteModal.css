@@ -15,6 +15,10 @@
   align-items: flex-start;
   justify-content: center;
   z-index: 2000;
+  /* Fallback for dialogs taller than the viewport: without this a fixed
+     overlay clips everything below the fold (footer buttons included). */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: var(--space-8);
   animation: modalFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-y: auto;
@@ -42,6 +46,11 @@
   position: relative;
   margin: var(--space-8) 0;
   border: 1px solid var(--border-color);
+  /* Never grow past the viewport: the body scrolls instead, so the footer
+     with Cancel/Save stays reachable on small screens. dvh accounts for the
+     collapsible browser chrome on mobile. */
+  max-height: calc(100vh - 2 * var(--space-8));
+  max-height: calc(100dvh - 2 * var(--space-8));
 }
 
 @keyframes modalSlideUp {
@@ -97,6 +106,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* Scroll inside the dialog (min-height: 0 is required for a flex child). */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .note-modal-title {
@@ -361,8 +375,8 @@
 }
 
 .btn-modal-save {
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   box-shadow: 0 2px 8px rgba(196, 120, 93, 0.35);
 }
 
@@ -849,8 +863,8 @@
   position: absolute;
   bottom: var(--space-1);
   right: var(--space-1);
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   padding: 2px var(--space-2);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
@@ -898,8 +912,8 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   font-size: var(--font-size-xs);
   font-weight: var(--font-bold);
   min-width: 16px;
@@ -1467,6 +1481,9 @@
     padding: 0;
     margin: 0;
     min-height: 100vh;
+    min-height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
   }
 
   .note-modal-overlay {
@@ -1563,8 +1580,8 @@
 
 .btn-conflict-overwrite {
   border: 1px solid var(--accent-color);
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
 }
 
 .btn-conflict-overwrite:hover:not(:disabled) {

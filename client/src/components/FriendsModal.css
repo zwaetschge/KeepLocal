@@ -252,8 +252,8 @@
 
 .search-box button {
   padding: 12px 24px;
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   border: none;
   border-radius: 4px;
   font-weight: 500;
@@ -303,8 +303,8 @@
 
 .btn-add {
   padding: 8px 16px;
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   border: none;
   border-radius: 4px;
   font-weight: 500;

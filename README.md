@@ -192,6 +192,30 @@ docker compose -f docker-compose.allinone.yml config
 The client uses Vite's `client/build/` output. The AI service's Python packages
 are installed from `ai/requirements.txt`.
 
+### End-to-end smoke suite
+
+The unit suites never render the app, so a Playwright suite drives the real
+production bundle in Chromium against the real server and MongoDB. It covers the
+flows that broke silently in past audits: creating a note with `<`, `&` and a
+link, closing the editor (crash regression), an image upload followed by a save
+(false conflict), `Ctrl+N` while editing (duplicate regression), search, archive,
+sharing with a collaborator who then edits, logout and login without a reload,
+the mobile viewport, axe accessibility on the main screens, and the
+`guard.js` → `recover.html` handoff for a broken deploy.
+
+```bash
+# A MongoDB must be reachable; the suite drops that database on every run.
+export E2E_MONGODB_URI=mongodb://127.0.0.1:27017/keeplocal_e2e
+(cd client && npx playwright install --with-deps chromium)   # once per machine
+(cd client && npm run test:e2e)
+```
+
+`npm run test:e2e` builds the client, resets the E2E database (the script refuses
+to drop a database whose name does not contain `e2e`, `test` or `ci`), starts the
+API server plus a static server for `client/build`, and runs the suite. Set
+`PLAYWRIGHT_CHROMIUM_PATH` to use a system Chromium instead of a downloaded one,
+and `E2E_API_PORT`/`E2E_WEB_PORT` (defaults 5000/4173) when those ports are busy.
+
 ## API
 
 When the API is running, interactive documentation is available at

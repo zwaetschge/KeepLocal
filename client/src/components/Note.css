@@ -393,8 +393,8 @@
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   display: flex;
   align-items: center;
   justify-content: center;

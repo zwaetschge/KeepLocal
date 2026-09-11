@@ -233,19 +233,30 @@ router.post('/link-preview', blockDemoLinkPreview, async (req, res, next) => {
     const preview = await fetchLinkPreview(url.trim());
     res.json(preview);
   } catch (error) {
-    // Expected upstream conditions (dead link, non-HTML answer, redirect loop)
-    // are not server faults: log them without a stack trace so a user pasting a
-    // 404 link does not bury the log.
-    if (error.statusCode) {
-      console.warn('Link preview skipped:', error.message);
-    } else {
+    // Expected upstream conditions are not server faults: a dead link, a
+    // non-HTML answer, a redirect loop — and equally a DNS failure, a refused
+    // connection or a socket timeout of the target host. Reporting those as 500
+    // (with a stack trace per pasted link) hides real problems in the log.
+    const upstreamNetworkCodes = new Set([
+      'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+      'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT'
+    ]);
+    const isUpstreamFailure = Boolean(error.statusCode)
+      || upstreamNetworkCodes.has(error.code)
+      || /timeout/i.test(error.message || '');
+    const status = error.statusCode
+      || (isUpstreamFailure ? httpStatus.BAD_GATEWAY : httpStatus.INTERNAL_SERVER_ERROR);
+
+    if (status === httpStatus.INTERNAL_SERVER_ERROR) {
       console.error('Error fetching link preview:', error);
+    } else {
+      console.warn('Link preview skipped:', error.message);
     }
-    const status = error.statusCode || httpStatus.INTERNAL_SERVER_ERROR;
-    res.status(status).json({
+
+    return res.status(status).json({
       error: status === httpStatus.INTERNAL_SERVER_ERROR
         ? 'Fehler beim Abrufen der Link-Vorschau'
-        : error.message
+        : (error.statusCode ? error.message : 'Link ist nicht erreichbar')
     });
   }
 });
