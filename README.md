@@ -70,6 +70,8 @@ and mobile.
   themes
 - Responsive desktop/mobile layout and installable PWA
 - Admin-managed registration and user administration
+- Self-service password change plus admin-generated one-time password reset
+  tokens (no mail server required)
 - HttpOnly cookie sessions, signed CSRF tokens, explicit CORS origins, rate
   limits, input validation, and authenticated upload delivery
 - Swagger/OpenAPI documentation and API-key authenticated `/api/v1` endpoints
@@ -226,6 +228,27 @@ When the API is running, interactive documentation is available at
   tokens.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
+
+### Passwords
+
+Self-hosted KeepLocal has no mail delivery, so password recovery works with
+one-time tokens instead of e-mail links:
+
+- **Change your own password**: Settings → Password (`POST
+  /api/auth/change-password`, requires the current password). The server bumps
+  the session version, so every *other* device is signed out while the current
+  session receives a fresh cookie.
+- **Reset somebody else's password**: Admin console → Users → *Reset password*
+  (`POST /api/admin/users/:id/password-reset`) shows a token **once**. Hand it to
+  that person; they redeem it on the login screen under *Forgot password?*
+  (`POST /api/auth/reset-password`). Tokens are stored as SHA-256 hashes, expire
+  after 15 minutes, are single-use, and invalidate all sessions of that account.
+
+Both endpoints sit behind the auth rate limiter and enforce the same password
+rules as registration (8–128 characters with upper, lower, and digit). Accounts
+that sign in through OAuth have no local password and cannot use
+`change-password`; an administrator can still issue a reset token, which sets a
+local password alongside the OAuth identity.
 
 ## Important environment variables
 

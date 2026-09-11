@@ -3,6 +3,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import './AdminConsole.css';
 import { adminAPI } from '../services/api';
 import ConfirmDialog from './ConfirmDialog';
+import { copyToClipboard } from '../utils/clipboard.mjs';
+import { toastBus } from './ToastStack';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
 
@@ -18,6 +20,10 @@ function AdminConsole({ onClose }) {
   const [error, setError] = useState(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', isAdmin: false });
+  // Einmal-Passwort-Reset-Token (Self-Hosting ohne Mail-Versand): wird nur hier
+  // angezeigt und von den Admins an die Person übergeben.
+  const [resetTokenInfo, setResetTokenInfo] = useState(null);
+  const [resetTokenCopied, setResetTokenCopied] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -97,6 +103,35 @@ function AdminConsole({ onClose }) {
       setError(error.message || t('errorCreatingUser'));
     } finally {
       setOperationLoading(prev => ({ ...prev, create: false }));
+    }
+  };
+
+  const handleCreatePasswordReset = async (user) => {
+    setOperationLoading(prev => ({ ...prev, [user._id]: 'reset' }));
+    try {
+      const response = await adminAPI.createPasswordReset(user._id);
+      setResetTokenInfo({
+        token: response.resetToken,
+        username: response.user?.username || user.username,
+        expiresAt: response.expiresAt,
+      });
+      setResetTokenCopied(false);
+      setError(null);
+      toastBus.success(t('resetTokenCreatedTitle'));
+    } catch (err) {
+      console.error('Error creating password reset token:', err);
+      setError(err.message || t('resetTokenFailed'));
+    } finally {
+      setOperationLoading(prev => ({ ...prev, [user._id]: false }));
+    }
+  };
+
+  const handleCopyResetToken = async () => {
+    if (!resetTokenInfo?.token) return;
+    const copied = await copyToClipboard(resetTokenInfo.token);
+    setResetTokenCopied(Boolean(copied));
+    if (!copied) {
+      toastBus.error(t('copyToClipboardFailed'));
     }
   };
 
@@ -250,6 +285,30 @@ function AdminConsole({ onClose }) {
 
               {activeTab === 'users' && (
                 <div className="admin-users">
+                  {resetTokenInfo && (
+                    <div className="reset-token-box" role="status">
+                      <strong>{t('resetTokenCreatedTitle')} — {resetTokenInfo.username}</strong>
+                      <p className="settings-description">{t('resetTokenHint')}</p>
+                      <div className="reset-token-value">
+                        <code>{resetTokenInfo.token}</code>
+                        <button
+                          type="button"
+                          className="btn-reset-copy"
+                          onClick={handleCopyResetToken}
+                        >
+                          {resetTokenCopied ? t('copied') : t('copy')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-reset-dismiss"
+                          onClick={() => setResetTokenInfo(null)}
+                          aria-label={t('close')}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="admin-users-header">
                     <h3>{t('userManagement')}</h3>
                     <button
@@ -349,6 +408,14 @@ function AdminConsole({ onClose }) {
                                 title={user.isAdmin ? t('removeAdmin') : t('makeAdmin')}
                               >
                                 {user.isAdmin ? `🔒 ${t('removeAdmin')}` : `🔓 ${t('makeAdmin')}`}
+                              </button>
+                              <button
+                                onClick={() => handleCreatePasswordReset(user)}
+                                disabled={operationLoading[user._id]}
+                                className="btn-reset-token"
+                                title={t('adminResetPassword')}
+                              >
+                                🔑 {t('adminResetPassword')}
                               </button>
                               <button
                                 onClick={() => setDeleteConfirm(user)}

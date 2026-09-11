@@ -51,6 +51,17 @@ const adminAPI = {
     }),
 
   /**
+   * Generate a one-time password reset token for a user (admin only).
+   * The raw token is returned exactly once and is valid for 15 minutes.
+   * @param {string} userId
+   * @returns {Promise<{resetToken: string, expiresAt: string, user: Object}>}
+   */
+  createPasswordReset: (userId) =>
+    fetchWithAuth(API_ENDPOINTS.ADMIN.PASSWORD_RESET(userId), {
+      method: 'POST',
+    }),
+
+  /**
    * Get system settings (admin only)
    * @returns {Promise<Object>} System settings
    */

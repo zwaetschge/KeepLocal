@@ -2,8 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { API_BASE_URL } from '../constants/api';
 import { parseResponse } from '../services/api/apiUtils';
+import { authAPI } from '../services/api';
 import './Auth.css';
 import LanguageSelector from './LanguageSelector';
+
+// Dieselben Regeln wie Server und Registrierung, damit ein Reset nicht an der
+// API scheitert, nachdem die Person alles ausgefüllt hat.
+function passwordStrengthError(value, t) {
+  if (value.length < 8) return t('passwordMinLength');
+  if (value.length > 128) return t('passwordMaxLength');
+  if (!/[a-z]/.test(value)) return t('passwordNeedsLower');
+  if (!/[A-Z]/.test(value)) return t('passwordNeedsUpper');
+  if (!(/[0-9]/.test(value))) return t('passwordNeedsNumber');
+  return null;
+}
 
 function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
   const { t } = useLanguage();
@@ -18,6 +30,50 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
     demo: false,
   });
   const loading = loadingAction !== null;
+
+  // Passwort zurücksetzen: Self-Hosting hat keinen Mail-Versand, deshalb erzeugt
+  // ein Admin in der Konsole ein Einmal-Token (15 Minuten gültig), das hier
+  // eingelöst wird.
+  const [showReset, setShowReset] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetDone, setResetDone] = useState('');
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault();
+    setResetError('');
+    setResetDone('');
+
+    if (!resetToken.trim() || !resetPassword || !resetConfirm) {
+      setResetError(t('fillAllFields'));
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setResetError(t('passwordsDontMatch'));
+      return;
+    }
+    const strengthError = passwordStrengthError(resetPassword, t);
+    if (strengthError) {
+      setResetError(strengthError);
+      return;
+    }
+
+    setResetBusy(true);
+    try {
+      await authAPI.resetPassword(resetToken.trim(), resetPassword);
+      setResetToken('');
+      setResetPassword('');
+      setResetConfirm('');
+      setResetDone(t('resetPasswordSuccess'));
+    } catch (err) {
+      setResetError(err.message || t('resetPasswordFailed'));
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   useEffect(() => {
     const checkRegistrationStatus = async () => {
@@ -166,6 +222,87 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
             {loadingAction === 'credentials' ? t('loggingIn') : t('login')}
           </button>
         </form>
+
+        <div className="auth-footer">
+          <p>
+            <button
+              type="button"
+              className="auth-link-button"
+              onClick={() => {
+                setShowReset((visible) => !visible);
+                setResetError('');
+                setResetDone('');
+              }}
+              aria-expanded={showReset}
+              disabled={loading}
+            >
+              {t('forgotPassword')}
+            </button>
+          </p>
+        </div>
+
+        {showReset && (
+          <form className="auth-reset-form" onSubmit={handleResetPassword} noValidate>
+            <p className="auth-reset-hint">{t('resetPasswordDescription')}</p>
+
+            {resetError && (
+              <div className="auth-error" role="alert">{resetError}</div>
+            )}
+            {resetDone && (
+              <p className="auth-success" role="status">{resetDone}</p>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="reset-token">{t('resetTokenLabel')}</label>
+              <input
+                id="reset-token"
+                type="text"
+                value={resetToken}
+                onChange={(e) => setResetToken(e.target.value)}
+                autoComplete="one-time-code"
+                maxLength={200}
+                disabled={resetBusy}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="reset-password">{t('newPassword')}</label>
+              <input
+                id="reset-password"
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={128}
+                disabled={resetBusy}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="reset-password-confirm">{t('confirmPasswordLabel')}</label>
+              <input
+                id="reset-password-confirm"
+                type="password"
+                value={resetConfirm}
+                onChange={(e) => setResetConfirm(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={128}
+                disabled={resetBusy}
+                required
+              />
+            </div>
+
+            <button type="submit" className="auth-button" disabled={resetBusy}>
+              {resetBusy ? t('saving') : t('resetPasswordButton')}
+            </button>
+          </form>
+        )}
 
         {hasOAuthProviders && (
           <div className="oauth-section">

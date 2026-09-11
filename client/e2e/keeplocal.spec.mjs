@@ -419,4 +419,98 @@ test.describe.serial('KeepLocal production smoke', () => {
     expect(broken.url(), 'recovery page must not redirect again').toBe(settled);
     await context.close();
   });
+
+  // The password tests run last: they change credentials the other tests use.
+  test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
+    const nextPassword = 'E2eAdminChanged1x';
+
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.fill('#current-password', ADMIN.password);
+    await page.fill('#new-password', nextPassword);
+    await page.fill('#confirm-new-password', nextPassword);
+    await page.click('.btn-change-password');
+
+    await expect(page.locator('.settings-error')).toHaveCount(0);
+    await expect(page.locator('.toast')).toContainText(/Password changed|Passwort geändert/, { timeout: 15000 });
+    // The fields are cleared and this session stays alive.
+    await expect(page.locator('#current-password')).toHaveValue('');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-modal')).toHaveCount(0);
+    await expectAppHealthy(page);
+    await expect(page.locator('[role="article"]').first()).toBeVisible();
+
+    // Wrong current password is rejected.
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.fill('#current-password', 'DefinitelyWrong1x');
+    await page.fill('#new-password', 'AnotherOne1x');
+    await page.fill('#confirm-new-password', 'AnotherOne1x');
+    await page.click('.btn-change-password');
+    await expect(page.locator('.settings-error')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-modal')).toHaveCount(0);
+
+    // A fresh context: the new password works, the old one does not.
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await other.goto('/');
+    await other.fill('input[type="email"], form input[type="text"]', ADMIN.email);
+    await other.fill('form input[type="password"]', ADMIN.password);
+    await other.click('form button[type="submit"]');
+    await expect(other.locator('.auth-error')).toBeVisible({ timeout: 15000 });
+
+    await other.fill('form input[type="password"]', nextPassword);
+    await other.click('form button[type="submit"]');
+    await expect(other.locator('.App')).toBeVisible({ timeout: 20000 });
+    await context.close();
+
+    ADMIN.password = nextPassword;
+  });
+
+  test('an admin reset token can be redeemed once from the login screen', async ({ browser }) => {
+    // Admin console -> users -> reset token for the collaborator.
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.locator('.settings-modal button', { hasText: /Open admin console|Admin-Konsole öffnen/ }).click();
+    await expect(page.locator('.admin-console-overlay')).toBeVisible();
+    await page.locator('.admin-tab', { hasText: /Users|Benutzer/ }).click();
+    const row = page.locator('.admin-table tbody tr', { hasText: FRIEND.username });
+    await expect(row).toBeVisible();
+    await row.locator('.btn-reset-token').click();
+
+    await expect(page.locator('.reset-token-box')).toBeVisible({ timeout: 15000 });
+    const resetToken = (await page.locator('.reset-token-value code').innerText()).trim();
+    expect(resetToken).toMatch(/^[a-f0-9]{64}$/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.admin-console-overlay')).toHaveCount(0);
+
+    // The collaborator redeems the token without being logged in.
+    const context = await browser.newContext();
+    const friend = await context.newPage();
+    await friend.goto('/');
+    await friend.locator('.auth-link-button').click();
+    await expect(friend.locator('.auth-reset-form')).toBeVisible();
+    await friend.fill('#reset-token', resetToken);
+    const nextPassword = 'E2eFriendReset1x';
+    await friend.fill('#reset-password', nextPassword);
+    await friend.fill('#reset-password-confirm', nextPassword);
+    await friend.click('.auth-reset-form button[type="submit"]');
+    await expect(friend.locator('.auth-success')).toBeVisible({ timeout: 15000 });
+
+    // The token is single use.
+    await friend.fill('#reset-token', resetToken);
+    await friend.fill('#reset-password', 'AnotherOne2x');
+    await friend.fill('#reset-password-confirm', 'AnotherOne2x');
+    await friend.click('.auth-reset-form button[type="submit"]');
+    await expect(friend.locator('.auth-error')).toBeVisible({ timeout: 15000 });
+
+    // Login with the new password works.
+    await friend.reload();
+    await friend.fill('input[type="email"], form input[type="text"]', FRIEND.email);
+    await friend.fill('form input[type="password"]', nextPassword);
+    await friend.click('form button[type="submit"]');
+    await expect(friend.locator('.App')).toBeVisible({ timeout: 20000 });
+    await context.close();
+  });
 });
