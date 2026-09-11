@@ -13,9 +13,15 @@ test('HTTP starts only after MongoDB connects and indexes are ready', () => {
 });
 
 test('health endpoint reports database disconnects', () => {
-  assert.match(serverSource, /mongoose\.connection\.readyState === 1/);
-  assert.match(serverSource, /database: databaseReady \? 'connected' : 'disconnected'/);
-  assert.match(serverSource, /databaseReady \? 200 : 503/);
+  // Improvement #10: the checks moved into services/healthService.js and go
+  // beyond mongoose's cached readyState (real ping, writable uploads, AI probe).
+  assert.match(serverSource, /const \{ collectHealth \} = require\('\.\/services\/healthService'\);/);
+  assert.match(serverSource, /res\.status\(health\.ready \? 200 : 503\)/);
+  assert.match(serverSource, /database: health\.database\.status/);
+
+  const healthSource = fs.readFileSync(path.join(__dirname, '../services/healthService.js'), 'utf8');
+  assert.match(healthSource, /mongoose\.connection\.readyState !== 1/);
+  assert.match(healthSource, /mongoose\.connection\.db\.admin\(\)\.ping\(\)/);
 });
 
 test('server shuts down gracefully on SIGTERM and SIGINT', () => {

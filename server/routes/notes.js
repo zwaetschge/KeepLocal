@@ -627,7 +627,7 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
 
     let result;
     try {
-      result = await aiService.transcribeAudio(req.file.path, language);
+      result = await aiService.transcribeAudio(req.file.path, language, req.id);
     } finally {
       gate.release();
     }
