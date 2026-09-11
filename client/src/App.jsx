@@ -352,7 +352,9 @@ function AppContent() {
       )}
       {noteModal.isOpen && (
         <NoteModal
-          note={noteModal.note} onSave={handleModalSave} onClose={closeNoteModal}
+          note={noteModal.note}
+          serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
+          onSave={handleModalSave} onClose={closeNoteModal}
           onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
           onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
         />

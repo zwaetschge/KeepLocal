@@ -20,7 +20,7 @@ function loadRouter(captured) {
 
   require.cache[servicePath] = {
     id: servicePath, filename: servicePath, loaded: true,
-    exports: { getOwnedNoteById: async () => ({ _id: 'note-id', userId: 'user-id', images: [] }) }
+    exports: { getEditableNoteById: async () => ({ _id: 'note-id', userId: 'user-id', images: [] }) }
   };
   require.cache[aiPath] = {
     id: aiPath, filename: aiPath, loaded: true,

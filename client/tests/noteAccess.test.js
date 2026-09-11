@@ -35,6 +35,28 @@ test('ownership is true only for the owner', async () => {
   assert.equal(isNoteOwner(null, { id: OWNER }), false);
 });
 
+test('the last editor is reported only when it is not the owner', async () => {
+  const { lastEditorName } = await import(moduleUrl);
+
+  assert.equal(
+    lastEditorName({ userId: { _id: OWNER }, lastEditedBy: { _id: OTHER, username: 'bob' } }),
+    'bob'
+  );
+  assert.equal(
+    lastEditorName({ userId: { _id: OWNER }, lastEditedBy: OWNER }),
+    null,
+    'the owner editing their own note needs no hint'
+  );
+  assert.equal(lastEditorName({ userId: { _id: OWNER } }), null);
+  assert.equal(
+    lastEditorName({ userId: { _id: OWNER }, lastEditedBy: { _id: OTHER, email: 'bob@example.com' } }),
+    'bob',
+    'falls back to the email local part'
+  );
+  assert.equal(lastEditorName({ userId: { _id: OWNER }, lastEditedBy: OTHER }), null,
+    'a bare id without a populated user cannot be named');
+});
+
 test('the owner name falls back to the email local part', async () => {
   const { noteOwnerName } = await import(moduleUrl);
 

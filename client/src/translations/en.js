@@ -435,7 +435,8 @@ export const en = {
   resetTokenFailed: 'Could not create a reset token',
   languageSection: 'Language',
   languageSectionDescription: 'User interface language',
-  sharedNoteOwnerHint: 'Shared by {owner}. You can change the content, title, tags, colour and pin — archiving, sharing, deleting, images and recording stay with the owner.',
+  sharedNoteOwnerHint: 'Shared by {owner}. You can change the content, title, tags, colour, pin, images and recordings — archiving, sharing and deleting stay with the owner.',
+  lastEditedBy: 'Last edited by {name}',
 
   // Transcription languages (select options)
   langAuto: 'Detect automatically',

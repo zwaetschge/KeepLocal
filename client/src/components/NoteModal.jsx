@@ -8,7 +8,7 @@ import LinkPreview from './LinkPreview';
 import ConfirmDialog from './ConfirmDialog';
 import { toastBus } from './ToastStack';
 import { getColorVar } from '../utils/colorMapper';
-import { isNoteOwner, noteOwnerName } from '../utils/noteAccess.mjs';
+import { isNoteOwner, noteOwnerName, lastEditorName } from '../utils/noteAccess.mjs';
 import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
@@ -30,7 +30,7 @@ function isNoteConflictError(error) {
   );
 }
 
-function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
+function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -39,6 +39,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   // Archivieren/Teilen/Löschen/Bilder/Aufnahme bleiben beim Besitzer (der
   // Server antwortet sonst mit 404 „Notiz nicht gefunden“).
   const canManage = !note || isNoteOwner(note, user);
+  const editorName = lastEditorName(serverNote || note);
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState(note?.tags || []);
@@ -116,6 +117,17 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       setShowConflictDiscardConfirm(false);
     }
   }, [note, applyNoteToForm]);
+
+  // Live-Konflikt: Der 60-s-Poll (bzw. der Focus-Refresh) liefert die Notiz aus
+  // der Liste. Ändert sie sich, während der Editor offen ist, zeigen wir das
+  // Konfliktbanner statt den Inhalt still zu überschreiben oder den Nutzer
+  // ahnungslos speichern zu lassen.
+  const serverUpdatedAt = serverNote?.updatedAt;
+  useEffect(() => {
+    if (!note || !serverUpdatedAt || !baseUpdatedAtRef.current) return;
+    if (serverUpdatedAt === baseUpdatedAtRef.current) return;
+    setConflict(previous => (previous ? previous : { currentNote: serverNote }));
+  }, [note, serverNote, serverUpdatedAt]);
 
   // Auto-resize textarea to fit content
   useEffect(() => {
@@ -624,6 +636,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             </p>
           )}
 
+          {editorName && (
+            <p className="note-modal-edited-hint">
+              {t('lastEditedBy', { name: editorName })}
+            </p>
+          )}
+
           {isTodoList ? (
             <div className="todo-list-container">
               {todoItems.map((item, index) => (
@@ -705,19 +723,17 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                       loading="lazy"
                       decoding="async"
                     />
-                    {canManage && (
-                      <button
-                        type="button"
-                        className="image-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
-                        title={t('deleteImage')}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18"/>
-                          <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="image-delete-btn"
+                      onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
+                      title={t('deleteImage')}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -752,7 +768,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
           )}
 
           {/* Hidden file input for image selection */}
-          {!isDemo && note && canManage && (
+          {!isDemo && note && (
             <input
               ref={fileInputRef}
               type="file"
@@ -873,7 +889,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
               </svg>
             </button>
-            {!isDemo && note && canManage && (
+            {!isDemo && note && (
               <>
                 <label
                   htmlFor="image-upload-input"
@@ -907,7 +923,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 )}
               </>
             )}
-            {!isDemo && note && canManage && settings.aiFeatures.voiceTranscription && !isTodoList && (
+            {!isDemo && note && settings.aiFeatures.voiceTranscription && !isTodoList && (
               <button
                 type="button"
                 className={`btn-modal-voice ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}

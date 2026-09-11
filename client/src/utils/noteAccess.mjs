@@ -49,5 +49,23 @@ export function noteOwnerName(note) {
   return raw.username || (typeof raw.email === 'string' ? raw.email.split('@')[0] : null) || null;
 }
 
-const noteAccess = { noteOwnerId, isNoteOwner, noteOwnerName };
+/**
+ * Username of whoever edited the note last, or null when that is the owner (or
+ * unknown). Used for the "last edited by" hint on shared notes.
+ * @param {Object|null|undefined} note
+ * @returns {string|null}
+ */
+export function lastEditorName(note) {
+  const raw = note?.lastEditedBy;
+  if (!raw) return null;
+  const editorId = typeof raw === 'object' ? String(raw._id || raw.id || '') : String(raw);
+  const owner = noteOwnerId(note);
+  if (editorId && owner && editorId === owner) return null;
+  if (typeof raw === 'object') {
+    return raw.username || (typeof raw.email === 'string' ? raw.email.split('@')[0] : null) || null;
+  }
+  return null;
+}
+
+const noteAccess = { noteOwnerId, isNoteOwner, noteOwnerName, lastEditorName };
 export default noteAccess;

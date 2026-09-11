@@ -640,6 +640,106 @@ test.describe.serial('KeepLocal production smoke', () => {
       .toBe(themeBefore.replace('-mode', '') || 'light');
   });
 
+  test('a collaborator can add an image and the owner sees who edited last', async ({ browser }) => {
+    const TITLE = 'Bild-Notiz';
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.fill('.note-modal-title', TITLE);
+    await page.fill('.note-modal-content', 'für den Mitbearbeiter');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+
+    // Share it with the collaborator created earlier.
+    await page.locator('[role="article"]', { hasText: TITLE }).click();
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.click('.btn-modal-collaborate');
+    await expect(page.locator('.collaborate-modal')).toBeVisible();
+    const shareButton = page.locator('.collaborate-modal .friend-item', { hasText: FRIEND.username }).locator('.btn-share');
+    if (!(await shareButton.evaluate((el) => el.classList.contains('shared')))) {
+      await shareButton.click();
+    }
+    await expect(shareButton).toHaveClass(/shared/, { timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.collaborate-modal')).toHaveCount(0);
+
+    // The collaborator uploads an image — allowed since images are content.
+    const context = await browser.newContext();
+    const friend = await context.newPage();
+    await friend.goto('/');
+    await friend.fill('input[type="email"], form input[type="text"]', FRIEND.email);
+    await friend.fill('form input[type="password"]', FRIEND.password);
+    await friend.click('form button[type="submit"]');
+    await expect(friend.locator('.App')).toBeVisible({ timeout: 25000 });
+    await friend.locator('[role="article"]', { hasText: TITLE }).click();
+    await expect(friend.locator('.note-modal')).toBeVisible();
+    await expect(friend.locator('#image-upload-input')).toHaveCount(1, 'collaborators may upload images');
+    await friend.locator('.note-modal-content').click();
+    await friend.keyboard.type(' + Bild vom Mitbearbeiter');
+    await friend.setInputFiles('#image-upload-input', UPLOAD_FIXTURE);
+    await expect(friend.locator('.new-images-preview .image-preview')).toHaveCount(1);
+    await friend.locator('.btn-modal-image-upload').click();
+    await expect(friend.locator('.note-modal-images .image-preview')).toHaveCount(1, { timeout: 25000 });
+    await friend.locator('.btn-modal-save').click();
+    await expect(friend.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    await context.close();
+
+    // The owner sees the image and who edited last.
+    await page.reload();
+    await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
+    const card = page.locator('[role="article"]', { hasText: TITLE });
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card.locator('.note-image-preview img').first()).toBeVisible();
+    await expect(card.locator('.note-edited-by')).toContainText(new RegExp(FRIEND.username));
+  });
+
+  test('an edit from elsewhere raises the conflict banner in an open editor', async () => {
+    const TITLE = 'Konflikt-Notiz';
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.fill('.note-modal-title', TITLE);
+    await page.fill('.note-modal-content', 'Ausgangszustand');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+
+    await page.locator('[role="article"]', { hasText: TITLE }).click();
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.locator('.note-modal-content').click();
+    await page.keyboard.type(' + lokaler Tippfehler');
+
+    // Another client changes the same note while this editor is open.
+    const noteId = await page.evaluate(async (title) => {
+      const response = await fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' });
+      const body = await response.json();
+      return body.notes.find((note) => note.title === title)?._id;
+    }, TITLE);
+    const external = await page.evaluate(async (id) => {
+      const csrf = await (await fetch('/api/csrf-token', { credentials: 'include' })).json();
+      const response = await fetch(`/api/notes/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.csrfToken },
+        body: JSON.stringify({ content: 'AENDERUNG VON AUSSEN' }),
+      });
+      return response.status;
+    }, noteId);
+    expect(external).toBe(200);
+
+    // The focus refresh (throttled, no 60s wait) brings the new version in.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('.note-modal-conflict')).toBeVisible({ timeout: 30000 });
+    // The local edit is still in the textarea — nothing was overwritten.
+    await expect(page.locator('.note-modal-content')).toContainText('lokaler Tippfehler');
+
+    // Loading the server version asks before discarding local changes.
+    await page.locator('.btn-conflict-load').click();
+    await expect(page.locator('.confirm-dialog')).toBeVisible();
+    await page.locator('.confirm-dialog .btn-confirm').click();
+    await expect(page.locator('.note-modal-content')).toHaveValue('AENDERUNG VON AUSSEN', { timeout: 15000 });
+    await expect(page.locator('.note-modal-conflict')).toHaveCount(0);
+    await page.locator('.btn-modal-cancel').click();
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+  });
+
   // The password tests run last: they change credentials the other tests use.
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';
@@ -652,7 +752,10 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.click('.btn-change-password');
 
     await expect(page.locator('.settings-error')).toHaveCount(0);
-    await expect(page.locator('.toast')).toContainText(/Password changed|Passwort geändert/, { timeout: 15000 });
+    // The queue can hold more than one toast, so match the specific one.
+    await expect(
+      page.locator('.toast', { hasText: /Password changed|Passwort geändert/ }).first()
+    ).toBeVisible({ timeout: 15000 });
     // The fields are cleared and this session stays alive.
     await expect(page.locator('#current-password')).toHaveValue('');
     await page.keyboard.press('Escape');

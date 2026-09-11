@@ -22,10 +22,12 @@ test('a new-note request never replaces an open editor', () => {
 test('note cards offer destructive actions to the owner only', () => {
   const note = read('components', 'Note.jsx');
 
-  assert.match(note, /import \{ isNoteOwner \} from '\.\.\/utils\/noteAccess\.mjs';/);
+  assert.match(note, /import \{ isNoteOwner, lastEditorName \} from '\.\.\/utils\/noteAccess\.mjs';/);
   assert.match(note, /const canManage = isNoteOwner\(note, user\);/);
   assert.match(note, /\{canManage && \(\s*<button[^>]*onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onToggleArchive/s);
   assert.match(note, /\{canManage && onOpenCollaborate && \(/);
+  assert.match(note, /const editorName = lastEditorName\(note\);/);
+  assert.match(note, /className="note-edited-by"/);
   assert.match(note, /\{canManage && \(\s*<button[^>]*onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*handleDeleteClick\(\);/s);
   // Pinning stays collaborative (the server allows it for sharedWith).
   assert.match(note, /onTogglePin\(note\._id\)/);
@@ -35,15 +37,35 @@ test('the note editor hides owner-only tools and explains the shared state', () 
   const modal = read('components', 'NoteModal.jsx');
 
   assert.match(modal, /const canManage = !note \|\| isNoteOwner\(note, user\);/);
+  // Destructural/strukturell bleibt beim Besitzer ...
   assert.match(modal, /\{note && canManage && onToggleArchive && \(/);
   assert.match(modal, /\{note && canManage && onOpenCollaborate && \(/);
   assert.match(modal, /\{note && canManage && onDelete && \(/);
-  assert.match(modal, /\{!isDemo && note && canManage && settings\.aiFeatures\.voiceTranscription/);
+  // ... Inhaltliches (Bilder, Aufnahme) dürfen Mitbearbeiter ebenfalls,
+  // passend zu den Server-Routen (requireEditableNote).
+  assert.match(modal, /\{!isDemo && note && settings\.aiFeatures\.voiceTranscription/);
+  assert.doesNotMatch(modal, /\{!isDemo && note && canManage && settings\.aiFeatures/);
+  assert.match(modal, /\{!isDemo && note && images && images\.length > 0 && \(/);
+  assert.doesNotMatch(modal, /\{canManage && \(\s*<button\s*type="button"\s*className="image-delete-btn"/);
+
   assert.match(modal, /note-modal-shared-hint/);
   assert.match(modal, /t\('sharedNoteOwnerHint', \{ owner: noteOwnerName\(note\) \|\| t\('unknownUser'\) \}\)/);
-  // Images stay visible for collaborators, deleting them does not.
-  assert.match(modal, /\{!isDemo && note && images && images\.length > 0 && \(/);
-  assert.match(modal, /\{canManage && \(\s*<button\s*type="button"\s*className="image-delete-btn"/s);
+  // Nachvollziehbarkeit: wer zuletzt geändert hat.
+  assert.match(modal, /const editorName = lastEditorName\(serverNote \|\| note\);/);
+  assert.match(modal, /t\('lastEditedBy', \{ name: editorName \}\)/);
+  assert.match(modal, /note-modal-edited-hint/);
+});
+
+test('an editor opened while somebody else saves offers the conflict banner', () => {
+  const modal = read('components', 'NoteModal.jsx');
+  const app = read('App.jsx');
+
+  // App reicht die live-Version aus der Liste durch (Poll/Focus-Refresh).
+  assert.match(app, /serverNote=\{noteModal\.note \? \(notes\.find\(item => item\._id === noteModal\.note\._id\) \|\| noteModal\.note\) : null\}/);
+  // NoteModal vergleicht sie gegen die eigene Basis statt still zu überschreiben.
+  assert.match(modal, /const serverUpdatedAt = serverNote\?\.updatedAt;/);
+  assert.match(modal, /if \(serverUpdatedAt === baseUpdatedAtRef\.current\) return;/);
+  assert.match(modal, /setConflict\(previous => \(previous \? previous : \{ currentNote: serverNote \}\)\);/);
 });
 
 // #4: the collaborate modal kept reading the note from props, which App never
