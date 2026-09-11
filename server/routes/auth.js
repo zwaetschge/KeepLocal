@@ -50,7 +50,17 @@ function publicAuthUser(user, includeProfile = false) {
     username: user.username,
     email: user.email,
     isAdmin: user.isAdmin,
-    isDemo: user.isDemo === true
+    isDemo: user.isDemo === true,
+    // Klein und unkritisch, dafür braucht die UI keine zweite Anfrage:
+    // Theme, Sprache und AI-Flags folgen dem Konto statt dem Gerät.
+    preferences: {
+      theme: user.preferences?.theme || 'light',
+      language: user.preferences?.language || null,
+      aiFeatures: {
+        voiceTranscription: user.preferences?.aiFeatures?.voiceTranscription === true
+      },
+      transcriptionLanguage: user.preferences?.transcriptionLanguage || 'auto'
+    }
   };
 
   if (includeProfile) {
@@ -386,6 +396,63 @@ router.get('/me', authenticateToken, async (req, res) => {
   res.json({
     user: publicAuthUser(req.user, true)
   });
+});
+
+// PUT /api/auth/preferences - Konto-weite Voreinstellungen speichern.
+// Nur whitelist-Felder werden übernommen; unbekannte Schlüssel fallen weg, damit
+// ein Client nicht beliebige Dokumentteile schreiben kann.
+router.put('/preferences', authenticateToken, blockDemoUser('preferences'), async (req, res, next) => {
+  try {
+    const { theme, language, aiFeatures, transcriptionLanguage } = req.body || {};
+    const update = {};
+
+    if (theme !== undefined) {
+      if (!['light', 'dark', 'oled', 'eink', 'doodle'].includes(theme)) {
+        return res.status(400).json({ error: 'Ungueltiges Theme' });
+      }
+      update['preferences.theme'] = theme;
+    }
+    if (language !== undefined) {
+      if (language !== null && !['de', 'en'].includes(language)) {
+        return res.status(400).json({ error: 'Ungueltige Sprache' });
+      }
+      update['preferences.language'] = language;
+    }
+    if (aiFeatures !== undefined) {
+      if (typeof aiFeatures !== 'object' || aiFeatures === null || Array.isArray(aiFeatures)) {
+        return res.status(400).json({ error: 'Ungueltige AI-Einstellungen' });
+      }
+      if (aiFeatures.voiceTranscription !== undefined) {
+        if (typeof aiFeatures.voiceTranscription !== 'boolean') {
+          return res.status(400).json({ error: 'voiceTranscription muss ein Boolean sein' });
+        }
+        update['preferences.aiFeatures.voiceTranscription'] = aiFeatures.voiceTranscription;
+      }
+    }
+    if (transcriptionLanguage !== undefined) {
+      if (
+        typeof transcriptionLanguage !== 'string'
+        || transcriptionLanguage.length > 20
+        || (transcriptionLanguage !== 'auto' && !/^[a-z]{2}(-[A-Z]{2})?$/.test(transcriptionLanguage))
+      ) {
+        return res.status(400).json({ error: 'Ungueltige Transkriptionssprache' });
+      }
+      update['preferences.transcriptionLanguage'] = transcriptionLanguage;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ error: 'Keine gueltigen Einstellungen uebermittelt' });
+    }
+
+    const user = await User.findByIdAndUpdate(req.user._id, { $set: update }, { new: true });
+    if (!user) {
+      return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    }
+
+    res.json({ message: 'Einstellungen gespeichert', preferences: publicAuthUser(user).preferences });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // POST /api/auth/logout - Normal accounts revoke every copy of the current

@@ -18,6 +18,7 @@ export const API_ENDPOINTS = {
     DEMO: '/api/auth/demo',
     LOGOUT: '/api/auth/logout',
     ME: '/api/auth/me',
+    PREFERENCES: '/api/auth/preferences',
     CSRF_TOKEN: '/api/csrf-token',
     PROVIDERS: '/api/auth/providers',
     CHANGE_PASSWORD: '/api/auth/change-password',

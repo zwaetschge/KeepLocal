@@ -571,6 +571,75 @@ test.describe.serial('KeepLocal production smoke', () => {
     await context.close();
   });
 
+  test('theme and language follow the account, not the browser', async ({ browser }) => {
+    const mePreferences = async () => {
+      const response = await page.request.get('/api/auth/me');
+      return (await response.json()).user.preferences;
+    };
+    const bodyTheme = () => page.evaluate(() => document.body.className);
+
+    const themeBefore = await bodyTheme();
+    const langBefore = await page.evaluate(() => document.documentElement.lang);
+
+    // 1) Switching the theme stores it on the account (debounced write-back).
+    await page.click('.theme-toggle');
+    await expect.poll(bodyTheme, { timeout: 5000 }).not.toBe(themeBefore);
+    const themeAfter = await bodyTheme();
+    await expect
+      .poll(async () => (await mePreferences()).theme, { timeout: 10000 })
+      .toBe(themeAfter.replace('-mode', ''));
+
+    // 2) A second device (isolated context, same account) gets it too.
+    const context = await browser.newContext();
+    const other = await context.newPage();
+    await other.goto('/');
+    await other.fill('input[type="email"], form input[type="text"]', ADMIN.email);
+    await other.fill('form input[type="password"]', ADMIN.password);
+    await other.click('form button[type="submit"]');
+    await expect(other.locator('.App')).toBeVisible({ timeout: 25000 });
+    await expect.poll(() => other.evaluate(() => document.body.className), { timeout: 10000 })
+      .toBe(themeAfter);
+
+    // 3) The UI language is an account preference as well.
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.locator('.settings-language .language-toggle').click();
+    await expect(page.locator('.language-popup')).toBeVisible();
+    const targetLang = langBefore === 'de' ? 'English' : 'Deutsch';
+    const expectedCode = langBefore === 'de' ? 'en' : 'de';
+    await page.locator('.language-option', { hasText: targetLang }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', expectedCode);
+    await expect
+      .poll(async () => (await mePreferences()).language, { timeout: 10000 })
+      .toBe(expectedCode);
+
+    // The second device picks it up on the next load.
+    await other.reload();
+    await expect(other.locator('.App')).toBeVisible({ timeout: 25000 });
+    await expect(other.locator('html')).toHaveAttribute('lang', expectedCode, { timeout: 10000 });
+    await context.close();
+
+    // 4) Restore the previous state so the remaining tests stay deterministic.
+    //    The settings modal is still open, so switch the language back in place.
+    if (langBefore !== expectedCode) {
+      await page.locator('.settings-language .language-toggle').click();
+      await page.locator('.language-option', { hasText: langBefore === 'de' ? 'Deutsch' : 'English' }).click();
+      await expect(page.locator('html')).toHaveAttribute('lang', langBefore);
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-modal')).toHaveCount(0);
+
+    for (let step = 0; step < 5; step += 1) {
+      if ((await bodyTheme()) === themeBefore) break;
+      await page.click('.theme-toggle');
+      await page.waitForTimeout(300);
+    }
+    expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
+    await expect
+      .poll(async () => (await mePreferences()).theme, { timeout: 10000 })
+      .toBe(themeBefore.replace('-mode', '') || 'light');
+  });
+
   // The password tests run last: they change credentials the other tests use.
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';

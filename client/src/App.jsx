@@ -16,18 +16,15 @@ import FriendsModal from './components/FriendsModal';
 import CollaborateModal from './components/CollaborateModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
-import { SettingsProvider } from './contexts/SettingsContext';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
 import { useKeyboardShortcuts, useNotesManager } from './hooks';
-import { readLocalStorage, writeLocalStorage } from './utils/localStorage.mjs';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
 
 // Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden
 const AdminConsole = React.lazy(() => import('./components/AdminConsole.jsx'));
 const Settings = React.lazy(() => import('./components/Settings.jsx'));
 const OAuthCallback = React.lazy(() => import('./components/OAuthCallback.jsx'));
-
-const THEMES = new Set(['light', 'dark', 'oled', 'eink', 'doodle']);
 
 // Inline-Styles (App.css bleibt bei diesem Refactoring unangetastet)
 const REFRESHING_STYLE = { opacity: 0.6, transition: 'opacity 0.2s ease' };
@@ -47,6 +44,10 @@ function AppContent() {
     login, demoLogin, register, logout, setup, completeOAuthLogin,
   } = useAuth();
   const { t } = useLanguage();
+  // Theme ist eine Konto-Einstellung (SettingsContext) und folgt damit dem
+  // Login statt dem Gerät.
+  const { settings, setTheme } = useSettings();
+  const theme = settings.theme;
 
   // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,10 +55,6 @@ function AppContent() {
   const [showRegister, setShowRegister] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [noteModal, setNoteModal] = useState({ isOpen: false, note: null });
-  const [theme, setTheme] = useState(() => {
-    const savedTheme = readLocalStorage('theme');
-    return THEMES.has(savedTheme) ? savedTheme : 'light';
-  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -97,10 +94,9 @@ function AppContent() {
     initializeCSRF();
   }, []);
 
-  // Theme anwenden
+  // Theme anwenden (Persistenz übernimmt der SettingsContext)
   useEffect(() => {
     applyThemeToDocument(theme);
-    writeLocalStorage('theme', theme);
   }, [theme]);
 
   const openCollaborateModal = (note) => {
@@ -132,14 +128,8 @@ function AppContent() {
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
-    setTheme(prevTheme => {
-      if (prevTheme === 'light') return 'dark';
-      if (prevTheme === 'dark') return 'oled';
-      if (prevTheme === 'oled') return 'eink';
-      if (prevTheme === 'eink') return 'doodle';
-      if (prevTheme === 'doodle') return 'light';
-      return 'light';
-    });
+    const next = { light: 'dark', dark: 'oled', oled: 'eink', eink: 'doodle', doodle: 'light' };
+    setTheme(next[theme] || 'light');
   };
 
   // Logout — der Notiz-Zustand räumt der Hook beim isLoggedIn-Wechsel selbst ab
@@ -391,14 +381,16 @@ function AppContent() {
 // Wrap with providers
 function App() {
   return (
-    <LanguageProvider>
-      <ToastStack /> {/* single app-wide toastBus host; claim mechanism dedupes */}
-      <AuthProvider>
+    <AuthProvider>
+      {/* LanguageProvider sits inside AuthProvider so it can adopt and persist
+          the account language; ToastStack needs the language context. */}
+      <LanguageProvider>
+        <ToastStack /> {/* single app-wide toastBus host; claim mechanism dedupes */}
         <SettingsProvider>
           <AppContent />
         </SettingsProvider>
-      </AuthProvider>
-    </LanguageProvider>
+      </LanguageProvider>
+    </AuthProvider>
   );
 }
 

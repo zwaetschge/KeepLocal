@@ -4,6 +4,8 @@ import { getBrowserLanguage } from '../utils/browserLanguage.mjs';
 import { subscribeToWindowEvent } from '../utils/browserEnvironment.mjs';
 import { readLocalStorage, writeLocalStorage } from '../utils/localStorage.mjs';
 import { interpolate } from '../utils/i18n.mjs';
+import { useAuth } from './AuthContext';
+import { authAPI } from '../services/api';
 
 const LanguageContext = createContext();
 
@@ -12,6 +14,7 @@ const LANGUAGE_STORAGE_KEY = 'keeplocal_language';
 const resolveLanguage = () => getBrowserLanguage(translations, defaultLanguage);
 
 export function LanguageProvider({ children }) {
+  const { user, isLoggedIn } = useAuth();
   // An explicit choice persists; without one, follow the browser language.
   const [language, setLanguage] = useState(() => {
     const stored = readLocalStorage(LANGUAGE_STORAGE_KEY);
@@ -39,12 +42,27 @@ export function LanguageProvider({ children }) {
     if (title) document.title = title;
   }, [language]);
 
+  // The account preference wins after login, so the UI language follows the
+  // user instead of the device (a German account on an English browser used to
+  // flip to English on every new device).
+  const accountLanguage = user?.preferences?.language;
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (!accountLanguage || !translations[accountLanguage]) return;
+    setLanguage(accountLanguage);
+    writeLocalStorage(LANGUAGE_STORAGE_KEY, accountLanguage);
+  }, [isLoggedIn, accountLanguage]);
+
   const changeLanguage = useCallback((langCode) => {
     if (!translations[langCode]) {
       return;
     }
     writeLocalStorage(LANGUAGE_STORAGE_KEY, langCode);
     setLanguage(langCode);
+    // Persist on the account as well; localStorage alone is per device.
+    authAPI.updatePreferences({ language: langCode }).catch((error) => {
+      console.error('Could not store the language on the account:', error.message);
+    });
   }, []);
 
   // Stabil über Renders (nur Sprachwechsel erzeugt eine neue Identität) —
