@@ -531,4 +531,20 @@ export const en = {
   errUserNotFound: 'User not found.',
   errUsernameAlreadyExists: 'That username is already taken.',
   errValidationError: 'Invalid input.',
+
+  // Trash (soft delete + undo)
+  trash: 'Trash',
+  trashEmpty: 'The trash is empty',
+  trashEmptyHint: 'Deleted notes end up here and are removed for good after 30 days.',
+  trashRetentionHint: 'Notes stay in the trash for 30 days, then the server removes them for good.',
+  emptyTrash: 'Empty trash',
+  trashEmptied: '{count} note(s) permanently deleted',
+  restore: 'Restore',
+  deleteForever: 'Delete forever',
+  noteMovedToTrash: 'Note moved to the trash',
+  noteRestored: 'Note restored',
+  noteDeletedPermanently: 'Note permanently deleted',
+  undo: 'Undo',
+  confirmPurgeTitle: 'Delete note forever?',
+  confirmPurgeMessage: 'The note and its images are deleted immediately and cannot be restored.',
 };

@@ -276,6 +276,25 @@ const noteValidationRules = {
       .isIn(['true', 'false'])
       .withMessage('archived muss true oder false sein'),
 
+    query('deleted')
+      .optional()
+      .isIn(['true', 'false'])
+      .withMessage('deleted muss true oder false sein'),
+
+    handleValidationErrors
+  ],
+
+  // DELETE /api/notes/:id?permanent=true — endgültiges Löschen aus dem Papierkorb
+  remove: [
+    param('id')
+      .isMongoId()
+      .withMessage('Ungültige Notiz-ID'),
+
+    query('permanent')
+      .optional()
+      .isIn(['true', 'false'])
+      .withMessage('permanent muss true oder false sein'),
+
     handleValidationErrors
   ]
 };

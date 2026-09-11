@@ -8,7 +8,7 @@ import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, operation }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, operation }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
@@ -26,7 +26,12 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   };
 
   const handleConfirmDelete = () => {
-    onDelete(note._id);
+    // Im Papierkorb bedeutet Löschen: endgültig entfernen (inkl. Bilddateien).
+    if (inTrash) {
+      onPurge(note._id);
+    } else {
+      onDelete(note._id);
+    }
     setShowDeleteConfirm(false);
   };
 
@@ -120,7 +125,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
         '--note-bg-color': getColorVar(note.color),
         '--note-index': Math.min(index || 0, 15)
       }}
-      onClick={() => onOpenModal(note)}
+      onClick={() => { if (!inTrash && onOpenModal) onOpenModal(note); }}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault();
@@ -131,7 +136,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
       tabIndex={0}
       aria-label={note.title || t('note') || 'Notiz'}
       aria-busy={Boolean(operation)}
-      draggable="true"
+      draggable={inTrash ? 'false' : 'true'}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
@@ -249,6 +254,40 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
         )}
 
         <div className="note-hover-actions">
+          {inTrash ? (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRestore(note._id);
+                }}
+                className="action-btn restore-btn"
+                disabled={Boolean(operation)}
+                title={t('restore')}
+                aria-label={t('restore')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick();
+                }}
+                className="action-btn delete-btn purge-btn"
+                disabled={Boolean(operation)}
+                title={t('deleteForever')}
+                aria-label={t('deleteForever')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
+                </svg>
+              </button>
+            </>
+          ) : (
+            <>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -314,13 +353,16 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
               </svg>
             </button>
           )}
+            </>
+          )}
         </div>
       </div>
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title={t('confirmDeleteNoteTitle')}
-        message={t('confirmDeleteMessage')}
+        title={inTrash ? t('confirmPurgeTitle') : t('confirmDeleteNoteTitle')}
+        message={inTrash ? t('confirmPurgeMessage') : t('confirmDeleteMessage')}
+        confirmLabel={inTrash ? t('deleteForever') : undefined}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />

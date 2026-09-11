@@ -69,6 +69,7 @@ function ToastStack() {
           message={toast.message}
           type={toast.type}
           duration={toast.duration}
+          action={toast.action}
           onClose={() => toastBus.dismiss(toast.id)}
         />
       ))}

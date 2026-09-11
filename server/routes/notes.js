@@ -45,7 +45,7 @@ async function requireOwnedNote(req, res, next) {
  */
 router.get('/', noteValidation.search, async (req, res, next) => {
   try {
-    const { search, tag, page, limit, archived } = req.query;
+    const { search, tag, page, limit, archived, deleted } = req.query;
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
@@ -53,7 +53,8 @@ router.get('/', noteValidation.search, async (req, res, next) => {
       tag,
       page,
       limit,
-      archived
+      archived,
+      deleted
     });
 
     res.json(result);
@@ -133,12 +134,49 @@ router.put('/:id', noteValidation.update, rejectDemoNoteCapabilities, async (req
 });
 
 /**
- * DELETE /api/notes/:id - Delete a note
+ * DELETE /api/notes/trash - Papierkorb endgültig leeren
+ * Muss VOR '/:id' registriert sein, sonst wird 'trash' als ID geprüft.
  */
-router.delete('/:id', noteValidation.delete, async (req, res, next) => {
+router.delete('/trash', async (req, res, next) => {
   try {
-    const deletedNote = await notesService.deleteNote(req.params.id, req.user._id);
-    res.json({ message: 'Notiz gelöscht', note: deletedNote });
+    const removed = await notesService.emptyTrash(req.user._id);
+    res.json({ message: 'Papierkorb geleert', removed });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/notes/:id/restore - Notiz aus dem Papierkorb wiederherstellen
+ */
+router.post('/:id/restore', noteValidation.getOne, async (req, res, next) => {
+  try {
+    const note = await notesService.restoreNote(req.params.id, req.user._id);
+    res.json(note);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/notes/:id - Delete a note (soft delete into the trash;
+ * ?permanent=true removes a trashed note for good, including its images)
+ */
+router.delete('/:id', noteValidation.remove, async (req, res, next) => {
+  try {
+    const permanent = req.query.permanent === 'true';
+    const deletedNote = permanent
+      ? await notesService.purgeNote(req.params.id, req.user._id)
+      : await notesService.deleteNote(req.params.id, req.user._id);
+
+    res.json({
+      message: permanent ? 'Notiz endgültig gelöscht' : 'Notiz in den Papierkorb verschoben',
+      deletedAt: deletedNote.deletedAt || null,
+      note: deletedNote
+    });
   } catch (error) {
     if (error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });

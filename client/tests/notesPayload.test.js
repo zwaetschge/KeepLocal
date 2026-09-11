@@ -46,7 +46,7 @@ test('notes payload normalization makes malformed API collections render-safe', 
   assert.deepEqual(normalized.notes[0].sharedWith, [{ username: 'tester', email: '' }]);
   assert.deepEqual(normalized.tags, []);
   assert.deepEqual(normalized.pagination, { page: 1, limit: 50, pages: 4, total: 9 });
-  assert.deepEqual(normalized.counts, { active: 8, archived: 0 });
+  assert.deepEqual(normalized.counts, { active: 8, archived: 0, trash: 0 });
 });
 
 test('notes payload normalization supplies a safe empty response', async () => {
@@ -55,7 +55,7 @@ test('notes payload normalization supplies a safe empty response', async () => {
   assert.deepEqual(normalizeNotesPayload(null), {
     notes: [],
     pagination: { page: 1, limit: 50, total: 0, pages: 0 },
-    counts: { active: 0, archived: 0 },
+    counts: { active: 0, archived: 0, trash: 0 },
     tags: []
   });
 });

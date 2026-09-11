@@ -531,4 +531,20 @@ export const de = {
   errUserNotFound: 'Benutzer nicht gefunden.',
   errUsernameAlreadyExists: 'Benutzername ist bereits vergeben.',
   errValidationError: 'Eingabe ungültig.',
+
+  // Papierkorb (weich löschen + Rückgängig)
+  trash: 'Papierkorb',
+  trashEmpty: 'Der Papierkorb ist leer',
+  trashEmptyHint: 'Gelöschte Notizen landen hier und werden nach 30 Tagen endgültig entfernt.',
+  trashRetentionHint: 'Notizen bleiben 30 Tage im Papierkorb, danach löscht der Server sie endgültig.',
+  emptyTrash: 'Papierkorb leeren',
+  trashEmptied: '{count} Notiz(en) endgültig gelöscht',
+  restore: 'Wiederherstellen',
+  deleteForever: 'Endgültig löschen',
+  noteMovedToTrash: 'Notiz in den Papierkorb verschoben',
+  noteRestored: 'Notiz wiederhergestellt',
+  noteDeletedPermanently: 'Notiz endgültig gelöscht',
+  undo: 'Rückgängig',
+  confirmPurgeTitle: 'Notiz endgültig löschen?',
+  confirmPurgeMessage: 'Die Notiz und ihre Bilder werden sofort und unwiderruflich gelöscht.',
 };

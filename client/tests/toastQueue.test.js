@@ -15,7 +15,7 @@ test('App publishes notifications through the toast bus instead of local state',
   const code = source.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
 
   assert.match(source, /import ToastStack, \{ toastBus \} from '\.\/components\/ToastStack';/);
-  assert.match(source, /const showToast = useCallback\(\(message, type = 'info'\) => \{\s*toastBus\.publish\(message, type\);\s*\}, \[\]\);/);
+  assert.match(source, /const showToast = useCallback\(\(message, type = 'info', options = null\) => \{\s*toastBus\.publish\(message, type, options\?\.duration, options\?\.action\);\s*\}, \[\]\);/);
   assert.doesNotMatch(code, /import Toast from '\.\/components\/Toast';/, 'the single-toast component must not be rendered next to the queue');
   assert.doesNotMatch(code, /setToast\(/, 'no local toast state');
   assert.doesNotMatch(code, /toastElement/, 'no separately rendered toast element');
@@ -43,5 +43,5 @@ test('dragging between sections does not double-toast', () => {
 test('the toast bus keeps queued messages instead of replacing them', () => {
   // Behavioural check of the queue the app now relies on.
   const busSource = read('utils', 'toastBus.mjs');
-  assert.match(busSource, /toasts = \[\.\.\.toasts, \{ id, message: String\(message\), type, duration \}\]\.slice\(\s*-MAX_VISIBLE_TOASTS\s*\);/);
+  assert.match(busSource, /toasts = \[\.\.\.toasts, \{ id, message: String\(message\), type, duration, action: normalizedAction \}\]\.slice\(\s*-MAX_VISIBLE_TOASTS\s*\);/);
 });

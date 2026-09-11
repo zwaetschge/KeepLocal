@@ -268,9 +268,14 @@ test('App.jsx nutzt React.lazy + Suspense für AdminConsole, Settings und OAuthC
 
 test('App.jsx rendert Skeleton-Karten beim ersten Laden und dimmt bei Hintergrund-Refresh', () => {
   const app = readClientFile('src/App.jsx');
-  assert.match(app, /function NotesSkeleton\(/);
-  assert.match(app, /skeleton skeleton-card/);
-  assert.match(app, /skeleton skeleton-text/);
+  // Die presentational Pieces (Skeleton, EmptyState, Sections, Trash-Header)
+  // leben in components/AppStates.jsx, damit App.jsx reine Verdrahtung bleibt.
+  const states = readClientFile('src/components/AppStates.jsx');
+  assert.match(states, /export function NotesSkeleton\(/);
+  assert.match(states, /skeleton skeleton-card/);
+  assert.match(states, /skeleton skeleton-text/);
+  assert.match(app, /import \{ NotesSkeleton, EmptyState, NotesSection, TrashHeader \} from '\.\/components\/AppStates';/);
+  assert.match(app, /<NotesSkeleton \/>/);
   assert.match(app, /loading && notes\.length === 0/);
   assert.match(app, /aria-busy=\{refreshing\}/);
   assert.match(app, /opacity: 0\.6/);

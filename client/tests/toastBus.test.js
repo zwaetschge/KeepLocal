@@ -23,6 +23,7 @@ test('toastBus publishes messages and notifies subscribers', async () => {
     message: 'Erste Meldung',
     type: 'success',
     duration: 1500,
+    action: null,
   }]);
 
   unsubscribe();

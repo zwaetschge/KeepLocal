@@ -1007,3 +1007,46 @@ body.eink-mode::before {
   box-shadow: var(--shadow-lifted);
   transform: translateY(-2px);
 }
+
+/* --- Papierkorb-Ansicht ------------------------------------------------- */
+.trash-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-4) 16px 0;
+}
+
+.trash-header .section-title {
+  margin: 0;
+}
+
+.trash-hint {
+  flex: 1 1 16rem;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.btn-empty-trash {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent-text, var(--accent-color));
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-empty-trash:hover:not(:disabled) {
+  background: var(--accent-light);
+  border-color: var(--accent-color);
+}
+
+.btn-empty-trash:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

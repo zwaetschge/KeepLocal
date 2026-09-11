@@ -57,6 +57,35 @@ const notesAPI = {
     }),
 
   /**
+   * Restore a note from the trash
+   * @param {string} id - Note ID
+   * @returns {Promise<Object>} The restored note
+   */
+  restore: (id) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.RESTORE(id), {
+      method: 'POST',
+    }),
+
+  /**
+   * Permanently delete a trashed note (including its images)
+   * @param {string} id - Note ID
+   * @returns {Promise<Object>} Confirmation
+   */
+  purge: (id) =>
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}?permanent=true`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * Empty the trash
+   * @returns {Promise<{removed: number}>}
+   */
+  emptyTrash: () =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.TRASH, {
+      method: 'DELETE',
+    }),
+
+  /**
    * Toggle pin status of a note
    * @param {string} id - Note ID
    * @returns {Promise<Object>} Updated note

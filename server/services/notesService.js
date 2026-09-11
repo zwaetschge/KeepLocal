@@ -38,6 +38,7 @@ function clientError(message) {
 function noteEditQuery(noteId, userId) {
   return {
     _id: noteId,
+    deletedAt: null,
     $or: [
       { userId },
       { sharedWith: userId }
@@ -256,14 +257,16 @@ async function deleteNoteImages(note) {
  * @param {boolean} params.isArchived - Archived filter
  * @returns {Object} MongoDB query object
  */
-function buildNotesQuery({ userId, search, tag, isArchived = false }) {
+function buildNotesQuery({ userId, search, tag, isArchived = false, deleted = false }) {
   // Query for own and shared notes
   let query = {
     $or: [
       { userId: userId }, // Own notes
       { sharedWith: userId } // Shared notes
     ],
-    isArchived: isArchived
+    isArchived: isArchived,
+    // Papierkorb: gelöschte Notizen tauchen in keiner regulären Ansicht auf.
+    deletedAt: deleted ? { $ne: null } : null
   };
 
   // Full-text search using MongoDB text index (more performant than regex)
@@ -286,19 +289,56 @@ function buildNotesQuery({ userId, search, tag, isArchived = false }) {
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Notes and pagination info
  */
-async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false' }) {
+async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false' }) {
   const safePage = normalizePositiveInteger(page, 1, Number.MAX_SAFE_INTEGER);
   const safeLimit = normalizePositiveInteger(limit, 50, 100);
   const isArchived = archived === true || archived === 'true';
+  const isDeleted = deleted === true || deleted === 'true';
+
+  // Papierkorb: nur eigene Notizen, unabhängig vom Archiv-Status, zuletzt
+  // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar.
+  if (isDeleted) {
+    const trashQuery = {
+      userId,
+      deletedAt: { $ne: null },
+      ...(typeof search === 'string' && search.trim() !== '' ? { $text: { $search: search.trim() } } : {})
+    };
+    const skip = (safePage - 1) * safeLimit;
+    const [trashTotal, trashNotes, activeCount, archivedCount] = await Promise.all([
+      Note.countDocuments(trashQuery),
+      Note.find(trashQuery)
+        .populate('userId', 'username email')
+        .populate('sharedWith', 'username email')
+        .sort({ deletedAt: -1 })
+        .skip(skip)
+        .limit(safeLimit),
+      Note.countDocuments(buildNotesQuery({ userId, isArchived: false })),
+      Note.countDocuments(buildNotesQuery({ userId, isArchived: true }))
+    ]);
+
+    return {
+      notes: trashNotes,
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total: trashTotal,
+        pages: Math.ceil(trashTotal / safeLimit)
+      },
+      counts: { active: activeCount, archived: archivedCount, trash: trashTotal },
+      tags: []
+    };
+  }
+
   const query = buildNotesQuery({ userId, search, tag, isArchived });
   const activeQuery = buildNotesQuery({ userId, isArchived: false });
   const archivedQuery = buildNotesQuery({ userId, isArchived: true });
 
   const skip = (safePage - 1) * safeLimit;
-  const [total, activeCount, archivedCount, tags] = await Promise.all([
+  const [total, activeCount, archivedCount, trashCount, tags] = await Promise.all([
     Note.countDocuments(query),
     Note.countDocuments(activeQuery),
     Note.countDocuments(archivedQuery),
+    Note.countDocuments({ userId, deletedAt: { $ne: null } }),
     Note.aggregate([
       { $match: isArchived ? archivedQuery : activeQuery },
       { $unwind: '$tags' },
@@ -326,7 +366,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
       total,
       pages: Math.ceil(total / safeLimit)
     },
-    counts: { active: activeCount, archived: archivedCount },
+    counts: { active: activeCount, archived: archivedCount, trash: trashCount },
     tags
   };
 }
@@ -340,6 +380,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
 async function getNoteById(noteId, userId) {
   const note = await Note.findOne({
     _id: noteId,
+    deletedAt: null,
     $or: [
       { userId: userId },
       { sharedWith: userId }
@@ -357,7 +398,7 @@ async function getNoteById(noteId, userId) {
 }
 
 async function getOwnedNoteById(noteId, userId) {
-  const note = await Note.findOne({ _id: noteId, userId });
+  const note = await Note.findOne({ _id: noteId, userId, deletedAt: null });
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
@@ -468,18 +509,65 @@ async function updateNote(noteId, noteData, userId) {
 }
 
 /**
- * Delete a note
+ * Delete a note — weich: Die Notiz wandert in den Papierkorb (30 Tage) und kann
+ * wiederhergestellt werden. Bilddateien bleiben deshalb liegen; endgültig
+ * gelöscht wird erst über purgeNote/emptyTrash oder den TTL-Index.
  * @param {string} noteId - Note ID
  * @param {string} userId - User ID (for authorization)
- * @returns {Promise<Object>} Deleted note
+ * @returns {Promise<Object>} The soft-deleted note
  * @throws {Error} If note not found or no access
  */
 async function deleteNote(noteId, userId) {
-  // Delete the database record first. If MongoDB fails, the note must retain
-  // all of its image files rather than becoming silently corrupted.
+  const note = await Note.findOneAndUpdate(
+    { _id: noteId, userId, deletedAt: null },
+    { $set: { deletedAt: new Date() } },
+    { new: true }
+  );
+
+  if (!note) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
+/**
+ * Restore a note from the trash.
+ * @param {string} noteId
+ * @param {string} userId - owner
+ * @returns {Promise<Object>} The restored note
+ */
+async function restoreNote(noteId, userId) {
+  const note = await Note.findOneAndUpdate(
+    { _id: noteId, userId, deletedAt: { $ne: null } },
+    { $set: { deletedAt: null } },
+    { new: true }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
+
+  if (!note) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
+/**
+ * Permanently delete a note from the trash, including its image files.
+ * @param {string} noteId
+ * @param {string} userId - owner
+ * @returns {Promise<Object>} The removed note
+ */
+async function purgeNote(noteId, userId) {
+  // Nur Notizen, die bereits im Papierkorb liegen, dürfen endgültig weg.
   const note = await Note.findOneAndDelete({
     _id: noteId,
-    userId: userId
+    userId,
+    deletedAt: { $ne: null }
   });
 
   if (!note) {
@@ -489,8 +577,23 @@ async function deleteNote(noteId, userId) {
   }
 
   await deleteNoteImages(note);
-
   return note;
+}
+
+/**
+ * Empty the trash: remove every soft-deleted note of the user plus their files.
+ * @param {string} userId
+ * @returns {Promise<number>} Count of permanently removed notes
+ */
+async function emptyTrash(userId) {
+  const notes = await Note.find({ userId, deletedAt: { $ne: null } }).select('images');
+  if (notes.length === 0) {
+    return 0;
+  }
+
+  await Note.deleteMany({ userId, deletedAt: { $ne: null } });
+  await Promise.all(notes.map(note => deleteNoteImages(note)));
+  return notes.length;
 }
 
 /**
@@ -523,7 +626,8 @@ async function togglePinNote(noteId, userId) {
 async function toggleArchiveNote(noteId, userId) {
   const note = await Note.findOne({
     _id: noteId,
-    userId: userId
+    userId: userId,
+    deletedAt: null
   });
 
   if (!note) {
@@ -713,6 +817,9 @@ module.exports = {
   createNote,
   updateNote,
   deleteNote,
+  restoreNote,
+  purgeNote,
+  emptyTrash,
   togglePinNote,
   toggleArchiveNote,
   shareNote,

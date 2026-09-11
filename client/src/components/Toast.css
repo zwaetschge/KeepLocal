@@ -106,6 +106,29 @@
   line-height: var(--leading-snug);
 }
 
+.toast-action {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--accent-text, var(--accent-color));
+  cursor: pointer;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-semibold);
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.toast-action:hover {
+  background: var(--accent-light);
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 .toast-close {
   background: transparent;
   border: none;

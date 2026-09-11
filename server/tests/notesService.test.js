@@ -15,7 +15,7 @@ function loadService(NoteMock, UserMock = {}) {
   return require(servicePath);
 }
 
-test('note deletion keeps image files when the database deletion fails', async () => {
+test('purging a trashed note keeps image files when the database deletion fails', async () => {
   fs.mkdirSync(uploadsDir, { recursive: true });
   const filename = `delete-order-${process.pid}.png`;
   const filepath = path.join(uploadsDir, filename);
@@ -31,8 +31,36 @@ test('note deletion keeps image files when the database deletion fails', async (
   const service = loadService(NoteMock);
 
   try {
-    await assert.rejects(service.deleteNote('note-id', 'user-id'), /database unavailable/);
+    await assert.rejects(service.purgeNote('note-id', 'user-id'), /database unavailable/);
     assert.equal(fs.existsSync(filepath), true);
+  } finally {
+    fs.rmSync(filepath, { force: true });
+  }
+});
+
+test('deleting a note moves it to the trash without touching image files', async () => {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const filename = `soft-delete-${process.pid}.png`;
+  const filepath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filepath, 'test');
+
+  let update = null;
+  const NoteMock = {
+    findOneAndUpdate: async (_query, change) => {
+      update = change;
+      return { images: [{ filename }], ...change.$set };
+    },
+    findOneAndDelete: async () => {
+      throw new Error('a soft delete must never remove the document');
+    }
+  };
+  const service = loadService(NoteMock);
+
+  try {
+    const deleted = await service.deleteNote('note-id', 'user-id');
+    assert.ok(update.$set.deletedAt instanceof Date);
+    assert.equal(deleted.deletedAt instanceof Date, true);
+    assert.equal(fs.existsSync(filepath), true, 'files stay until the note is purged');
   } finally {
     fs.rmSync(filepath, { force: true });
   }

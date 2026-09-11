@@ -975,3 +975,14 @@
   }
 
 }
+
+/* Papierkorb-Aktionen auf der Notizkarte */
+.note .restore-btn:hover {
+  background: var(--success-light, rgba(46, 125, 50, 0.15));
+  color: var(--success-color, #2E7D32);
+}
+
+.note .purge-btn:hover {
+  background: var(--error-light, rgba(211, 47, 47, 0.15));
+  color: var(--error-color, #d32f2f);
+}

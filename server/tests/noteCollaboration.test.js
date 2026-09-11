@@ -68,20 +68,22 @@ test('a collaborator can toggle the pin of a shared note', async () => {
   assert.deepEqual(queries[0].$or, [{ userId: FRIEND_ID }, { sharedWith: FRIEND_ID }]);
 });
 
-test('delete and archive stay owner-only', async () => {
+test('delete and archive stay owner-only and respect the trash', async () => {
   const deleteQueries = [];
   const archiveQueries = [];
   const service = loadService({
     findOne: async (query) => { archiveQueries.push(query); return storedNote(); },
-    findOneAndDelete: async (query) => { deleteQueries.push(query); return storedNote({ images: [] }); }
+    findOneAndUpdate: async (query, update) => { deleteQueries.push({ query, update }); return storedNote({ images: [] }); }
   });
 
   await service.deleteNote(NOTE_ID, OWNER_ID);
   await service.toggleArchiveNote(NOTE_ID, OWNER_ID);
 
-  assert.deepEqual(deleteQueries[0], { _id: NOTE_ID, userId: OWNER_ID });
-  assert.deepEqual(archiveQueries[0], { _id: NOTE_ID, userId: OWNER_ID });
-  assert.equal(deleteQueries[0].$or, undefined);
+  // Soft delete: owner-only, only notes that are not already trashed.
+  assert.deepEqual(deleteQueries[0].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
+  assert.ok(deleteQueries[0].update.$set.deletedAt instanceof Date);
+  assert.deepEqual(archiveQueries[0], { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
+  assert.equal(deleteQueries[0].query.$or, undefined);
   assert.equal(archiveQueries[0].$or, undefined);
 });
 
@@ -93,7 +95,7 @@ test('uploads and transcription keep the owner-only lookup', async () => {
 
   await service.getOwnedNoteById(NOTE_ID, FRIEND_ID);
 
-  assert.deepEqual(queries[0], { _id: NOTE_ID, userId: FRIEND_ID });
+  assert.deepEqual(queries[0], { _id: NOTE_ID, userId: FRIEND_ID, deletedAt: null });
 });
 
 test('sharing a note requires an accepted friendship', async () => {

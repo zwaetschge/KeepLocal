@@ -215,6 +215,98 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expectAppHealthy(page);
   });
 
+  test('deleted notes go to the trash with undo, restore and purge', async () => {
+    const TRASH_TITLE = 'Trash-Notiz';
+
+    // A note of its own, so the sharing test below keeps its fixture.
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.fill('.note-modal-title', TRASH_TITLE);
+    await page.fill('.note-modal-content', 'wird gleich geloescht');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+
+    const deleteNote = async () => {
+      const card = page.locator('[role="article"]', { hasText: TRASH_TITLE });
+      await card.hover();
+      await card.locator('.delete-btn').click();
+      await expect(page.locator('.confirm-dialog')).toBeVisible();
+      await page.locator('.confirm-dialog .btn-confirm').click();
+      await expect(page.locator('.confirm-dialog')).toHaveCount(0);
+      await expect(page.locator('[role="article"]', { hasText: TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
+    };
+
+    // 1) Delete shows an undo toast and undo brings the note back.
+    await deleteNote();
+    const undo = page.locator('.toast .toast-action');
+    await expect(undo).toBeVisible({ timeout: 10000 });
+    await expect(undo).toContainText(/Undo|Rückgängig/i);
+    await undo.click();
+    await expect(page.locator('[role="article"]', { hasText: TRASH_TITLE })).toBeVisible({ timeout: 20000 });
+
+    // 2) Delete again, then restore from the trash view.
+    await deleteNote();
+    await page.locator('.sidebar-item[aria-label="Trash"]').click();
+    await expect(page.locator('.trash-header')).toBeVisible();
+    const trashCard = page.locator('[role="article"]', { hasText: TRASH_TITLE });
+    await expect(trashCard).toBeVisible({ timeout: 20000 });
+    // Trash cards offer restore/purge only — no pin, archive, share or edit.
+    await trashCard.hover();
+    await expect(trashCard.locator('.restore-btn')).toBeVisible();
+    await expect(trashCard.locator('.purge-btn')).toBeVisible();
+    await expect(trashCard.locator('.pin-btn')).toHaveCount(0);
+    await expect(trashCard.locator('.archive-btn')).toHaveCount(0);
+    await expect(trashCard.locator('.collaborate-btn')).toHaveCount(0);
+    await expect(page.locator('.note-form-button')).toHaveCount(0);
+
+    await trashCard.locator('.restore-btn').click();
+    await expect(page.locator('[role="article"]', { hasText: TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
+    await page.locator('.sidebar-item[aria-label="All Notes"]').click();
+    await expect(page.locator('[role="article"]', { hasText: TRASH_TITLE })).toBeVisible({ timeout: 20000 });
+
+    // 3) Purge removes it for good (gone from both lists on the server).
+    await deleteNote();
+    await page.locator('.sidebar-item[aria-label="Trash"]').click();
+    const purgeCard = page.locator('[role="article"]', { hasText: TRASH_TITLE });
+    await expect(purgeCard).toBeVisible({ timeout: 20000 });
+    await purgeCard.hover();
+    await purgeCard.locator('.purge-btn').click();
+    await expect(page.locator('.confirm-dialog')).toBeVisible();
+    await expect(page.locator('.confirm-dialog')).toContainText(/forever|endgültig/i);
+    await page.locator('.confirm-dialog .btn-confirm').click();
+    await expect(page.locator('[role="article"]', { hasText: TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
+
+    const afterPurge = await page.evaluate(async () => {
+      const [active, trash] = await Promise.all([
+        fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/notes?page=1&limit=100&deleted=true', { credentials: 'include' }).then(r => r.json()),
+      ]);
+      return {
+        active: active.notes.some(n => n.title === 'Trash-Notiz'),
+        trash: trash.notes.some(n => n.title === 'Trash-Notiz'),
+      };
+    });
+    expect(afterPurge).toEqual({ active: false, trash: false });
+    await expectAppHealthy(page);
+
+    // 4) Empty trash clears everything that is left.
+    await page.locator('.sidebar-item[aria-label="All Notes"]').click();
+    await expect(page.locator('.App')).toBeVisible();
+    const trashCount = await page.evaluate(async () => {
+      const r = await fetch('/api/notes?page=1&limit=1&archived=false', { credentials: 'include' });
+      return (await r.json()).counts.trash;
+    });
+    if (trashCount > 0) {
+      await page.locator('.sidebar-item[aria-label="Trash"]').click();
+      await expect(page.locator('.trash-header')).toBeVisible();
+      await page.locator('.btn-empty-trash').click();
+      await expect(page.locator('[role="article"]')).toHaveCount(0, { timeout: 20000 });
+      await expect(page.locator('.empty-state')).toBeVisible();
+    }
+    await page.locator('.sidebar-item[aria-label="All Notes"]').click();
+    await expect(page.locator('[role="article"]').first()).toBeVisible({ timeout: 20000 });
+  });
+
   test('sharing updates the modal in place and the collaborator can edit', async ({ browser }) => {
     // Second user + friendship, created through the API as the admin.
     const created = await api(page.request, 'POST', '/api/admin/users', FRIEND);
