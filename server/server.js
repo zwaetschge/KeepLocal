@@ -17,6 +17,9 @@ const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
 const noStore = require('./middleware/noStore');
 const errorCodeMiddleware = require('./middleware/errorCodes');
+const requestId = require('./middleware/requestId');
+const logger = require('./utils/logger');
+const { collectHealth } = require('./services/healthService');
 const { csrfProtection, issueCsrfToken } = require('./middleware/csrfProtection');
 const passport = require('passport');
 const { configurePassport } = require('./config/passport');
@@ -118,6 +121,8 @@ app.use(helmet({
 }));
 
 app.use(compression()); // Gzip-Komprimierung für Responses
+// Request-Id zuerst, damit jede Logzeile und die AI-Weiterleitung korrelierbar ist.
+app.use(requestId);
 // API and private upload responses can contain account data or session state.
 // Prevent browser, proxy, and CDN caches even when the backend is reached
 // directly instead of through the frontend proxy.
@@ -208,14 +213,26 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint (for Docker/Kubernetes)
-app.get('/api/health', (req, res) => {
-  const databaseReady = mongoose.connection.readyState === 1;
-  res.status(databaseReady ? 200 : 503).json({
-    status: databaseReady ? 'ok' : 'degraded',
-    database: databaseReady ? 'connected' : 'disconnected',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+app.get('/api/health', async (req, res) => {
+  const health = await collectHealth();
+  res.status(health.ready ? 200 : 503).json({
+    status: health.status,
+    database: health.database.status,
+    uptime: health.uptime,
+    timestamp: health.timestamp
   });
+});
+
+// Liveness: läuft der Prozess? (ändert sich nie aufgrund externer Abhängigkeiten)
+app.get('/api/health/live', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Readiness: echter DB-Ping, beschreibbares Upload-Volume, optional AI-Dienst.
+// Compose-/Nginx-Healthchecks sollten diesen Endpunkt verwenden.
+app.get('/api/health/ready', async (req, res) => {
+  const health = await collectHealth();
+  res.status(health.ready ? 200 : 503).json(health);
 });
 
 app.use('/api', (req, res) => {

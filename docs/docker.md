@@ -84,8 +84,40 @@ docker exec keeplocal-allinone curl -fsS http://127.0.0.1:5001/health
 ```
 
 The API health endpoint returns HTTP 503 when MongoDB is disconnected.
+`/api/health/live` answers as long as the process runs; `/api/health/ready`
+additionally performs a real database ping, checks that the uploads directory is
+writable and (optionally) probes the AI service — the compose healthchecks use the
+readiness endpoint.
 
 ## Backup
+
+### Recommended: the built-in backup script
+
+`server/scripts/backup.js` writes one recovery point per run — every collection
+as type-preserving NDJSON, the uploads, and a SHA-256 manifest — and restores it.
+It needs no `mongodump`, so it also works inside the split server image.
+
+```bash
+# One backup (all-in-one container)
+docker compose -f docker-compose.allinone.yml exec keeplocal \
+  node /app/server/scripts/backup.js
+
+# Split deployment: run it in the server container
+MONGODB_URI=mongodb://mongodb:27017/keeplocal \
+  docker compose -f docker-compose.yml exec server node scripts/backup.js --keep 7
+
+# List and restore (restore is destructive and requires --force)
+docker compose -f docker-compose.yml exec server node scripts/backup.js --list
+docker compose -f docker-compose.yml exec server \
+  node scripts/backup.js --restore backups/keeplocal-20260911-221925 --force
+```
+
+Environment: `MONGODB_URI` (required), `BACKUP_DIR` (default `server/backups`),
+`UPLOADS_DIR` (default `server/uploads`). Retention defaults to the newest seven
+backups. Schedule it with your usual cron/host tooling and **test the restore
+before** you need it — the manifest checksums are verified on restore.
+
+### Alternative: filesystem or mongodump copies
 
 Back up MongoDB and uploads as one recovery point. The safest filesystem copy
 for the all-in-one bind-mount layout is made while the container is stopped:

@@ -296,6 +296,9 @@ local password alongside the OAuth identity.
 | `TRANSCRIPTION_LIMIT_PER_HOUR` | Transcriptions per user and hour | `10` |
 | `TRANSCRIPTION_LIMIT_PER_DAY` | Transcriptions per user and day | `60` |
 | `MAX_CONCURRENT_TRANSCRIPTIONS` | Parallel Whisper jobs before answering 429 | `2` |
+| `LOG_FORMAT`, `LOG_LEVEL` | `json` for structured logs; `error`/`warn`/`info`/`debug` | `text`, `info` |
+| `REQUIRE_AI_FOR_READY` | Make an unreachable AI service fail `/api/health/ready` | `false` |
+| `BACKUP_DIR`, `UPLOADS_DIR` | Backup destination and uploads root for `scripts/backup.js` | `server/backups`, `server/uploads` |
 | `GOOGLE_*`, `GITHUB_*` | Optional OAuth credentials and callbacks | Disabled when empty |
 
 Production rejects wildcard CORS origins. Never commit `.env`, tokens, OAuth
@@ -309,6 +312,32 @@ requests answer `429` with a `Retry-After` header and a stable `code`
 previews are additionally cached for 15 minutes per URL
 (`X-Preview-Cache: hit|miss`), which is what makes reopening a note with a link
 instant instead of another outbound fetch.
+
+## Backup and observability
+
+```bash
+# One recovery point: every collection as type-preserving NDJSON, the uploads,
+# and a SHA-256 manifest. Needs no mongodump, so it also runs in the server image.
+(cd server && MONGODB_URI=mongodb://localhost:27017/keeplocal node scripts/backup.js --keep 7)
+(cd server && node scripts/backup.js --list)
+(cd server && node scripts/backup.js --restore backups/keeplocal-YYYYMMDD-HHMMSS --force)
+```
+
+Restore verifies the manifest checksums and refuses to run without `--force`.
+`BACKUP_DIR` and `UPLOADS_DIR` override the default locations; see
+`docs/docker.md` for the container variants and the cron/scheduling notes.
+
+Health: `/api/health/live` (process up), `/api/health/ready` (real database ping,
+writable uploads, optional AI probe) and `/api/health` (legacy shape). The compose
+healthchecks use the readiness endpoint, so a container no longer reports healthy
+while writes are broken.
+
+Logging: `LOG_FORMAT=json` emits one JSON object per line, `LOG_LEVEL`
+(`error`|`warn`|`info`|`debug`) filters, and every request carries an
+`X-Request-Id` (a sane incoming id from your proxy is reused). The id appears in
+error responses and is forwarded to the AI service, so one failed transcription
+can be followed through both logs. Cookies, authorization headers, CSRF tokens,
+API keys and password fields are redacted in every log line.
 
 ## Repository layout
 

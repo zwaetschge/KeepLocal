@@ -56,3 +56,6 @@ client/test-results/
 client/playwright-report/
 client/blob-report/
 client/playwright/.cache/
+
+# Local backups (scripts/backup.js) — niemals committen
+server/backups/

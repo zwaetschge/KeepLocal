@@ -23,6 +23,9 @@ def health():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
+    # Correlation id from the Node server (middleware/requestId.js), so one user
+    # action can be followed across both services.
+    request_id = request.headers.get('X-Request-Id', '-')
     if 'audio' not in request.files:
         return jsonify({'error': 'No audio file provided'}), 400
 
@@ -54,13 +57,17 @@ def transcribe():
             text_segments = [segment.text for segment in segments]
             full_text = " ".join(text_segments).strip()[:10000]
 
+            app.logger.info(
+                "Transcribed request_id=%s language=%s chars=%d",
+                request_id, info.language, len(full_text)
+            )
             return jsonify({
                 'text': full_text,
                 'language': info.language,
                 'probability': info.language_probability
             })
-        except Exception as e:
-            app.logger.exception("Transcription failed")
+        except Exception:
+            app.logger.exception("Transcription failed request_id=%s", request_id)
             return jsonify({'error': 'Transcription failed'}), 500
 
 if __name__ == '__main__':
