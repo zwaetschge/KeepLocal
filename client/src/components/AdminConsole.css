@@ -580,3 +580,60 @@
     grid-column: span 1;
   }
 }
+
+/* --- Einmal-Reset-Token (Passwort-Reset ohne Mail-Versand) --------------- */
+.reset-token-box {
+  margin: 0 0 1rem;
+  padding: 0.875rem;
+  border: 1px solid var(--warning-color, #E8A844);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.reset-token-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.reset-token-value code {
+  word-break: break-all;
+  flex: 1 1 12rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.btn-reset-copy,
+.btn-reset-dismiss {
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.btn-reset-copy {
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
+  border: none;
+}
+
+.btn-reset-copy:hover {
+  background: var(--accent-hover);
+}
+
+.btn-reset-dismiss {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-reset-dismiss:hover {
+  background: var(--hover-overlay, rgba(0, 0, 0, 0.05));
+  color: var(--text-primary);
+}

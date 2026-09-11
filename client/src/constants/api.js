@@ -20,6 +20,8 @@ export const API_ENDPOINTS = {
     ME: '/api/auth/me',
     CSRF_TOKEN: '/api/csrf-token',
     PROVIDERS: '/api/auth/providers',
+    CHANGE_PASSWORD: '/api/auth/change-password',
+    RESET_PASSWORD: '/api/auth/reset-password',
     GOOGLE: '/api/auth/google',
     GITHUB: '/api/auth/github',
   },
@@ -58,6 +60,7 @@ export const API_ENDPOINTS = {
     STATS: '/api/admin/stats',
     USER_BY_ID: (userId) => `/api/admin/users/${userId}`,
     TOGGLE_ADMIN: (userId) => `/api/admin/users/${userId}/admin`,
+    PASSWORD_RESET: (userId) => `/api/admin/users/${userId}/password-reset`,
     SETTINGS: '/api/admin/settings',
   },
 };

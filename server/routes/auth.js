@@ -15,16 +15,34 @@ const {
   authCookieOptions
 } = require('../middleware/auth');
 const { clearCsrfCookie } = require('../middleware/csrfProtection');
+const { hashPasswordResetToken } = require('../utils/passwordReset');
 const { publicValidationErrors } = require('../utils/validationErrors');
 const { getClientURL } = require('../utils/clientUrl');
 const { escapeRegex } = require('../utils/sanitize');
 const {
   isDemoMode,
+  blockDemoUser,
   shouldRevokeAllSessionsOnLogout
 } = require('../middleware/demoPolicy');
 
 const OAUTH_STATE_COOKIE = 'kl_oauth_state';
 const DUMMY_PASSWORD_HASH = '$2a$10$DOhqVvnjClITTjb5w5ae/exBwouYnqW5CmBHs1IPa3CH1LrXLpB3S';
+
+/**
+ * Password strength rules, identical to the registration rules so resetting a
+ * password cannot weaken an account.
+ * @param {string} field - body field that carries the new password
+ */
+function passwordRules(field) {
+  return [
+    body(field)
+      .isString()
+      .isLength({ min: 8, max: 128 })
+      .withMessage('Passwort muss zwischen 8 und 128 Zeichen lang sein')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .withMessage('Passwort muss mindestens einen Kleinbuchstaben, einen Großbuchstaben und eine Zahl enthalten')
+  ];
+}
 
 function publicAuthUser(user, includeProfile = false) {
   const payload = {
@@ -243,6 +261,91 @@ router.post('/login', [
       message: 'Anmeldung erfolgreich',
       user: publicAuthUser(user)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/auth/change-password - eigenes Passwort ändern (angemeldet).
+// Erhöht sessionVersion, damit alle anderen Sitzungen ungültig werden; die
+// aktuelle Sitzung bekommt sofort ein Cookie mit der neuen Version.
+router.post('/change-password', authenticateToken, blockDemoUser('password'), [
+  body('currentPassword')
+    .isString()
+    .isLength({ min: 1, max: 128 })
+    .withMessage('Aktuelles Passwort ist erforderlich'),
+  ...passwordRules('newPassword'),
+  handleValidationErrors
+], async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('+password +sessionVersion');
+    if (!user) {
+      return res.status(404).json({ code: 'USER_NOT_FOUND', error: 'Benutzer nicht gefunden' });
+    }
+    if (!user.password) {
+      return res.status(400).json({
+        code: 'PASSWORD_NOT_SET',
+        error: 'Dieses Konto wird per OAuth angemeldet und hat kein lokales Passwort.'
+      });
+    }
+
+    const currentIsValid = await bcrypt.compare(req.body.currentPassword, user.password);
+    if (!currentIsValid) {
+      return res.status(401).json({ code: 'CURRENT_PASSWORD_INVALID', error: 'Aktuelles Passwort ist falsch' });
+    }
+    if (await bcrypt.compare(req.body.newPassword, user.password)) {
+      return res.status(400).json({
+        code: 'PASSWORD_UNCHANGED',
+        error: 'Das neue Passwort muss sich vom bisherigen unterscheiden'
+      });
+    }
+
+    user.password = req.body.newPassword; // pre-save hook hashes
+    user.sessionVersion = (user.sessionVersion || 0) + 1;
+    await user.save();
+
+    const token = generateToken(user._id, user.sessionVersion);
+    setAuthCookie(res, token);
+
+    res.json({ message: 'Passwort geändert', user: publicAuthUser(user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/auth/reset-password - Einmal-Token einlösen (ohne gültige Sitzung).
+// Das Token erzeugt ein Administrator unter /api/admin/users/:id/password-reset;
+// gespeichert wird nur der SHA-256-Hash, gültig ist es 15 Minuten.
+router.post('/reset-password', [
+  body('token')
+    .isString()
+    .isLength({ min: 16, max: 200 })
+    .withMessage('Ungültiger Reset-Token'),
+  ...passwordRules('newPassword'),
+  handleValidationErrors
+], async (req, res, next) => {
+  try {
+    const user = await User.findOne({
+      passwordResetToken: hashPasswordResetToken(req.body.token),
+      passwordResetExpires: { $gt: new Date() }
+    }).select('+password +sessionVersion +passwordResetToken +passwordResetExpires');
+
+    if (!user) {
+      // Generische Antwort: nicht verraten, ob es Konto oder Token gibt.
+      return res.status(400).json({
+        code: 'RESET_TOKEN_INVALID',
+        error: 'Reset-Token ist ungültig oder abgelaufen'
+      });
+    }
+
+    user.password = req.body.newPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    // Alle bestehenden Sitzungen verlieren ihre Gültigkeit.
+    user.sessionVersion = (user.sessionVersion || 0) + 1;
+    await user.save();
+
+    res.json({ message: 'Passwort zurückgesetzt. Bitte melde dich neu an.' });
   } catch (error) {
     next(error);
   }

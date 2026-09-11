@@ -8,6 +8,7 @@ const { authenticateToken } = require('../middleware/auth');
 const adminService = require('../services/adminService');
 const normalizeEmailAddress = require('../utils/normalizeEmail');
 const { escapeRegex } = require('../utils/sanitize');
+const { createPasswordResetToken } = require('../utils/passwordReset');
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -304,6 +305,49 @@ router.patch('/settings', async (req, res) => {
   } catch (error) {
     console.error('Error updating settings:', error);
     res.status(500).json({ error: 'Fehler beim Aktualisieren der Einstellungen' });
+  }
+});
+
+// POST /api/admin/users/:id/password-reset - Einmal-Token für einen Nutzer
+// erzeugen. Self-Hosting hat keinen Mail-Versand, daher zeigt die Admin-Konsole
+// das Token einmal an und die Admins übergeben es auf ihrem Weg. Gespeichert
+// wird nur der Hash; das Token ist 15 Minuten gültig und wird beim Einlösen
+// gelöscht (alle Sitzungen des Kontos verlieren ihre Gültigkeit).
+router.post('/users/:id/password-reset', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
+    }
+    if (id === req.user._id.toString()) {
+      return res.status(400).json({
+        error: 'Für das eigene Konto bitte "Passwort ändern" in den Einstellungen verwenden'
+      });
+    }
+
+    const { token, tokenHash, expiresAt } = createPasswordResetToken();
+    const user = await User.findOneAndUpdate(
+      { _id: id, isDemo: { $ne: true } },
+      { passwordResetToken: tokenHash, passwordResetExpires: expiresAt },
+      { new: true }
+    ).select('username email');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    }
+
+    console.warn(`[admin] password reset token issued for user ${user._id} by ${req.user._id}`);
+
+    res.json({
+      message: 'Reset-Token erstellt. Es wird nur einmal angezeigt und ist 15 Minuten gültig.',
+      resetToken: token,
+      expiresAt,
+      user: { id: user._id, username: user.username, email: user.email }
+    });
+  } catch (error) {
+    console.error('Error creating password reset token:', error);
+    res.status(500).json({ error: 'Fehler beim Erstellen des Reset-Tokens' });
   }
 });
 

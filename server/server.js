@@ -131,7 +131,15 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 app.use(limiter); // Rate Limiting anwenden
-app.use(['/api/auth/login', '/api/auth/register', '/api/auth/demo'], authLimiter);
+app.use([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/demo',
+  // Passwort-Endpunkte: Brute-Force gegen das aktuelle Passwort und gegen
+  // Reset-Tokens muss genauso gedrosselt werden wie der Login selbst.
+  '/api/auth/change-password',
+  '/api/auth/reset-password'
+], authLimiter);
 
 // Passport OAuth initialization (stateless — we use JWT, not sessions)
 app.use(passport.initialize());

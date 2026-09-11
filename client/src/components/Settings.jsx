@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { getApiKeys, createApiKey, revokeApiKey } from '../services/api/apiKeysAPI';
+import { authAPI } from '../services/api';
 import './Settings.css';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -25,6 +26,55 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
+
+  // Passwort ändern: der Server erhöht sessionVersion, meldet also alle anderen
+  // Geräte ab und stellt für diese Sitzung ein neues Cookie aus.
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState('');
+
+  const validateNewPassword = (value) => {
+    if (value.length < 8) return t('passwordMinLength');
+    if (value.length > 128) return t('passwordMaxLength');
+    if (!/[a-z]/.test(value)) return t('passwordNeedsLower');
+    if (!/[A-Z]/.test(value)) return t('passwordNeedsUpper');
+    if (!/[0-9]/.test(value)) return t('passwordNeedsNumber');
+    return null;
+  };
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+    setPwError('');
+
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      setPwError(t('fillAllFields'));
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError(t('passwordsDontMatch'));
+      return;
+    }
+    const strengthError = validateNewPassword(pwNew);
+    if (strengthError) {
+      setPwError(strengthError);
+      return;
+    }
+
+    setPwBusy(true);
+    try {
+      await authAPI.changePassword(pwCurrent, pwNew);
+      setPwCurrent('');
+      setPwNew('');
+      setPwConfirm('');
+      toastBus.success(t('passwordChanged'));
+    } catch (err) {
+      setPwError(err.message || t('passwordChangeFailed'));
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   const loadApiKeys = useCallback(async () => {
     try {
@@ -126,6 +176,82 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
             <div className="settings-language">
               <LanguageSelector />
             </div>
+          </section>
+
+          {/* Password Section */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0110 0v4"/>
+              </svg>
+              {t('changePasswordSection')}
+            </h3>
+            <p className="settings-section-description">
+              {t('changePasswordDescription')}
+            </p>
+
+            <form className="settings-password-form" onSubmit={handleChangePassword} noValidate>
+              <div className="settings-input-group">
+                <label htmlFor="current-password" className="settings-input-label">
+                  {t('currentPassword')}
+                </label>
+                <input
+                  id="current-password"
+                  type="password"
+                  className="settings-input"
+                  value={pwCurrent}
+                  onChange={(e) => setPwCurrent(e.target.value)}
+                  autoComplete="current-password"
+                  disabled={pwBusy}
+                  maxLength={128}
+                  required
+                />
+              </div>
+              <div className="settings-input-group">
+                <label htmlFor="new-password" className="settings-input-label">
+                  {t('newPassword')}
+                </label>
+                <input
+                  id="new-password"
+                  type="password"
+                  className="settings-input"
+                  value={pwNew}
+                  onChange={(e) => setPwNew(e.target.value)}
+                  autoComplete="new-password"
+                  disabled={pwBusy}
+                  minLength={8}
+                  maxLength={128}
+                  required
+                />
+              </div>
+              <div className="settings-input-group">
+                <label htmlFor="confirm-new-password" className="settings-input-label">
+                  {t('confirmPasswordLabel')}
+                </label>
+                <input
+                  id="confirm-new-password"
+                  type="password"
+                  className="settings-input"
+                  value={pwConfirm}
+                  onChange={(e) => setPwConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  disabled={pwBusy}
+                  minLength={8}
+                  maxLength={128}
+                  required
+                />
+              </div>
+
+              {pwError && (
+                <p className="settings-error" role="alert">{pwError}</p>
+              )}
+
+              <button type="submit" className="btn-change-password" disabled={pwBusy}>
+                {pwBusy ? t('saving') : t('changePassword')}
+              </button>
+              <p className="settings-input-hint">{t('passwordChangeSessionsHint')}</p>
+            </form>
           </section>
 
           {/* API Keys Section */}

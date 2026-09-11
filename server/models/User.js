@@ -58,6 +58,18 @@ const userSchema = new mongoose.Schema({
     min: 0,
     select: false
   },
+  // One-time password reset (admin-generated token, SHA-256 hash stored, 15 min
+  // TTL). Never selected by default and never serialized.
+  passwordResetToken: {
+    type: String,
+    default: null,
+    select: false
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: null,
+    select: false
+  },
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -138,6 +150,8 @@ userSchema.methods.toJSON = function() {
   delete obj.password;
   delete obj.sessionVersion;
   delete obj.isBootstrapAdmin;
+  delete obj.passwordResetToken;
+  delete obj.passwordResetExpires;
   return obj;
 };
 
