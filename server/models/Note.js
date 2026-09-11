@@ -98,6 +98,12 @@ const noteSchema = new mongoose.Schema({
   deletedAt: {
     type: Date,
     default: null
+  },
+  // Manuelle Reihenfolge innerhalb eines Abschnitts (angeheftet / sonstige):
+  // höher = weiter oben. 0 = nie manuell sortiert, dann entscheidet updatedAt.
+  order: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
@@ -109,6 +115,7 @@ noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // 
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
 noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
+noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, order: -1, updatedAt: -1 }); // manuelle Reihenfolge
 noteSchema.index(
   { deletedAt: 1 },
   {

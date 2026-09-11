@@ -215,6 +215,55 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expectAppHealthy(page);
   });
 
+  test('drag and drop inside a section persists the manual order', async () => {
+    const titles = ['Order A', 'Order B', 'Order C'];
+    for (const title of titles) {
+      await page.click('.note-form-button');
+      await expect(page.locator('.note-modal')).toBeVisible();
+      await page.fill('.note-modal-title', title);
+      await page.fill('.note-modal-content', `Inhalt von ${title}`);
+      await page.click('.btn-modal-save');
+      await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    }
+
+    const visibleOrder = async () => {
+      const all = await page.locator('[role="article"] .note-title').allInnerTexts();
+      return all.filter((title) => titles.includes(title));
+    };
+
+    const before = await visibleOrder();
+    expect(before).toEqual(['Order C', 'Order B', 'Order A'], 'newest first before sorting');
+
+    const cards = page.locator('[role="article"]');
+    const sourceIndex = await cards.evaluateAll((nodes, wanted) => {
+      const titles = wanted;
+      return nodes.findIndex((node) => titles.includes(node.querySelector('.note-title')?.innerText || ''));
+    }, ['Order A']);
+    // Drag the oldest note ("Order A", last of the three) to the top position.
+    await cards.nth(sourceIndex).dragTo(cards.nth(0));
+    await page.waitForTimeout(2000);
+
+    const after = await visibleOrder();
+    expect(after[0], 'the dragged note must be first now').toBe('Order A');
+    expect(after).not.toEqual(before);
+
+    // The server must agree: order values were stored and survive a reload.
+    const orders = await page.evaluate(async () => {
+      const response = await fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' });
+      const body = await response.json();
+      return body.notes
+        .filter((note) => ['Order A', 'Order B', 'Order C'].includes(note.title))
+        .map((note) => ({ title: note.title, order: note.order }));
+    });
+    expect(orders.every((entry) => entry.order > 0), `orders not persisted: ${JSON.stringify(orders)}`).toBeTruthy();
+
+    await page.reload();
+    await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
+    await expect(page.locator('[role="article"]').first()).toBeVisible({ timeout: 20000 });
+    const afterReload = await visibleOrder();
+    expect(afterReload, 'manual order must survive a reload').toEqual(after);
+  });
+
   test('deleted notes go to the trash with undo, restore and purge', async () => {
     const TRASH_TITLE = 'Trash-Notiz';
 

@@ -74,6 +74,7 @@ export function normalizeNote(note) {
     color: asText(note.color, '#ffffff'),
     isPinned: Boolean(note.isPinned),
     isArchived: Boolean(note.isArchived),
+    order: Number.isFinite(Number(note.order)) ? Number(note.order) : 0,
     isTodoList: Boolean(note.isTodoList),
     todoItems: Array.isArray(note.todoItems)
       ? note.todoItems.map(normalizeTodoItem).filter(Boolean)

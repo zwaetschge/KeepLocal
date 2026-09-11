@@ -65,6 +65,8 @@ and mobile.
 - Notes and checklists with colors, tags, pinning, archives, search, and
   pagination
 - Trash with undo, restore, permanent delete, and a 30-day server-side retention
+- Manual note ordering per section via drag & drop (persisted; new notes join on
+  top once a section has been sorted, otherwise recency rules as before)
 - Private image uploads and optional local audio transcription
 - Friend requests and shared-note collaboration
 - English and German interfaces with Light, Dark, OLED, E-Ink, and Doodle
@@ -229,6 +231,10 @@ When the API is running, interactive documentation is available at
   tokens.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
+- `PATCH /api/notes/reorder` with `{ "orderedIds": [...] }` persists a manual
+  order for one section (owner-only, max 200 ids). The server re-deals the
+  existing `order` values of exactly those notes, so a page-local reorder cannot
+  scramble other pages.
 - `DELETE /api/notes/:id` moves a note to the trash (30-day TTL index, image
   files stay until it is purged). `POST /api/notes/:id/restore` brings it back,
   `DELETE /api/notes/:id?permanent=true` removes a trashed note for good, and
