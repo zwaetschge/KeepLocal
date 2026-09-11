@@ -458,8 +458,8 @@
 
 .btn-create-user {
   padding: 0.75rem 1.5rem;
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   border: none;
   border-radius: 8px;
   font-weight: 500;
@@ -550,8 +550,8 @@
 .btn-submit-user {
   width: 100%;
   padding: 1rem;
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-button-bg, var(--accent-color));
+  color: var(--accent-button-text, #fff);
   border: none;
   border-radius: 8px;
   font-weight: 600;

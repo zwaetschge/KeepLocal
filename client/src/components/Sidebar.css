@@ -87,7 +87,8 @@
 
 .sidebar-item:hover {
   background: var(--accent-light);
-  color: var(--accent-color);
+  /* --accent-color fails WCAG AA (≈2.6:1) on the light accent background. */
+  color: var(--accent-text, var(--accent-color));
 }
 
 .sidebar-item:focus-visible {
@@ -97,7 +98,7 @@
 
 .sidebar-item.active {
   background: rgba(196, 120, 93, 0.2);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   font-weight: var(--font-semibold);
   border-left: 3px solid var(--accent-color);
   padding-left: calc(var(--space-6) - 3px);
@@ -418,8 +419,8 @@
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-3);
-    background: var(--accent-color);
-    color: white;
+    background: var(--accent-button-bg, var(--accent-color));
+    color: var(--accent-button-text, #fff);
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-sm);

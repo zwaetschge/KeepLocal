@@ -165,3 +165,35 @@ test('a non-200 upstream response is rejected as 502, not as an untyped error', 
     'untyped HTTP errors become 500s in the route'
   );
 });
+
+test('POST /api/notes/link-preview maps upstream network failures to 502', async () => {
+  const dnsError = new Error('getaddrinfo ENOTFOUND example.invalid');
+  dnsError.code = 'ENOTFOUND';
+  const router = loadRouter({ fetchLinkPreview: async () => { throw dnsError; } });
+
+  await withServer(router, async base => {
+    const response = await fetch(`${base}/link-preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.invalid/page' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 502, `expected 502, got ${response.status}: ${JSON.stringify(body)}`);
+    assert.equal(body.error, 'Link ist nicht erreichbar');
+  });
+});
+
+test('POST /api/notes/link-preview maps a socket timeout to 502', async () => {
+  const timeoutError = new Error('Request timeout');
+  const router = loadRouter({ fetchLinkPreview: async () => { throw timeoutError; } });
+
+  await withServer(router, async base => {
+    const response = await fetch(`${base}/link-preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/slow' })
+    });
+    assert.equal(response.status, 502);
+  });
+});
