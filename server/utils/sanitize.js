@@ -1,5 +1,3 @@
-const xss = require('xss');
-
 const sensitiveKeys = new Set([
   'password',
   'token',
@@ -9,38 +7,17 @@ const sensitiveKeys = new Set([
   'apikey'
 ]);
 
-// XSS-Filteroptionen konfigurieren
-const xssOptions = {
-  whiteList: {
-    // Erlaube nur grundlegende Formatierung
-    b: [],
-    i: [],
-    u: [],
-    br: [],
-    p: [],
-    strong: [],
-    em: []
-  },
-  stripIgnoreTag: true,
-  stripIgnoreTagBody: ['script', 'style']
-};
-
-/**
- * Bereinigt einen String von potenziell schädlichem Code
- * @param {string} input - Der zu bereinigende String
- * @returns {string} - Der bereinigte String
- */
-const sanitizeInput = (input) => {
-  if (typeof input !== 'string') {
-    return input;
-  }
-  return xss(input, xssOptions);
-};
+// Note: request bodies, queries and params are intentionally NOT HTML-filtered
+// here anymore. The previous xss() filter silently truncated plain-text note
+// content ("Preis < 100" was stored as "Preis ") because stripIgnoreTag treats
+// everything after "<" as tag markup. All client render paths sanitize with
+// DOMPurify or render through React text nodes, and API consumers receive plain
+// text they must escape themselves — the standard REST contract.
 
 /**
  * Escapes user-provided input for safe use inside regular expressions
  * @param {string} input - The raw user input
- * @returns {string} - Escaped input
+ * @returns {string} - The escaped input
  */
 const escapeRegex = (input) => {
   if (typeof input !== 'string') {
@@ -49,33 +26,7 @@ const escapeRegex = (input) => {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-/**
- * Bereinigt ein ganzes Objekt rekursiv
- * @param {Object} obj - Das zu bereinigende Objekt
- * @returns {Object} - Das bereinigte Objekt
- */
-const sanitizeObject = (obj) => {
-  if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeObject(item));
-  }
-
-  if (typeof obj !== 'object' || obj === null) {
-    return sanitizeInput(obj);
-  }
-
-  const sanitized = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (sensitiveKeys.has(key.toLowerCase())) {
-      sanitized[key] = value;
-    } else {
-      sanitized[key] = sanitizeObject(value);
-    }
-  }
-  return sanitized;
-};
-
 module.exports = {
-  sanitizeInput,
-  sanitizeObject,
+  sensitiveKeys,
   escapeRegex
 };

@@ -3,9 +3,11 @@ import { useLanguage } from '../contexts/LanguageContext';
 import './AdminConsole.css';
 import { adminAPI } from '../services/api';
 import ConfirmDialog from './ConfirmDialog';
+import { useBackdropClose } from '../hooks/useBackdropClose';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 function AdminConsole({ onClose }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -84,7 +86,9 @@ function AdminConsole({ onClose }) {
     setOperationLoading(prev => ({ ...prev, create: true }));
     try {
       const response = await adminAPI.createUser(newUser);
-      setUsers(prev => [...prev, response.user]);
+      // The API answers with { id }, but every row action keys on _id — map it
+      // so the new row's admin-toggle/delete buttons work without a refetch.
+      setUsers(prev => [...prev, { ...response.user, _id: response.user.id }]);
       setNewUser({ username: '', email: '', password: '', isAdmin: false });
       setShowCreateUser(false);
       setError(null);
@@ -112,9 +116,24 @@ function AdminConsole({ onClose }) {
     }
   };
 
+  const backdropClose = useBackdropClose(onClose);
+
+  // Same dialog semantics as the other overlays: focus trap, initial focus,
+  // focus restore and Escape-to-close. The console only mounts while open, so
+  // `active` stays true.
+  const { containerRef, titleId } = useModalA11y({ onClose });
+
   return (
-    <div className="admin-console-overlay" onClick={onClose}>
-      <div className="admin-console" onClick={(e) => e.stopPropagation()}>
+    <div className="admin-console-overlay" {...backdropClose}>
+      <div
+        className="admin-console"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button onClick={onClose} className="admin-close-btn" title={t('close')} aria-label={t('close')}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -122,7 +141,7 @@ function AdminConsole({ onClose }) {
           </svg>
         </button>
         <div className="admin-console-header">
-          <h2>🔧 {t('adminConsoleHeader')}</h2>
+          <h2 id={titleId}>🔧 {t('adminConsoleHeader')}</h2>
         </div>
 
         <div className="admin-tabs">
@@ -219,7 +238,7 @@ function AdminConsole({ onClose }) {
                               <td>{user.username}</td>
                               <td>{user.email}</td>
                               <td>{user.isAdmin ? '✓' : ''}</td>
-                              <td>{new Date(user.createdAt).toLocaleDateString('de-DE')}</td>
+                              <td>{new Date(user.createdAt).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-GB')}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -320,7 +339,7 @@ function AdminConsole({ onClose }) {
                           <td>{user.username}</td>
                           <td>{user.email}</td>
                           <td>{user.isAdmin ? '✓' : ''}</td>
-                          <td>{new Date(user.createdAt).toLocaleDateString('de-DE')}</td>
+                          <td>{new Date(user.createdAt).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-GB')}</td>
                           <td>
                             <div className="user-actions">
                               <button
@@ -392,7 +411,7 @@ function AdminConsole({ onClose }) {
         <ConfirmDialog
           isOpen={true}
           title={t('deleteUserConfirm')}
-          message={t('deleteUserMessage').replace('{username}', deleteConfirm.username)}
+          message={t('deleteUserMessage', { username: deleteConfirm.username })}
           onConfirm={() => handleDeleteUser(deleteConfirm._id)}
           onCancel={() => setDeleteConfirm(null)}
         />

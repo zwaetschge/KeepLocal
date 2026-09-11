@@ -4,7 +4,7 @@
  * Stores settings in localStorage
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { readLocalStorage, writeLocalStorage } from '../utils/localStorage.mjs';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../utils/settingsPayload.mjs';
 
@@ -54,12 +54,14 @@ export function SettingsProvider({ children }) {
     }));
   };
 
-  const value = {
+  // Memoisiert: ein neues Objekt pro Render würde jeden Consumer (NoteModal,
+  // Settings) bei jedem Provider-Render neu rendern lassen.
+  const value = useMemo(() => ({
     settings,
     updateSettings,
     toggleAIFeature,
     setTranscriptionLanguage,
-  };
+  }), [settings]);
 
   return (
     <SettingsContext.Provider value={value}>

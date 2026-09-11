@@ -6,6 +6,7 @@ const net = require('net');
 
 const MAX_REDIRECTS = 3;
 const MAX_RESPONSE_BYTES = 100000;
+const OVERALL_TIMEOUT_MS = 10000;
 
 const createValidationError = (message) => {
   const error = new Error(message);
@@ -139,6 +140,14 @@ async function fetchLinkPreview(url, redirectCount = 0) {
 
     return await new Promise((resolve, reject) => {
       const request = protocol.get(parsedUrl, options, (response) => {
+        // Overall deadline: `timeout: 5000` above only fires on socket *idle*,
+        // so a slow-drip response (1 byte every few seconds) could otherwise
+        // pin the socket and the pending Express response indefinitely.
+        const deadline = setTimeout(() => {
+          request.destroy(new Error('Request timeout'));
+        }, OVERALL_TIMEOUT_MS);
+        request.on('close', () => clearTimeout(deadline));
+
         // Handle redirects securely and with a limit
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           if (redirectCount >= MAX_REDIRECTS) {
@@ -159,7 +168,13 @@ async function fetchLinkPreview(url, redirectCount = 0) {
 
         if (response.statusCode !== 200) {
           response.resume();
-          return reject(new Error(`HTTP ${response.statusCode}`));
+          // The target answered, just not with a document worth parsing. That
+          // is an upstream condition, not an internal fault: without an
+          // explicit statusCode the route answers 500 and logs a stack trace
+          // for every dead link a user pastes.
+          const upstreamError = new Error(`Zielseite antwortete mit HTTP ${response.statusCode}`);
+          upstreamError.statusCode = 502;
+          return reject(upstreamError);
         }
 
         const contentType = response.headers['content-type'] || '';

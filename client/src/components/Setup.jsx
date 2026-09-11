@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import './Auth.css';
+import { useLanguage } from '../contexts/LanguageContext';
+import LanguageSelector from './LanguageSelector';
 
 function Setup({ onSetup }) {
+  const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -11,19 +14,19 @@ function Setup({ onSetup }) {
 
   const validatePassword = (pwd) => {
     if (pwd.length < 8) {
-      return 'Passwort muss mindestens 8 Zeichen lang sein';
+      return t('passwordMinLength');
     }
     if (pwd.length > 128) {
-      return 'Passwort darf maximal 128 Zeichen lang sein';
+      return t('passwordMaxLength');
     }
     if (!/[a-z]/.test(pwd)) {
-      return 'Passwort muss mindestens einen Kleinbuchstaben enthalten';
+      return t('passwordNeedsLower');
     }
     if (!/[A-Z]/.test(pwd)) {
-      return 'Passwort muss mindestens einen Großbuchstaben enthalten';
+      return t('passwordNeedsUpper');
     }
     if (!/[0-9]/.test(pwd)) {
-      return 'Passwort muss mindestens eine Zahl enthalten';
+      return t('passwordNeedsNumber');
     }
     return null;
   };
@@ -33,12 +36,12 @@ function Setup({ onSetup }) {
     setError('');
 
     if (!username || !email || !password || !confirmPassword) {
-      setError('Bitte füllen Sie alle Felder aus');
+      setError(t('fillAllFields'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwörter stimmen nicht überein');
+      setError(t('passwordsDontMatch'));
       return;
     }
 
@@ -53,7 +56,7 @@ function Setup({ onSetup }) {
     try {
       await onSetup(username, email, password);
     } catch (err) {
-      setError(err.message || 'Setup fehlgeschlagen');
+      setError(err.message || t('setupFailed'));
     } finally {
       setLoading(false);
     }
@@ -61,14 +64,13 @@ function Setup({ onSetup }) {
 
   return (
     <div className="auth-container">
+      <div className="auth-language"><LanguageSelector /></div>
       <div className="auth-box">
         <div className="auth-header">
-          <h1>🔧 KeepLocal Setup</h1>
-          <p>Erstellen Sie Ihr Administrator-Konto</p>
+          <h1>🔧 KeepLocal {t('setupTitle')}</h1>
+          <p>{t('setupSubtitle')}</p>
           <div className="setup-info">
-            <p style={{ fontSize: '0.9em', marginTop: '1rem', color: 'var(--text-secondary)' }}>
-              Dies ist die erste Anmeldung. Bitte erstellen Sie ein Administrator-Konto, um KeepLocal zu verwenden.
-            </p>
+            <p>{t('setupInfo')}</p>
           </div>
         </div>
 
@@ -80,7 +82,7 @@ function Setup({ onSetup }) {
           )}
 
           <div className="form-group">
-            <label htmlFor="username">Benutzername</label>
+            <label htmlFor="username">{t('username')}</label>
             <input
               id="username"
               type="text"
@@ -94,12 +96,12 @@ function Setup({ onSetup }) {
               minLength={3}
               maxLength={50}
               pattern="[a-zA-Z0-9_\-]+"
-              title="Nur Buchstaben, Zahlen, Bindestriche und Unterstriche"
+              title={t('usernamePatternTitle')}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">E-Mail</label>
+            <label htmlFor="email">{t('email')}</label>
             <input
               id="email"
               type="email"
@@ -114,7 +116,7 @@ function Setup({ onSetup }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Passwort</label>
+            <label htmlFor="password">{t('password')}</label>
             <input
               id="password"
               type="password"
@@ -128,12 +130,12 @@ function Setup({ onSetup }) {
               maxLength={128}
             />
             <small className="form-hint">
-              Mindestens 8 Zeichen, ein Groß- und Kleinbuchstabe, eine Zahl
+              {t('passwordRuleHint')}
             </small>
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Passwort bestätigen</label>
+            <label htmlFor="confirmPassword">{t('confirmPasswordLabel')}</label>
             <input
               id="confirmPassword"
               type="password"
@@ -152,13 +154,13 @@ function Setup({ onSetup }) {
             className="auth-button"
             disabled={loading}
           >
-            {loading ? 'Setup läuft...' : 'Admin-Konto erstellen'}
+            {loading ? t('setupRunning') : t('setupCreateAdmin')}
           </button>
         </form>
 
         <div className="auth-footer">
           <p style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>
-            Nach dem Setup können Sie weitere Benutzer über die normale Registrierung hinzufügen.
+            {t('setupFooterHint')}
           </p>
         </div>
       </div>

@@ -221,7 +221,10 @@ router.delete('/:friendId', async (req, res, next) => {
 router.get('/search', async (req, res, next) => {
   try {
     const { query } = req.query;
-    const trimmedQuery = (query || '').trim();
+    // ?query=a&query=b arrives as an array; express-validator is not in front
+    // of this route, so the type has to be checked here (a TypeError would
+    // otherwise surface as a 500 instead of an empty result).
+    const trimmedQuery = typeof query === 'string' ? query.trim() : '';
     if (trimmedQuery.length > 100) {
       return res.status(400).json({ error: 'Suchbegriff darf maximal 100 Zeichen lang sein' });
     }

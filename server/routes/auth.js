@@ -17,6 +17,7 @@ const {
 const { clearCsrfCookie } = require('../middleware/csrfProtection');
 const { publicValidationErrors } = require('../utils/validationErrors');
 const { getClientURL } = require('../utils/clientUrl');
+const { escapeRegex } = require('../utils/sanitize');
 const {
   isDemoMode,
   shouldRevokeAllSessionsOnLogout
@@ -161,9 +162,16 @@ router.post('/register', [
       }
     }
 
-    // Prüfen ob Benutzer bereits existiert
+    // Prüfen ob Benutzer bereits existiert. Der unique Index auf username ist
+    // case-sensitive, die Freundessuche aber nicht — ohne den zusätzlichen
+    // Vergleich könnte "ALICE" neben "alice" existieren und beide Accounts
+    // wären in Suche und Freundschaftslisten nicht mehr unterscheidbar.
     const existingUser = await User.findOne({
-      $or: [{ email }, { username }]
+      $or: [
+        { email },
+        { username },
+        { username: { $regex: new RegExp(`^${escapeRegex(username)}$`, 'i') } }
+      ]
     });
 
     if (existingUser) {

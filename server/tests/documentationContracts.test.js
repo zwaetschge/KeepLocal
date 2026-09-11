@@ -86,3 +86,34 @@ test('current docs do not teach retired authentication or toolchain contracts', 
   assert.doesNotMatch(docs, /localStorage\.setItem\(['"]token|Authorization:\s*Bearer/);
   assert.doesNotMatch(docs, /\bdocker-compose\s+(?:up|down|build|pull|logs)/);
 });
+
+// BUG_REPORT_2026-09-10 #12: a YAML slip inside a @swagger block makes
+// swagger-jsdoc drop the whole path silently (it only prints a parse report),
+// so /api/docs lost the tags endpoint including its new `archived` parameter.
+test('every documented v1 path survives the swagger-jsdoc YAML parse', () => {
+  const spec = require('../config/swagger');
+  const paths = Object.keys(spec.paths || {});
+
+  const expected = [
+    '/api/v1/user/me',
+    '/api/v1/tags',
+    '/api/v1/notes',
+    '/api/v1/notes/{id}',
+    '/api/v1/notes/{id}/pin',
+    '/api/v1/notes/{id}/archive',
+    '/api/v1/notes/{id}/share',
+    '/api/v1/notes/{id}/share/{userId}',
+    '/api/api-keys',
+    '/api/api-keys/{id}'
+  ];
+
+  for (const expectedPath of expected) {
+    assert.ok(paths.includes(expectedPath), `missing from the OpenAPI spec: ${expectedPath}`);
+  }
+
+  const archivedParameter = spec.paths['/api/v1/tags'].get.parameters || [];
+  assert.ok(
+    archivedParameter.some(parameter => parameter.name === 'archived' && parameter.in === 'query'),
+    'GET /api/v1/tags must document the archived query parameter'
+  );
+});

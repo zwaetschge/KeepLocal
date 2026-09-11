@@ -5,7 +5,8 @@ import '@fontsource-variable/dm-sans/wght-italic.css';
 import '@fontsource-variable/fraunces';
 import '@fontsource-variable/fraunces/wght-italic.css';
 import '@fontsource-variable/jetbrains-mono';
-import '@fontsource/delius-swash-caps';
+// P14: nur der lateinische Schriftschnitt (latin) statt aller Subsets
+import '@fontsource/delius-swash-caps/latin.css';
 import './index.css';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';

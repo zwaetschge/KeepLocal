@@ -1,6 +1,21 @@
 import React from 'react';
 import './ErrorBoundary.css';
 import { repairAppState } from '../utils/appRecovery.mjs';
+import { de } from '../translations/de';
+import { en } from '../translations/en';
+import { readLocalStorage } from '../utils/localStorage.mjs';
+import { getBrowserLanguage } from '../utils/browserLanguage.mjs';
+
+// ErrorBoundary sitzt außerhalb des LanguageProvider und kann useLanguage
+// nicht nutzen — die Sprache wird daher direkt aus dem Storage bzw. Browser
+// erkannt (gleiche Keys wie in translations/de.js und en.js).
+const resolveBoundaryMessages = () => {
+  const catalogs = { de, en };
+  const stored = readLocalStorage('keeplocal_language');
+  const language = catalogs[stored] ? stored : getBrowserLanguage(catalogs, 'de');
+  const messages = catalogs[language] || de;
+  return (key) => messages[key] || de[key] || key;
+};
 import { buildErrorDiagnostic } from '../utils/errorDiagnostic.mjs';
 
 class ErrorBoundary extends React.Component {
@@ -66,26 +81,27 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      const t = resolveBoundaryMessages();
       return (
         <div className="error-boundary">
           <div className="error-boundary-content">
             <h1>
               <span className="error-boundary-mark" aria-hidden="true">!</span>
-              Etwas ist schiefgelaufen
+              {t('errorTitle')}
             </h1>
             <p className="error-boundary-message">
-              Die Anwendung ist auf einen unerwarteten Fehler gestoßen.
+              {t('errorBoundaryDescription')}
             </p>
 
             {this.state.diagnostic && (
               <div className="error-boundary-diagnostics">
                 <p className="error-boundary-diagnostic">
-                  Diagnose: <code>{this.state.diagnostic.code}</code>
+                  {t('diagnosisLabel')}: <code>{this.state.diagnostic.code}</code>
                   {' · '}{this.state.diagnostic.name}
                 </p>
                 {this.state.diagnostic.message && (
                   <p className="error-boundary-hint">
-                    Technischer Hinweis: <code>{this.state.diagnostic.message}</code>
+                    {t('technicalHint')}: <code>{this.state.diagnostic.message}</code>
                   </p>
                 )}
               </div>
@@ -93,7 +109,7 @@ class ErrorBoundary extends React.Component {
 
             {import.meta.env.DEV && this.state.error && (
               <details className="error-boundary-details">
-                <summary>Fehlerdetails (nur in Entwicklung sichtbar)</summary>
+                <summary>{t('errorDetailsDevOnly')}</summary>
                 <pre className="error-boundary-stack">
                   <strong>Error:</strong> {this.state.error.toString()}
                   {this.state.errorInfo && (
@@ -113,30 +129,29 @@ class ErrorBoundary extends React.Component {
                 className="error-boundary-button"
                 disabled={this.state.isRepairing}
               >
-                {this.state.isRepairing ? 'App wird aktualisiert …' : 'App sicher aktualisieren'}
+                {this.state.isRepairing ? t('repairingButton') : t('repairButton')}
               </button>
               <button
                 onClick={this.handleReset}
                 className="error-boundary-button error-boundary-button-secondary"
               >
-                Nur neu laden
+                {t('reloadOnlyButton')}
               </button>
             </div>
 
             {this.state.isRepairing && (
               <p className="error-boundary-status" role="status">
-                Alte App-Dateien werden entfernt und frisch geladen.
+                {t('repairingStatus')}
               </p>
             )}
             {this.state.repairFailed && (
               <p className="error-boundary-status error-boundary-status-error" role="alert">
-                Die automatische Aktualisierung wurde blockiert. Bitte laden Sie die Seite neu.
+                {t('repairBlockedStatus')}
               </p>
             )}
 
             <p className="error-boundary-help">
-              „App sicher aktualisieren“ erneuert die Web-App und setzt lokale Anzeigeoptionen zurück.
-              Konto und Notizen bleiben erhalten.
+              {t('repairHelpText')}
             </p>
           </div>
         </div>

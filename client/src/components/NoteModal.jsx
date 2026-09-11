@@ -6,15 +6,38 @@ import './NoteModal.css';
 import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
 import ConfirmDialog from './ConfirmDialog';
+import { toastBus } from './ToastStack';
 import { getColorVar } from '../utils/colorMapper';
+import { isNoteOwner, noteOwnerName } from '../utils/noteAccess.mjs';
 import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
+import { useModalA11y } from '../hooks/useModalA11y';
+import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
+
+/**
+ * Detect optimistic-locking conflicts (PUT /api/notes/:id with baseUpdatedAt
+ * answers 409). apiUtils throws plain Errors, so every known representation
+ * of the status is checked; anything else is treated as a generic error.
+ */
+function isNoteConflictError(error) {
+  return Boolean(
+    error &&
+      (error.status === 409 ||
+        error.statusCode === 409 ||
+        error.isNoteConflict === true ||
+        error.conflict === true)
+  );
+}
 
 function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
   const isDemo = Boolean(user?.isDemo);
+  // Geteilte Notiz: Inhalt/Titel/Tags/Farbe/Pin dürfen Mitbearbeiter ändern,
+  // Archivieren/Teilen/Löschen/Bilder/Aufnahme bleiben beim Besitzer (der
+  // Server antwortet sonst mit 404 „Notiz nicht gefunden“).
+  const canManage = !note || isNoteOwner(note, user);
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [tags, setTags] = useState(note?.tags || []);
@@ -30,6 +53,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Optimistic locking: server version that beat our edit (null = no conflict).
+  const [conflict, setConflict] = useState(null);
+  const [showConflictDiscardConfirm, setShowConflictDiscardConfirm] = useState(false);
+  // note.updatedAt at the time the modal was opened (or the server version was
+  // loaded) — sent as baseUpdatedAt on every non-forced PUT.
+  const baseUpdatedAtRef = useRef(note?.updatedAt || null);
   const contentTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -37,15 +66,20 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
   const audioChunksRef = useRef([]);
 
   useEffect(() => () => {
-    if (mediaRecorderRef.current?.state !== 'inactive') {
-      mediaRecorderRef.current.onstop = null;
-      mediaRecorderRef.current.stop();
+    // Without an explicit null check this cleanup throws on EVERY unmount:
+    // `null?.state !== 'inactive'` is true, and the next line dereferences the
+    // empty ref — the ErrorBoundary then replaces the whole app as soon as the
+    // editor closes (or immediately on open in StrictMode/dev).
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      recorder.stop();
     }
     mediaStreamRef.current?.getTracks().forEach(track => track.stop());
   }, []);
 
   // Custom hooks for link preview and todo list management
-  const { linkPreviews, setLinkPreviews } = useLinkPreview(content, !isTodoList && !isDemo);
+  const { linkPreviews, setLinkPreviews, removeLinkPreview } = useLinkPreview(content, !isTodoList && !isDemo);
   const {
     todoItems,
     setTodoItems,
@@ -56,21 +90,31 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     getCleanedItems,
   } = useTodoList(note?.todoItems || []);
 
+  // Reset the form to a note object. Used when the note prop changes (modal
+  // re-opened) and when the server version is loaded after a conflict.
+  const applyNoteToForm = useCallback((source) => {
+    if (!source) return;
+    setTitle(source.title || '');
+    setContent(source.content || '');
+    setTags(source.tags || []);
+    setTagInput('');
+    setColor(source.color || '#ffffff');
+    setIsTodoList(source.isTodoList || false);
+    setIsPinned(source.isPinned || false);
+    setTodoItems(source.todoItems || []);
+    setLinkPreviews(source.linkPreviews || []);
+    setImages(source.images || []);
+  }, [setTodoItems, setLinkPreviews]);
+
   // Update state when note changes
   useEffect(() => {
     if (note) {
-      setTitle(note.title || '');
-      setContent(note.content || '');
-      setTags(note.tags || []);
-      setTagInput('');
-      setColor(note.color || '#ffffff');
-      setIsTodoList(note.isTodoList || false);
-      setIsPinned(note.isPinned || false);
-      setTodoItems(note.todoItems || []);
-      setLinkPreviews(note.linkPreviews || []);
-      setImages(note.images || []);
+      applyNoteToForm(note);
+      baseUpdatedAtRef.current = note.updatedAt || null;
+      setConflict(null);
+      setShowConflictDiscardConfirm(false);
     }
-  }, [note, setTodoItems, setLinkPreviews]);
+  }, [note, applyNoteToForm]);
 
   // Auto-resize textarea to fit content
   useEffect(() => {
@@ -97,7 +141,45 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   }, [note, isTodoList]);
 
-  const handleSave = async () => {
+  // Fetch the current server version of the note (used on 409 conflicts —
+  // apiUtils discards the 409 body, so the note is re-fetched via getById).
+  const fetchCurrentNote = useCallback(async () => {
+    if (!note) return null;
+    try {
+      return await notesAPI.getById(note._id);
+    } catch {
+      return null;
+    }
+  }, [note]);
+
+  // Show the inline conflict banner. Fetches the server note so
+  // "Server-Version laden" works without another round-trip.
+  const showConflictBanner = useCallback(async () => {
+    const currentNote = await fetchCurrentNote();
+    setConflict({ currentNote });
+    if (!currentNote) {
+      toastBus.error(t('conflictLoadFailed'));
+    }
+  }, [fetchCurrentNote, t]);
+
+  // The current App.jsx wiring catches save errors itself (toast) and returns
+  // null instead of rethrowing, so a failed save probes the server version:
+  // a changed updatedAt means the failure was an optimistic-locking conflict.
+  const detectConflictAfterFailedSave = useCallback(async () => {
+    if (!note || !baseUpdatedAtRef.current) return;
+    const currentNote = await fetchCurrentNote();
+    if (currentNote?.updatedAt && currentNote.updatedAt !== baseUpdatedAtRef.current) {
+      setConflict({ currentNote });
+    }
+  }, [note, fetchCurrentNote]);
+
+  /**
+   * Persist the note.
+   * @param {{force?: boolean}} [options] force=true sends no baseUpdatedAt
+   *   (last-write-wins) — used by the conflict banner's overwrite button.
+   */
+  const saveNote = async (options = {}) => {
+    const forceOverwrite = Boolean(options.force);
     if (isSaving) return;
     // Validate based on mode
     if (isTodoList) {
@@ -131,13 +213,53 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       linkPreviews: isDemo ? [] : (linkPreviews || []),
     };
 
+    // Optimistic locking (edits only — creates have no server version yet).
+    const payload = { ...noteData };
+    if (note && !forceOverwrite && baseUpdatedAtRef.current) {
+      payload.baseUpdatedAt = baseUpdatedAtRef.current;
+    }
+
     setIsSaving(true);
     try {
-      const savedNote = await onSave(noteData);
-      if (savedNote) onClose();
+      const savedNote = await onSave(payload);
+      if (savedNote) {
+        if (forceOverwrite) {
+          toastBus.success(t('conflictOverwritten'));
+        }
+        onClose();
+        return;
+      }
+      // onSave swallowed the error (already toasted by App) — check whether a
+      // conflict caused it before giving up silently.
+      await detectConflictAfterFailedSave();
+    } catch (error) {
+      if (note && isNoteConflictError(error)) {
+        await showConflictBanner();
+      } else {
+        toastBus.error(error.message || t('errorUpdating'));
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = () => saveNote();
+
+  // Conflict banner: load the server version into the form. Local changes are
+  // discarded after an explicit confirmation (see ConfirmDialog below).
+  const handleLoadServerVersion = async () => {
+    const currentNote = conflict?.currentNote || (await fetchCurrentNote());
+    if (!currentNote) {
+      setConflict({ currentNote: null });
+      toastBus.error(t('conflictLoadFailed'));
+      return;
+    }
+    applyNoteToForm(currentNote);
+    if (currentNote.updatedAt) {
+      baseUpdatedAtRef.current = currentNote.updatedAt;
+    }
+    setConflict(null);
+    toastBus.info(t('conflictServerVersionLoaded'));
   };
 
   // Handle tag input
@@ -217,13 +339,18 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     try {
       const updatedNote = await notesAPI.uploadImages(note._id, newImageFiles);
       setImages(updatedNote.images || []);
+      // The upload bumped the stored note; without this the next save compares
+      // against the pre-upload version and the server answers a false 409.
+      if (updatedNote.updatedAt) {
+        baseUpdatedAtRef.current = updatedNote.updatedAt;
+      }
       setNewImageFiles([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
       console.error('Fehler beim Hochladen der Bilder:', error);
-      alert(error.message || 'Fehler beim Hochladen der Bilder');
+      toastBus.error(error.message || t('errorUploadingImages'));
     } finally {
       setUploadingImages(false);
     }
@@ -235,9 +362,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     try {
       const updatedNote = await notesAPI.deleteImage(note._id, filename);
       setImages(updatedNote.images || []);
+      if (updatedNote.updatedAt) {
+        baseUpdatedAtRef.current = updatedNote.updatedAt;
+      }
     } catch (error) {
       console.error('Fehler beim Löschen des Bildes:', error);
-      alert('Fehler beim Löschen des Bildes');
+      toastBus.error(error.message || t('errorDeletingImage'));
     }
   };
 
@@ -296,7 +426,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       setIsRecording(true);
     } catch (error) {
       console.error('Fehler beim Starten der Aufnahme:', error);
-      alert('Fehler beim Zugriff auf das Mikrofon. Bitte überprüfen Sie die Berechtigungen.');
+      toastBus.error(error.message || t('errorMicrophoneAccess'));
     }
   };
 
@@ -309,7 +439,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
   const handleTranscribe = async (audioBlob) => {
     if (!note) {
-      alert('Bitte speichern Sie die Notiz zuerst, bevor Sie eine Aufnahme transkribieren.');
+      toastBus.info(t('saveBeforeTranscribing'));
       return;
     }
 
@@ -342,7 +472,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       }
     } catch (error) {
       console.error('Fehler bei der Transkription:', error);
-      alert(error.message || 'Fehler bei der Transkription');
+      toastBus.error(error.message || t('errorTranscribing'));
     } finally {
       setIsTranscribing(false);
     }
@@ -391,27 +521,50 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
     }
   };
 
+  // Only react to a backdrop click that both started AND ended on the backdrop:
+  // selecting text in the editor and releasing over the overlay must not
+  // save-and-close (and silently drop a title-only note).
+  const backdropClose = useBackdropClose(handleOverlayClick);
+
   // Keyboard shortcuts for modal
   useModalShortcuts(
     () => {
-      if (showDeleteConfirm) {
+      if (showDeleteConfirm || showConflictDiscardConfirm) {
         setShowDeleteConfirm(false);
+        setShowConflictDiscardConfirm(false);
+        return;
+      }
+      // The lightbox has its own Escape handler; closing it must not also
+      // save-and-close the whole editor.
+      if (lightboxImage) {
         return;
       }
       handleOverlayClick();
     },
     () => {
-      if (!showDeleteConfirm) handleSave();
+      if (!showDeleteConfirm && !showConflictDiscardConfirm) handleSave();
     }
   );
 
+  // Shared modal a11y (focus trap, initial focus, focus restore). Escape is
+  // owned by useModalShortcuts above (save-and-close), so it is disabled here.
+  const { containerRef, titleId } = useModalA11y({ onClose, closeOnEscape: false });
+
   return (
-    <div className="note-modal-overlay" onClick={handleOverlayClick}>
+    <div className="note-modal-overlay" {...backdropClose}>
       <div
         className="note-modal"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={{ backgroundColor: getColorVar(color) }}
         onClick={(e) => e.stopPropagation()}
       >
+        <h2 id={titleId} className="sr-only">
+          {note ? t('editNote') : t('newNote')}
+        </h2>
         <button
           className="note-modal-close"
           onClick={handleOverlayClick}
@@ -424,6 +577,36 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
         </button>
 
         <div className="note-modal-body">
+          {conflict && (
+            <div className="note-modal-conflict" role="alert">
+              <svg className="note-modal-conflict-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div className="note-modal-conflict-body">
+                <strong>{t('conflictMessage')}</strong>
+                <div className="note-modal-conflict-actions">
+                  <button
+                    type="button"
+                    className="btn-conflict-load"
+                    onClick={() => setShowConflictDiscardConfirm(true)}
+                    disabled={!conflict.currentNote || isSaving}
+                  >
+                    {t('conflictLoadServerVersion')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-conflict-overwrite"
+                    onClick={() => saveNote({ force: true })}
+                    disabled={isSaving}
+                  >
+                    {t('conflictOverwriteMine')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <input
             type="text"
             className="note-modal-title"
@@ -433,6 +616,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             maxLength={200}
             autoFocus={!isTodoList}
           />
+
+          {note && !canManage && (
+            <p className="note-modal-shared-hint">
+              {t('sharedNoteOwnerHint', { owner: noteOwnerName(note) || t('unknownUser') })}
+            </p>
+          )}
 
           {isTodoList ? (
             <div className="todo-list-container">
@@ -492,12 +681,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
           {!isDemo && !isTodoList && linkPreviews && linkPreviews.length > 0 && (
             <div className="note-modal-link-previews">
-              {linkPreviews.map((preview, index) => (
+              {linkPreviews.map((preview) => (
                 <LinkPreview
-                  key={index}
+                  key={preview.url}
                   preview={preview}
                   onRemove={() => {
-                    setLinkPreviews(linkPreviews.filter((_, i) => i !== index));
+                    removeLinkPreview(preview.url);
                   }}
                 />
               ))}
@@ -509,18 +698,25 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
               <div className="uploaded-images">
                 {images.map((image, index) => (
                   <div key={index} className="image-preview" onClick={() => openLightbox(index)}>
-                    <img src={image.url} alt={image.filename} />
-                    <button
-                      type="button"
-                      className="image-delete-btn"
-                      onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
-                      title="Bild löschen"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                      </svg>
-                    </button>
+                    <img
+                      src={image.thumbnailUrl || image.url}
+                      alt={image.filename}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="image-delete-btn"
+                        onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
+                        title={t('deleteImage')}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -531,26 +727,31 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             <div className="new-images-preview">
               {newImageFiles.map((file, index) => (
                 <div key={index} className="image-preview new">
-                  <img src={newImagePreviewUrls[index]} alt={file.name} />
+                  <img
+                    src={newImagePreviewUrls[index]}
+                    alt={file.name}
+                    loading="lazy"
+                    decoding="async"
+                  />
                   <button
                     type="button"
                     className="image-delete-btn"
                     onClick={() => removeNewImageFile(index)}
-                    title="Entfernen"
+                    title={t('removeImage')}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18"/>
                       <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                   </button>
-                  <span className="new-badge">Neu</span>
+                  <span className="new-badge">{t('newBadge')}</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* Hidden file input for image selection */}
-          {!isDemo && note && (
+          {!isDemo && note && canManage && (
             <input
               ref={fileInputRef}
               type="file"
@@ -571,7 +772,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                     type="button"
                     className="tag-pill"
                     onClick={() => removeTag(index)}
-                    title={`${tag} entfernen`}
+                    title={t('removeTagTitle', { tag })}
                   >
                     <span className="tag-pill-text">{tag}</span>
                     <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -585,7 +786,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             <input
               type="text"
               className="note-modal-tags-input"
-              placeholder={tags.length > 0 ? t('addMoreTags') || 'Weitere Tags...' : t('tagsPlaceholder')}
+              placeholder={tags.length > 0 ? t('addMoreTags') : t('tagsPlaceholder')}
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleTagInputKeyDown}
@@ -613,7 +814,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 <path d="M9 11l3 3 6-6"/>
               </svg>
             </button>
-            {note && onToggleArchive && (
+            {note && canManage && onToggleArchive && (
               <button
                 type="button"
                 className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
@@ -637,7 +838,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 </svg>
               </button>
             )}
-            {note && onOpenCollaborate && (
+            {note && canManage && onOpenCollaborate && (
               <button
                 type="button"
                 className="btn-modal-collaborate"
@@ -671,12 +872,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
               </svg>
             </button>
-            {!isDemo && note && (
+            {!isDemo && note && canManage && (
               <>
                 <label
                   htmlFor="image-upload-input"
                   className="btn-modal-image-select"
-                  title="Bilder auswählen"
+                  title={t('selectImages')}
                   style={{ cursor: 'pointer' }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -691,7 +892,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                     className={`btn-modal-image-upload ${uploadingImages ? 'uploading' : ''}`}
                     onClick={handleImageUpload}
                     disabled={uploadingImages}
-                    title={uploadingImages ? 'Hochladen...' : `${newImageFiles.length} Bild(er) hochladen`}
+                    title={uploadingImages ? t('uploadingImages') : t('uploadImagesCount', { count: newImageFiles.length })}
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -705,14 +906,14 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 )}
               </>
             )}
-            {!isDemo && note && settings.aiFeatures.voiceTranscription && !isTodoList && (
+            {!isDemo && note && canManage && settings.aiFeatures.voiceTranscription && !isTodoList && (
               <button
                 type="button"
                 className={`btn-modal-voice ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}
                 onClick={isRecording ? stopRecording : startRecording}
                 disabled={isTranscribing}
-                title={isRecording ? 'Aufnahme stoppen' : isTranscribing ? 'Transkribiere...' : 'Sprachaufnahme starten'}
-                aria-label={isRecording ? 'Aufnahme stoppen' : 'Sprachaufnahme starten'}
+                title={isRecording ? t('stopRecording') : isTranscribing ? t('transcribing') : t('startRecording')}
+                aria-label={isRecording ? t('stopRecording') : t('startRecording')}
               >
                 {isTranscribing ? (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -729,7 +930,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
                 )}
               </button>
             )}
-            {note && onDelete && (
+            {note && canManage && onDelete && (
               <button
                 type="button"
                 className="btn-modal-delete"
@@ -768,8 +969,8 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
       {/* Lightbox for viewing images */}
       {lightboxImage && (
-        <div className="lightbox-overlay" onClick={closeLightbox}>
-          <button className="lightbox-close" onClick={closeLightbox} aria-label="Schließen">
+        <div className="lightbox-overlay" onClick={(e) => { e.stopPropagation(); closeLightbox(); }}>
+          <button className="lightbox-close" onClick={(e) => { e.stopPropagation(); closeLightbox(); }} aria-label={t('close')}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -778,12 +979,12 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
 
           {images.length > 1 && (
             <>
-              <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); prevImage(); }} aria-label="Vorheriges Bild">
+              <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); prevImage(); }} aria-label={t('previousImage')}>
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="15 18 9 12 15 6"/>
                 </svg>
               </button>
-              <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); nextImage(); }} aria-label="Nächstes Bild">
+              <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); nextImage(); }} aria-label={t('nextImage')}>
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
@@ -792,7 +993,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
           )}
 
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <img src={lightboxImage.url} alt={`Bild ${lightboxImage.index + 1}`} />
+            <img src={lightboxImage.url} alt={t('imageAlt', { index: lightboxImage.index + 1 })} />
             {images.length > 1 && (
               <div className="lightbox-counter">
                 {lightboxImage.index + 1} / {images.length}
@@ -817,6 +1018,18 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
             setIsSaving(false);
             setShowDeleteConfirm(false);
           }
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={showConflictDiscardConfirm}
+        title={t('conflictDiscardTitle')}
+        message={t('conflictDiscardMessage')}
+        confirmLabel={t('conflictDiscardConfirm')}
+        onCancel={() => setShowConflictDiscardConfirm(false)}
+        onConfirm={() => {
+          setShowConflictDiscardConfirm(false);
+          handleLoadServerVersion();
         }}
       />
     </div>

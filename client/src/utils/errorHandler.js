@@ -20,8 +20,9 @@ export const ErrorTypes = {
  * @returns {Object} Parsed error with type and message
  */
 export function parseError(error) {
-  // Network errors
-  if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+  // Network errors — match the fetch failure signature only. Catching every
+  // TypeError misclassified genuine code bugs as "check your internet".
+  if (error.message === 'Failed to fetch' || error.message === 'NetworkError when attempting to fetch resource.' || error.name === 'AbortError') {
     return {
       type: ErrorTypes.NETWORK,
       message: 'Netzwerkfehler. Bitte überprüfen Sie Ihre Internetverbindung.',

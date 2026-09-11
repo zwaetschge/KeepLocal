@@ -114,13 +114,22 @@
   letter-spacing: -0.02em;
 }
 
-.note-modal-title:focus {
-  border-bottom-color: transparent;
-}
-
 .note-modal-title:focus-visible {
   outline: none;
   box-shadow: none;
+  border-bottom-color: var(--accent-color, #49B6E5);
+}
+
+/* Hinweis für geteilte Notizen: Der Nutzer darf Inhalt und Tags ändern, aber
+   nicht archivieren, löschen, Bilder hochladen oder aufnehmen. */
+.note-modal-shared-hint {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-secondary);
+  background: var(--hover-overlay, rgba(0, 0, 0, 0.04));
+  border-radius: var(--radius-sm);
 }
 
 .note-modal-title::placeholder {
@@ -153,6 +162,8 @@
 .note-modal-content:focus-visible {
   outline: none;
   box-shadow: none;
+  outline: 2px solid var(--accent-color, #49B6E5);
+  outline-offset: 2px;
 }
 
 .note-modal-content::placeholder {
@@ -264,6 +275,8 @@
 .note-modal-tags-input:focus-visible {
   outline: none;
   box-shadow: none;
+  outline: 2px solid var(--accent-color, #49B6E5);
+  outline-offset: 2px;
 }
 
 .dark-mode .note-modal-tags-input {
@@ -293,6 +306,8 @@
 .note-modal-tags:focus-visible {
   outline: none;
   box-shadow: none;
+  outline: 2px solid var(--accent-color, #49B6E5);
+  outline-offset: 2px;
 }
 
 .dark-mode .note-modal-tags {
@@ -588,6 +603,8 @@
 .todo-item-input:focus-visible {
   outline: none;
   box-shadow: none;
+  outline: 2px solid var(--accent-color, #49B6E5);
+  outline-offset: 2px;
 }
 
 .dark-mode .todo-item-input {
@@ -1486,4 +1503,98 @@
   .note-modal-close {
     padding: var(--space-2);
   }
+}
+
+/* ============================================
+   Conflict banner (optimistic locking, 409)
+   ============================================ */
+.note-modal-conflict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning-color);
+  border-left: 4px solid var(--warning-color);
+  border-radius: var(--radius-md);
+  background: var(--warning-light);
+}
+
+.note-modal-conflict-icon {
+  flex-shrink: 0;
+  color: var(--warning-color);
+  margin-top: 2px;
+}
+
+.note-modal-conflict-body {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-snug);
+}
+
+.note-modal-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.btn-conflict-load,
+.btn-conflict-overwrite {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-default);
+}
+
+.btn-conflict-load {
+  border: 1px solid var(--border-color);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.btn-conflict-load:hover:not(:disabled) {
+  border-color: var(--accent-color);
+}
+
+.btn-conflict-overwrite {
+  border: 1px solid var(--accent-color);
+  background: var(--accent-color);
+  color: white;
+}
+
+.btn-conflict-overwrite:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.btn-conflict-load:disabled,
+.btn-conflict-overwrite:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-conflict-load:focus-visible,
+.btn-conflict-overwrite:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Programmatic focus target for the focus trap — never shows a ring itself. */
+.note-modal:focus {
+  outline: none;
+}
+
+/* E-Ink Mode */
+.eink-mode .note-modal-conflict {
+  border: 2px solid #000000;
+  border-left-width: 4px;
+  background: #e8e8e8;
+}
+
+.eink-mode .note-modal-conflict-icon {
+  color: #000000;
 }

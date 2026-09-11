@@ -3,6 +3,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const normalizeEmailAddress = require('../utils/normalizeEmail');
 
 /**
  * Find or create a user from an OAuth profile.
@@ -10,7 +11,11 @@ const Settings = require('../models/Settings');
  */
 async function findOrCreateOAuthUser(provider, profile) {
   const providerId = profile.id;
-  const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+  const rawEmail = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+  // Look up and store the same canonical form the register/login validators
+  // produce, so an OAuth identity finds the existing local account instead of
+  // creating a duplicate.
+  const email = rawEmail ? normalizeEmailAddress(rawEmail) : null;
   const displayName = profile.displayName || profile.username || (email ? email.split('@')[0] : `${provider}-user-${providerId}`);
   const avatar = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
 
@@ -29,7 +34,7 @@ async function findOrCreateOAuthUser(provider, profile) {
   if (email) {
     user = await User.findOne({ email }).select('+sessionVersion');
     if (user) {
-      const emailEntry = profile.emails?.find(entry => entry.value === email);
+      const emailEntry = profile.emails?.find(entry => entry.value === rawEmail);
       const emailVerified = emailEntry?.verified === true || profile._json?.email_verified === true;
       if (!emailVerified) {
         throw new Error('OAuth email must be verified before linking an existing account');

@@ -18,11 +18,52 @@ const NOTE_COLORS = new Set([
 const TAG_PATTERN = /^[a-zA-Z0-9äöüÄÖÜß\-_]+$/;
 const MAX_IMAGE_PIXELS = 40000000;
 const MAX_IMAGES_PER_NOTE = 25;
+const NOTE_CONFLICT_MESSAGE = 'Die Notiz wurde inzwischen geändert';
+// MongoDB truncates timestamps to milliseconds and clients may round when
+// serializing, so small skews must not look like a concurrent edit.
+const CONFLICT_TOLERANCE_MS = 1000;
 
 function clientError(message) {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
+}
+
+/**
+ * Access filter for collaborative edits: the owner and everyone the note is
+ * shared with may change its content and pin state. Destructive or structural
+ * operations (delete, archive, share/unshare, uploads, transcription) stay
+ * owner-only via `getOwnedNoteById`.
+ */
+function noteEditQuery(noteId, userId) {
+  return {
+    _id: noteId,
+    $or: [
+      { userId },
+      { sharedWith: userId }
+    ]
+  };
+}
+
+/**
+ * Parse the optimistic-locking precondition sent by the client.
+ * Returns the parsed Date, or null when the value is absent, empty, or not
+ * date-parseable (invalid values are treated like a missing value so that
+ * robust old clients keep working instead of receiving a 400).
+ */
+function parseBaseUpdatedAt(value) {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function throwNoteConflict(note) {
+  const error = new Error(NOTE_CONFLICT_MESSAGE);
+  error.statusCode = 409;
+  // The stored note travels with the error so the route can return it in the
+  // same serialized form as a regular PUT response.
+  error.currentNote = note;
+  throw error;
 }
 
 function normalizePositiveInteger(value, fallback, maximum) {
@@ -226,14 +267,14 @@ function buildNotesQuery({ userId, search, tag, isArchived = false }) {
   };
 
   // Full-text search using MongoDB text index (more performant than regex)
-  if (search && search.trim() !== '') {
+  if (typeof search === 'string' && search.trim() !== '') {
     // MongoDB $text search is indexed and much faster than regex
     // It searches in title, content, and todoItems.text (as defined in the model)
     query.$text = { $search: search.trim() };
   }
 
   // Filter by tag (case-insensitive to match tags regardless of stored casing)
-  if (tag && tag.trim() !== '') {
+  if (typeof tag === 'string' && tag.trim() !== '') {
     query.tags = { $regex: new RegExp(`^${tag.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
   }
 
@@ -270,7 +311,10 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   const notes = await Note.find(query)
     .populate('userId', 'username email')
     .populate('sharedWith', 'username email')
-    .sort({ isPinned: -1, createdAt: -1 }) // Pinned notes first
+    // Same recency key the client uses to order a page (useNotesManager sorts by
+    // updatedAt): sorting by createdAt here made recently edited older notes
+    // land on later pages, so the visible order contradicted the pagination.
+    .sort({ isPinned: -1, updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(safeLimit);
 
@@ -286,7 +330,6 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     tags
   };
 }
-
 /**
  * Get a single note by ID
  * @param {string} noteId - Note ID
@@ -370,11 +413,26 @@ async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
   const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = noteData;
 
-  const note = await Note.findOne({ _id: noteId, userId: userId });
+  const note = await Note.findOne(noteEditQuery(noteId, userId));
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
+  }
+
+  // Optimistic locking: baseUpdatedAt is the updatedAt of the note version
+  // the client based its edit on. If the stored note changed more than the
+  // timestamp tolerance ago, the edit is stale and must not overwrite the
+  // newer version. baseUpdatedAt itself is never persisted: only the fields
+  // destructured above are ever assigned to the document.
+  const baseUpdatedAt = parseBaseUpdatedAt(noteData.baseUpdatedAt);
+  const storedUpdatedAt = note.updatedAt ? new Date(note.updatedAt) : null;
+  if (
+    baseUpdatedAt &&
+    storedUpdatedAt &&
+    storedUpdatedAt.getTime() - baseUpdatedAt.getTime() > CONFLICT_TOLERANCE_MS
+  ) {
+    throwNoteConflict(note);
   }
 
   const nextIsTodoList = isTodoList !== undefined ? isTodoList : note.isTodoList;
@@ -442,10 +500,7 @@ async function deleteNote(noteId, userId) {
  * @returns {Promise<Object>} Updated note
  */
 async function togglePinNote(noteId, userId) {
-  const note = await Note.findOne({
-    _id: noteId,
-    userId: userId
-  });
+  const note = await Note.findOne(noteEditQuery(noteId, userId));
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
@@ -497,6 +552,18 @@ async function shareNote(noteId, userId, targetUserId) {
   if (!targetUser) {
     const error = new Error('Benutzer nicht gefunden');
     error.statusCode = 404;
+    throw error;
+  }
+
+  // Sharing puts a note into somebody else's account, so it requires an
+  // accepted friendship. Without this check any authenticated user could push
+  // notes to arbitrary accounts (user ids are discoverable through the friend
+  // search), and the CollaborateModal only ever lists friends anyway.
+  const owner = await User.findById(userId).select('friends');
+  const isFriend = Boolean(owner?.friends?.some(friendId => String(friendId) === String(targetUserId)));
+  if (!isFriend) {
+    const error = new Error('Notizen koennen nur mit Freunden geteilt werden');
+    error.statusCode = 403;
     throw error;
   }
 

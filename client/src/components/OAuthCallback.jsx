@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Auth.css';
 
@@ -10,29 +10,39 @@ import './Auth.css';
 function OAuthCallback({ onOAuthSuccess }) {
   const { t } = useLanguage();
   const [error, setError] = useState(null);
+  // AppContent erzeugt onOAuthSuccess bei jedem Render neu; ohne diese Sperre
+  // liefe der Effect erneut, nachdem die URL bereits bereinigt ist, und würde
+  // fälschlich den Fehlerzustand setzen (setState an einer sterbenden Komponente).
+  const handledRef = useRef(false);
 
   useEffect(() => {
+    if (handledRef.current) return undefined;
+    handledRef.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const fragment = new URLSearchParams(window.location.hash.slice(1));
     const success = fragment.get('success');
     const errorParam = params.get('error');
 
     if (errorParam) {
-      setError(t('oauthFailed') || 'OAuth login failed. Please try again.');
+      setError(t('oauthFailed'));
       // Clean up URL
       window.history.replaceState({}, document.title, '/');
-      return;
+      return undefined;
     }
 
     if (success === '1') {
       // Clean up URL before calling success handler
       window.history.replaceState({}, document.title, '/');
       onOAuthSuccess();
-    } else {
-      setError(t('oauthFailed') || 'OAuth login failed. No session confirmation received.');
-      window.history.replaceState({}, document.title, '/');
+      return undefined;
     }
-  }, [onOAuthSuccess, t]);
+
+    setError(t('oauthFailed'));
+    window.history.replaceState({}, document.title, '/');
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (error) {
     return (
@@ -47,7 +57,7 @@ function OAuthCallback({ onOAuthSuccess }) {
             style={{ marginTop: '16px' }}
             onClick={() => window.location.href = '/'}
           >
-            {t('backToLogin') || 'Back to Login'}
+            {t('backToLogin')}
           </button>
         </div>
       </div>
@@ -58,7 +68,7 @@ function OAuthCallback({ onOAuthSuccess }) {
     <div className="auth-container">
       <div className="auth-box">
         <div className="auth-header">
-          <h1>{t('loggingIn') || 'Logging in...'}</h1>
+          <h1>{t('loggingIn')}</h1>
         </div>
       </div>
     </div>

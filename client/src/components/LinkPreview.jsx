@@ -1,7 +1,9 @@
 import React from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import './LinkPreview.css';
 
 function LinkPreview({ preview, onRemove }) {
+  const { t } = useLanguage();
   const { url, title, description, image, siteName } = preview;
 
   const handleClick = (e) => {
@@ -37,7 +39,7 @@ function LinkPreview({ preview, onRemove }) {
         <div className="link-preview-image-container">
           <img
             src={image}
-            alt={title || siteName || 'Link preview'}
+            alt={title || siteName || t('linkPreviewAlt')}
             className="link-preview-image"
             onError={(e) => {
               e.target.style.display = 'none';
@@ -61,8 +63,8 @@ function LinkPreview({ preview, onRemove }) {
         <button
           className="link-preview-remove"
           onClick={handleRemove}
-          aria-label="Vorschau entfernen"
-          title="Vorschau entfernen"
+          aria-label={t('removeLinkPreview')}
+          title={t('removeLinkPreview')}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"/>

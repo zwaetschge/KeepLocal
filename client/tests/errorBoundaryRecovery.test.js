@@ -14,9 +14,12 @@ const styles = fs.readFileSync(
 
 test('error boundary offers safe cache recovery and a non-sensitive diagnostic', () => {
   assert.match(component, /repairAppState/);
-  assert.match(component, /App sicher aktualisieren/);
+  // UI-Texte kommen aus den Katalogen (de + en), nicht aus dem JSX.
+  assert.match(component, /t\('repairButton'\)/);
+  assert.match(component, /t\('technicalHint'\)/);
+  assert.doesNotMatch(component, /App sicher aktualisieren/);
+  assert.doesNotMatch(component, /Technischer Hinweis:/);
   assert.match(component, /diagnostic\.code/);
-  assert.match(component, /Technischer Hinweis/);
   assert.doesNotMatch(component, /Browser-Cache leeren/);
   assert.match(styles, /\.error-boundary-button:focus-visible/);
 });

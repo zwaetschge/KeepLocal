@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { authAPI, initializeCSRF } from '../services/api';
+import { UNAUTHORIZED_EVENT } from '../services/api/apiUtils';
 import { removeLocalStorage } from '../utils/localStorage.mjs';
 
 const AuthContext = createContext();
@@ -17,6 +18,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
+  // P16: Session ist serverseitig abgelaufen (401-Event) -> Hinweis am Login-Screen
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Check if user is authenticated and setup status on mount
   useEffect(() => {
@@ -52,8 +55,33 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, []);
 
+  // Ref-Spiegel, damit der 401-Listener ohne Stale-Closure den Login-Status prüfen kann
+  const isLoggedInRef = useRef(isLoggedIn);
+  useEffect(() => {
+    isLoggedInRef.current = isLoggedIn;
+  }, [isLoggedIn]);
+
+  // P16: Auf 401-Session-Expiry hören (apiUtils feuert gedrosselt). Nur wenn
+  // der Nutzer tatsächlich eingeloggt war, gilt die Session als "abgelaufen" —
+  // ein 401 beim initialen Session-Check (nie eingeloggt) erzeugt keinen Hinweis.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+      return undefined;
+    }
+    const handleUnauthorized = (_event) => {
+      if (isLoggedInRef.current) {
+        setSessionExpired(true);
+      }
+      setUser(null);
+      setIsLoggedIn(false);
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, []);
+
   const login = async (email, password) => {
     const response = await authAPI.login(email, password);
+    setSessionExpired(false);
     setUser(response.user);
     setIsLoggedIn(true);
     return response;
@@ -61,6 +89,7 @@ export function AuthProvider({ children }) {
 
   const demoLogin = async () => {
     const response = await authAPI.demoLogin();
+    setSessionExpired(false);
     setUser(response.user);
     setIsLoggedIn(true);
     return response;
@@ -68,6 +97,7 @@ export function AuthProvider({ children }) {
 
   const register = async (username, email, password) => {
     const response = await authAPI.register(username, email, password);
+    setSessionExpired(false);
     setUser(response.user);
     setIsLoggedIn(true);
     return response;
@@ -75,12 +105,14 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await authAPI.logout();
+    setSessionExpired(false);
     setUser(null);
     setIsLoggedIn(false);
   };
 
   const setup = async (username, email, password) => {
     const response = await authAPI.register(username, email, password);
+    setSessionExpired(false);
     setUser(response.user);
     setIsLoggedIn(true);
     setSetupNeeded(false);
@@ -94,6 +126,7 @@ export function AuthProvider({ children }) {
     await initializeCSRF();
     try {
       const response = await authAPI.getCurrentUser();
+      setSessionExpired(false);
       setUser(response.user);
       setIsLoggedIn(true);
       setSetupNeeded(false);
@@ -111,6 +144,7 @@ export function AuthProvider({ children }) {
     isLoggedIn,
     loading,
     setupNeeded,
+    sessionExpired,
     login,
     demoLogin,
     register,

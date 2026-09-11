@@ -53,9 +53,11 @@ function csrfCookieOptions(requestIsSecure = false) {
 function issueCsrfToken(req, res) {
   const existing = req.cookies?.[CSRF_COOKIE_NAME];
   const token = verifyCsrfToken(existing) ? existing : createCsrfToken();
-  if (token !== existing) {
-    res.cookie(CSRF_COOKIE_NAME, token, csrfCookieOptions(req.secure));
-  }
+  // Always re-set the cookie so its maxAge slides forward on every
+  // /api/csrf-token request. Otherwise the cookie hard-expires after
+  // CSRF_MAX_AGE_MS while the session cookie lives on, and every browser
+  // mutation starts failing with 403 until a manual reload.
+  res.cookie(CSRF_COOKIE_NAME, token, csrfCookieOptions(req.secure));
   return token;
 }
 

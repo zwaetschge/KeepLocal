@@ -104,7 +104,7 @@ const noteValidationRules = {
       .withMessage('Link-Preview Beschreibung darf maximal 500 Zeichen lang sein'),
 
     body('linkPreviews.*.image')
-      .optional()
+      .optional({ checkFalsy: true })
       .trim()
       .isURL()
       .withMessage('Link-Preview Bild muss eine gültige URL sein'),
@@ -208,7 +208,7 @@ const noteValidationRules = {
       .withMessage('Link-Preview Beschreibung darf maximal 500 Zeichen lang sein'),
 
     body('linkPreviews.*.image')
-      .optional()
+      .optional({ checkFalsy: true })
       .trim()
       .isURL()
       .withMessage('Link-Preview Bild muss eine gültige URL sein'),

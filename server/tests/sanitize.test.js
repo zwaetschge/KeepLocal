@@ -1,21 +1,18 @@
 const test = require('node:test');
-const assert = require('node:assert/strict');
+const assert = require('node:assert');
+const { escapeRegex } = require('../utils/sanitize');
 
-const { sanitizeObject } = require('../utils/sanitize');
-
-test('sanitization recurses into objects nested in arrays', () => {
-  const result = sanitizeObject({
-    todoItems: [{ text: '<script>alert(1)</script>safe' }]
-  });
-
-  assert.deepEqual(result, { todoItems: [{ text: 'safe' }] });
+test('escapeRegex escapes all regular expression metacharacters', () => {
+  assert.equal(escapeRegex('a.b*c[d]e(f)g+h?i^j{k}l|m\\n'), 'a\\.b\\*c\\[d\\]e\\(f\\)g\\+h\\?i\\^j\\{k\\}l\\|m\\\\n');
+  assert.equal(escapeRegex(42), '');
+  assert.equal(escapeRegex(null), '');
 });
 
-test('sanitization never changes passwords or authentication tokens', () => {
-  const password = 'Abc12345<script>&';
-  const token = '<signed-token>';
-  const result = sanitizeObject({ password, token });
-
-  assert.equal(result.password, password);
-  assert.equal(result.token, token);
+test('plain-text note fields round-trip unchanged (no destructive HTML filter)', () => {
+  // Guard against re-introducing a server-side HTML filter over plain-text
+  // fields: it silently dropped everything after "<" (BUG_REPORT 2026-08-15, #1).
+  // Rendering-side sanitization (DOMPurify / React text nodes) is the contract.
+  const build = require('../services/notesService').buildNotesQuery;
+  const query = build({ userId: 'u', search: 'Preis < 100 EUR', isArchived: false });
+  assert.equal(query.$text.$search, 'Preis < 100 EUR');
 });
