@@ -70,7 +70,8 @@ and mobile.
 - Private image uploads and optional local audio transcription
 - Friend requests and shared-note collaboration
 - English and German interfaces with Light, Dark, OLED, E-Ink, and Doodle
-  themes
+  themes — theme, UI language, and AI preferences follow the **account**
+  (`PUT /api/auth/preferences`), not the device; localStorage is only a cache
 - Responsive desktop/mobile layout and installable PWA
 - Admin-managed registration and user administration
 - Self-service password change plus admin-generated one-time password reset

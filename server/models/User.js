@@ -70,6 +70,33 @@ const userSchema = new mongoose.Schema({
     default: null,
     select: false
   },
+  // Konto-weite Voreinstellungen. Früher lagen Theme, Sprache und AI-Flags nur
+  // im localStorage des Geräts: neues Gerät = Defaults, und am gemeinsamen
+  // Rechner erbte der nächste Nutzer die Einstellungen des vorigen.
+  preferences: {
+    theme: {
+      type: String,
+      enum: ['light', 'dark', 'oled', 'eink', 'doodle'],
+      default: 'light'
+    },
+    // null = Browsersprache verwenden (kein expliziter Wunsch gespeichert)
+    language: {
+      type: String,
+      enum: ['de', 'en', null],
+      default: null
+    },
+    aiFeatures: {
+      voiceTranscription: {
+        type: Boolean,
+        default: false
+      }
+    },
+    transcriptionLanguage: {
+      type: String,
+      default: 'auto',
+      maxlength: 20
+    }
+  },
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

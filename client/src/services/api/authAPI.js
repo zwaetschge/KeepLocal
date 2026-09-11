@@ -209,6 +209,21 @@ const authAPI = {
   },
 
   /**
+   * Store account-wide preferences (theme, AI features, transcription
+   * language). Partial updates are fine — the server only touches the fields
+   * that are sent.
+   * @param {Object} preferences
+   * @returns {Promise<{preferences: Object}>}
+   */
+  updatePreferences: async (preferences) => {
+    const response = await fetchWithAuth(API_ENDPOINTS.AUTH.PREFERENCES, {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+    return response;
+  },
+
+  /**
    * Get current authenticated user data
    * @returns {Promise<Object>} Current user data
    * @throws {Error} If not authenticated or request fails

@@ -12,16 +12,28 @@ function readClientFile(...parts) {
 test('theme cycle includes doodle mode after e-ink and applies the body class', () => {
   const app = readClientFile('src/App.jsx');
   const browserEnvironment = readClientFile('src/utils/browserEnvironment.mjs');
+  const settingsContext = readClientFile('src/contexts/SettingsContext.jsx');
+  const payload = readClientFile('src/utils/settingsPayload.mjs');
 
-  assert.match(app, /readLocalStorage\('theme'\)/);
-  assert.match(app, /THEMES\.has\(savedTheme\) \? savedTheme : 'light'/);
+  // Improvement #6: the theme is an account preference now, so App.jsx only
+  // reads it from the SettingsContext and applies it to the document.
+  assert.match(app, /const \{ settings, setTheme \} = useSettings\(\);/);
+  assert.match(app, /const theme = settings\.theme;/);
   assert.match(app, /applyThemeToDocument\(theme\)/);
+  assert.doesNotMatch(app, /readLocalStorage\('theme'\)/);
+
   assert.match(browserEnvironment, /'dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode'/);
   assert.match(browserEnvironment, /doodle:\s*'doodle-mode'/);
   assert.match(browserEnvironment, /classList\.remove\(\.\.\.THEME_CLASSES\)/);
   assert.match(browserEnvironment, /classList\.add\(themeClass\)/);
-  assert.match(app, /prevTheme === 'eink'\) return 'doodle'/);
-  assert.match(app, /prevTheme === 'doodle'\) return 'light'/);
+
+  // Cycle order stays light -> dark -> oled -> eink -> doodle -> light.
+  assert.match(app, /\{ light: 'dark', dark: 'oled', oled: 'eink', eink: 'doodle', doodle: 'light' \}/);
+  assert.match(payload, /THEMES = \['light', 'dark', 'oled', 'eink', 'doodle'\]/);
+
+  // Older installs stored the theme under its own localStorage key.
+  assert.match(settingsContext, /LEGACY_THEME_KEY = 'theme'/);
+  assert.match(settingsContext, /readLocalStorage\(LEGACY_THEME_KEY\)/);
 });
 
 test('theme toggle exposes doodle as a first-class selectable theme', () => {
