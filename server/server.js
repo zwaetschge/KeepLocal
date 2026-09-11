@@ -23,6 +23,7 @@ const { configurePassport } = require('./config/passport');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const mongoose = require('mongoose');
+const { ensureNoteTextIndex } = require('./config/indexMigration');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -232,6 +233,18 @@ let httpServer;
 
 async function startServer() {
   await connectDB();
+  // Bevor mongoose die Schema-Indizes baut: den legacy Text-Index entfernen,
+  // sonst schlägt der gewichtete Text-Index mit IndexOptionsConflict fehl und
+  // der Server startet auf Bestandsinstallationen nicht mehr.
+  try {
+    const migration = await ensureNoteTextIndex(mongoose.connection);
+    if (migration.dropped) {
+      console.log(`Index-Migration: ${migration.dropped} entfernt (${migration.reason})`);
+    }
+  } catch (error) {
+    console.error('Index-Migration fehlgeschlagen:', error.message);
+    throw error;
+  }
   await Promise.all(Object.values(mongoose.models).map(model => model.init()));
 
   return (httpServer = app.listen(PORT, HOST, () => {

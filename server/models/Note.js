@@ -116,8 +116,20 @@ const noteSchema = new mongoose.Schema({
   timestamps: true // Erstellt automatisch createdAt und updatedAt
 });
 
-// Index für schnellere Suche - Text search index includes title, content, and todo items
-noteSchema.index({ title: 'text', content: 'text', 'todoItems.text': 'text' });
+// Index für schnellere Suche - weighted text index over title, content and todo
+// items. `default_language: 'none'` keeps the tokenizer neutral: with the
+// previous default ('english') German words were not stemmed but English
+// stopwords were dropped, and a title match ranked exactly like a body match.
+// Note: MongoDB allows one text index per collection, so config/indexMigration.js
+// drops the legacy unweighted index before mongoose creates this one.
+noteSchema.index(
+  { title: 'text', content: 'text', 'todoItems.text': 'text' },
+  {
+    name: 'note_text_search',
+    weights: { title: 5, 'todoItems.text': 2, content: 1 },
+    default_language: 'none'
+  }
+);
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // Compound index für Benutzer-Notizen
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer

@@ -224,6 +224,7 @@ function AppContent() {
       onOpenModal: openNoteModal,
       onDragStart: handleDragStart, onDragEnd: handleDragEnd,
       onDragOver: handleDragOver, onDrop: handleDrop,
+      highlight: searchTerm,
       operationLoading,
     };
   const emptyStateContent = showTrash

@@ -63,7 +63,8 @@ and mobile.
 ## Current capabilities
 
 - Notes and checklists with colors, tags, pinning, archives, search, and
-  pagination
+  pagination — search is relevance-ranked (weighted text index, title matches
+  first), highlights its matches, and narrows the tag counts to the result set
 - Trash with undo, restore, permanent delete, and a 30-day server-side retention
 - Manual note ordering per section via drag & drop (persisted; new notes join on
   top once a section has been sorted, otherwise recency rules as before)
@@ -236,6 +237,12 @@ When the API is running, interactive documentation is available at
   tokens.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
+- `GET /api/notes?search=…` ranks by the weighted text index
+  (`title:5, todoItems.text:2, content:1`, `default_language: none`) and returns a
+  `score`; without a search the list stays ordered by pin, manual order and
+  recency. Upgrading from an older release replaces the previous unweighted text
+  index automatically at startup (`server/config/indexMigration.js`), because
+  MongoDB allows only one text index per collection.
 - `PATCH /api/notes/reorder` with `{ "orderedIds": [...] }` persists a manual
   order for one section (owner-only, max 200 ids). The server re-deals the
   existing `order` values of exactly those notes, so a page-local reorder cannot

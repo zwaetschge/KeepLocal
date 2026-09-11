@@ -213,7 +213,7 @@
 .sidebar-item:hover .count,
 .sidebar-item.active .count {
   background: rgba(196, 120, 93, 0.2);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .dark-mode .sidebar-item:hover .count,

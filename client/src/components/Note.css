@@ -234,7 +234,7 @@
 }
 
 .note-link {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: all 0.2s ease;
@@ -270,7 +270,7 @@
 }
 
 .dark-mode .note-link {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .dark-mode .note-link:hover::after {
@@ -346,7 +346,7 @@
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
   font-weight: var(--font-medium);
   font-family: var(--font-body);
   transition: all 0.25s var(--ease-bounce);
@@ -502,7 +502,7 @@
 }
 
 .pin-btn.pinned {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .pin-btn.pinned svg {
@@ -711,7 +711,7 @@
 }
 
 .dark-mode .pin-btn.pinned {
-  color: var(--accent-color);
+  color: var(--accent-text, var(--accent-color));
 }
 
 .dark-mode .pin-btn.pinned svg {
@@ -991,4 +991,12 @@
   margin-top: var(--space-2);
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+
+/* Such-Treffer in Notizkarten */
+.note-content mark {
+  background: var(--accent-secondary-light, rgba(232, 168, 68, 0.45));
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 2px;
 }
