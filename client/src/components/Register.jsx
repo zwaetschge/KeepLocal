@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './Auth.css';
 import LanguageSelector from './LanguageSelector';
 import { useLanguage } from '../contexts/LanguageContext';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function Register({ onRegister, onSwitchToLogin }) {
   const { t } = useLanguage();
@@ -56,7 +57,7 @@ function Register({ onRegister, onSwitchToLogin }) {
     try {
       await onRegister(username, email, password);
     } catch (err) {
-      setError(err.message || t('registerFailed'));
+      setError(resolveApiErrorMessage(err, t, 'registerFailed'));
     } finally {
       setLoading(false);
     }

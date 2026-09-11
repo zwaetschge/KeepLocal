@@ -13,6 +13,7 @@ import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 /**
  * Detect optimistic-locking conflicts (PUT /api/notes/:id with baseUpdatedAt
@@ -236,7 +237,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       if (note && isNoteConflictError(error)) {
         await showConflictBanner();
       } else {
-        toastBus.error(error.message || t('errorUpdating'));
+        toastBus.error(resolveApiErrorMessage(error, t, 'errorUpdating'));
       }
     } finally {
       setIsSaving(false);
@@ -350,7 +351,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       }
     } catch (error) {
       console.error('Fehler beim Hochladen der Bilder:', error);
-      toastBus.error(error.message || t('errorUploadingImages'));
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorUploadingImages'));
     } finally {
       setUploadingImages(false);
     }
@@ -367,7 +368,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       }
     } catch (error) {
       console.error('Fehler beim Löschen des Bildes:', error);
-      toastBus.error(error.message || t('errorDeletingImage'));
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorDeletingImage'));
     }
   };
 
@@ -426,7 +427,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       setIsRecording(true);
     } catch (error) {
       console.error('Fehler beim Starten der Aufnahme:', error);
-      toastBus.error(error.message || t('errorMicrophoneAccess'));
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorMicrophoneAccess'));
     }
   };
 
@@ -472,7 +473,7 @@ function NoteModal({ note, onSave, onClose, onToggleArchive, onOpenCollaborate, 
       }
     } catch (error) {
       console.error('Fehler bei der Transkription:', error);
-      toastBus.error(error.message || t('errorTranscribing'));
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorTranscribing'));
     } finally {
       setIsTranscribing(false);
     }

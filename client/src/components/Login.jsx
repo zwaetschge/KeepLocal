@@ -5,6 +5,7 @@ import { parseResponse } from '../services/api/apiUtils';
 import { authAPI } from '../services/api';
 import './Auth.css';
 import LanguageSelector from './LanguageSelector';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 // Dieselben Regeln wie Server und Registrierung, damit ein Reset nicht an der
 // API scheitert, nachdem die Person alles ausgefüllt hat.
@@ -69,7 +70,7 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
       setResetConfirm('');
       setResetDone(t('resetPasswordSuccess'));
     } catch (err) {
-      setResetError(err.message || t('resetPasswordFailed'));
+      setResetError(resolveApiErrorMessage(err, t, 'resetPasswordFailed'));
     } finally {
       setResetBusy(false);
     }
@@ -122,7 +123,7 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
     try {
       await onLogin(email, password);
     } catch (err) {
-      setError(err.message || t('loginFailed'));
+      setError(resolveApiErrorMessage(err, t, 'loginFailed'));
     } finally {
       setLoadingAction(null);
     }
@@ -135,7 +136,7 @@ function Login({ onLogin, onDemoLogin, onSwitchToRegister }) {
     try {
       await onDemoLogin();
     } catch (err) {
-      setError(err.message || t('demoLoginFailed'));
+      setError(resolveApiErrorMessage(err, t, 'demoLoginFailed'));
     } finally {
       setLoadingAction(null);
     }

@@ -6,6 +6,7 @@ import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { toastBus } from './ToastStack';
 import ConfirmDialog from './ConfirmDialog';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function FriendsModal({ isOpen, onClose, isAdmin }) {
   const { t } = useLanguage();
@@ -36,7 +37,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       const data = await friendsAPI.getFriends();
       setFriends(data);
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     } finally {
       setLoadingFriends(false);
     }
@@ -65,7 +66,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       const results = await friendsAPI.searchUsers(searchQuery);
       setSearchResults(results);
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     } finally {
       setSearching(false);
     }
@@ -79,7 +80,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       setSearchQuery('');
       setSearchResults([]);
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 
@@ -89,7 +90,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       loadFriendRequests();
       loadFriends();
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 
@@ -98,7 +99,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       await friendsAPI.rejectFriendRequest(requestId);
       loadFriendRequests();
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 
@@ -108,7 +109,7 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       setRemoveConfirm(null);
       loadFriends();
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 

@@ -7,6 +7,7 @@ import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function AdminConsole({ onClose }) {
   const { t, language } = useLanguage();
@@ -42,7 +43,7 @@ function AdminConsole({ onClose }) {
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
-      setError(error.message || t('errorLoadingData'));
+      setError(resolveApiErrorMessage(error, t, 'errorLoadingData'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ function AdminConsole({ onClose }) {
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      setError(error.message || t('errorDeletingUser'));
+      setError(resolveApiErrorMessage(error, t, 'errorDeletingUser'));
     } finally {
       setOperationLoading(prev => ({ ...prev, [userId]: false }));
     }
@@ -75,7 +76,7 @@ function AdminConsole({ onClose }) {
       ));
     } catch (error) {
       console.error('Error toggling admin status:', error);
-      setError(error.message || t('errorTogglingAdmin'));
+      setError(resolveApiErrorMessage(error, t, 'errorTogglingAdmin'));
     } finally {
       setOperationLoading(prev => ({ ...prev, [userId]: false }));
     }
@@ -100,7 +101,7 @@ function AdminConsole({ onClose }) {
       setError(null);
     } catch (error) {
       console.error('Error creating user:', error);
-      setError(error.message || t('errorCreatingUser'));
+      setError(resolveApiErrorMessage(error, t, 'errorCreatingUser'));
     } finally {
       setOperationLoading(prev => ({ ...prev, create: false }));
     }
@@ -120,7 +121,7 @@ function AdminConsole({ onClose }) {
       toastBus.success(t('resetTokenCreatedTitle'));
     } catch (err) {
       console.error('Error creating password reset token:', err);
-      setError(err.message || t('resetTokenFailed'));
+      setError(resolveApiErrorMessage(err, t, 'resetTokenFailed'));
     } finally {
       setOperationLoading(prev => ({ ...prev, [user._id]: false }));
     }
@@ -145,7 +146,7 @@ function AdminConsole({ onClose }) {
       setError(null);
     } catch (error) {
       console.error('Error updating settings:', error);
-      setError(error.message || t('errorUpdatingSettings'));
+      setError(resolveApiErrorMessage(error, t, 'errorUpdatingSettings'));
     } finally {
       setOperationLoading(prev => ({ ...prev, settings: false }));
     }

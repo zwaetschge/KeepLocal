@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { normalizeNote, normalizeNotesPayload } from '../utils/notesPayload.mjs';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 /**
  * useNotesManager (Core-Refactoring P13/P15/P17)
@@ -282,7 +283,7 @@ export function useNotesManager({
       if (requestSequence !== fetchSequenceRef.current) return;
       console.error('Fehler beim Laden der Notizen:', error);
       if (!silent) {
-        showToast(error.message || t('errorLoadingNotes'), 'error');
+        showToast(resolveApiErrorMessage(error, t, 'errorLoadingNotes'), 'error');
       }
     } finally {
       if (requestSequence === fetchSequenceRef.current) {
@@ -348,7 +349,7 @@ export function useNotesManager({
       return response;
     } catch (error) {
       console.error('Fehler beim Erstellen der Notiz:', error);
-      showToast(error.message || t('errorCreatingNote'), 'error');
+      showToast(resolveApiErrorMessage(error, t, 'errorCreatingNote'), 'error');
       return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, create: false }));
@@ -374,7 +375,7 @@ export function useNotesManager({
       return true;
     } catch (error) {
       console.error('Fehler beim Löschen der Notiz:', error);
-      showToast(error.message || t('errorDeletingNote'), 'error');
+      showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
       return false;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
@@ -399,7 +400,7 @@ export function useNotesManager({
         throw error;
       }
       console.error('Fehler beim Aktualisieren der Notiz:', error);
-      showToast(error.message || t('errorUpdating'), 'error');
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
       return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
@@ -418,7 +419,7 @@ export function useNotesManager({
       return response;
     } catch (error) {
       console.error('Fehler beim Anheften der Notiz:', error);
-      showToast(error.message || t('errorPinningNote'), 'error');
+      showToast(resolveApiErrorMessage(error, t, 'errorPinningNote'), 'error');
       return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));
@@ -455,7 +456,7 @@ export function useNotesManager({
       return response;
     } catch (error) {
       console.error('Fehler beim Archivieren der Notiz:', error);
-      showToast(error.message || t('errorUpdating'), 'error');
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
       return null;
     } finally {
       setOperationLoading(prev => ({ ...prev, [id]: false }));

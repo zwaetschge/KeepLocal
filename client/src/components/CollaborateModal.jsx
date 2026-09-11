@@ -5,6 +5,7 @@ import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { toastBus } from './ToastStack';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function CollaborateModal({ isOpen, onClose, note, onNoteUpdate }) {
   const { t } = useLanguage();
@@ -33,7 +34,7 @@ function CollaborateModal({ isOpen, onClose, note, onNoteUpdate }) {
       const data = await friendsAPI.getFriends();
       setFriends(data);
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     } finally {
       setLoading(false);
     }
@@ -47,7 +48,7 @@ function CollaborateModal({ isOpen, onClose, note, onNoteUpdate }) {
       setError(null);
       toastBus.success(t('noteShared'));
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 
@@ -59,7 +60,7 @@ function CollaborateModal({ isOpen, onClose, note, onNoteUpdate }) {
       setError(null);
       toastBus.success(t('noteUnshared'));
     } catch (err) {
-      setError(err.message);
+      setError(resolveApiErrorMessage(err, t));
     }
   };
 

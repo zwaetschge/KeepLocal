@@ -228,6 +228,11 @@ When the API is running, interactive documentation is available at
   tokens.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
+- Every error response carries a stable machine-readable `code` next to the
+  human-readable `error` text (`server/constants/errorCodes.js`). Browser clients
+  translate the code (`client/src/utils/apiErrors.mjs` plus the `err*` catalog
+  keys) and keep the text as a fallback, so the German prose never leaks into an
+  English UI; `/api/v1` consumers should branch on `code`, not on the message.
 
 ### Passwords
 
