@@ -16,6 +16,7 @@ const errorHandler = require('./middleware/errorHandler');
 const { authenticateToken } = require('./middleware/auth');
 const secureFileServe = require('./middleware/secureFileServe');
 const noStore = require('./middleware/noStore');
+const errorCodeMiddleware = require('./middleware/errorCodes');
 const { csrfProtection, issueCsrfToken } = require('./middleware/csrfProtection');
 const passport = require('passport');
 const { configurePassport } = require('./config/passport');
@@ -130,6 +131,8 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
+// Stable Fehler-Codes in jeder JSON-Error-Response (vor den Routen mounten).
+app.use(errorCodeMiddleware);
 app.use(limiter); // Rate Limiting anwenden
 app.use([
   '/api/auth/login',

@@ -44,9 +44,21 @@ async function postWithCsrfRetry(url, body) {
   return response;
 }
 
+/**
+ * Build an Error that keeps the server's stable code and status, so callers can
+ * translate it (utils/apiErrors.mjs) instead of showing the German prose.
+ */
+function authError(payload, status, fallbackMessage) {
+  const error = new Error(payload?.error || fallbackMessage);
+  error.code = payload?.code;
+  error.status = status;
+  error.data = payload;
+  return error;
+}
+
 function requireUserPayload(data, fallbackMessage) {
   if (!data?.user || typeof data.user !== 'object' || !data.user.id) {
-    throw new Error(data?.error || fallbackMessage);
+    throw authError(data, undefined, fallbackMessage);
   }
   return data;
 }
@@ -91,8 +103,7 @@ const authAPI = {
     const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.REGISTER, { username, email, password });
 
     if (!response.ok) {
-      const error = await parseResponse(response);
-      throw new Error(error.error || ERROR_MESSAGES.REGISTRATION_FAILED);
+      throw authError(await parseResponse(response), response.status, ERROR_MESSAGES.REGISTRATION_FAILED);
     }
 
     const data = requireUserPayload(
@@ -114,8 +125,7 @@ const authAPI = {
     const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.LOGIN, { email, password });
 
     if (!response.ok) {
-      const error = await parseResponse(response);
-      throw new Error(error.error || ERROR_MESSAGES.LOGIN_FAILED);
+      throw authError(await parseResponse(response), response.status, ERROR_MESSAGES.LOGIN_FAILED);
     }
 
     const data = requireUserPayload(
@@ -136,8 +146,7 @@ const authAPI = {
     const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.DEMO);
 
     if (!response.ok) {
-      const error = await parseResponse(response);
-      throw new Error(error.error || ERROR_MESSAGES.LOGIN_FAILED);
+      throw authError(await parseResponse(response), response.status, ERROR_MESSAGES.LOGIN_FAILED);
     }
 
     const data = requireUserPayload(
@@ -177,7 +186,7 @@ const authAPI = {
     const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, { currentPassword, newPassword });
     const data = await parseResponse(response);
     if (!response.ok) {
-      throw new Error(data.error || ERROR_MESSAGES.GENERIC);
+      throw authError(data, response.status, ERROR_MESSAGES.GENERIC);
     }
     await initializeCSRF();
     return data;
@@ -194,7 +203,7 @@ const authAPI = {
     const response = await postWithCsrfRetry(API_ENDPOINTS.AUTH.RESET_PASSWORD, { token, newPassword });
     const data = await parseResponse(response);
     if (!response.ok) {
-      throw new Error(data.error || ERROR_MESSAGES.GENERIC);
+      throw authError(data, response.status, ERROR_MESSAGES.GENERIC);
     }
     return data;
   },

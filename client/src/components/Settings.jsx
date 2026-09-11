@@ -14,6 +14,7 @@ import LanguageSelector from './LanguageSelector';
 import { useLanguage } from '../contexts/LanguageContext';
 import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function Settings({ onClose, isAdmin, onAdminClick }) {
   const { t, language } = useLanguage();
@@ -70,7 +71,7 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
       setPwConfirm('');
       toastBus.success(t('passwordChanged'));
     } catch (err) {
-      setPwError(err.message || t('passwordChangeFailed'));
+      setPwError(resolveApiErrorMessage(err, t, 'passwordChangeFailed'));
     } finally {
       setPwBusy(false);
     }
@@ -105,7 +106,7 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
       setNewKeyExpiry('never');
       loadApiKeys();
     } catch (err) {
-      setApiKeyError(err.message);
+      setApiKeyError(resolveApiErrorMessage(err, t));
     }
   };
 
@@ -114,7 +115,7 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
       await revokeApiKey(id);
       loadApiKeys();
     } catch (err) {
-      setApiKeyError(err.message);
+      setApiKeyError(resolveApiErrorMessage(err, t));
     }
   };
 

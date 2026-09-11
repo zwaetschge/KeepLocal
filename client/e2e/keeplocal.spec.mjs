@@ -290,6 +290,16 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.click('.btn-logout');
     await expect(page.locator('form input[type="password"]')).toBeVisible({ timeout: 20000 });
 
+    // Error codes: the API answers in German, the UI must translate via the
+    // stable code instead of showing the server prose.
+    await page.fill('input[type="email"], form input[type="text"]', ADMIN.email);
+    await page.fill('form input[type="password"]', 'DefinitelyWrong1x');
+    await page.click('form button[type="submit"]');
+    await expect(page.locator('.auth-error')).toBeVisible({ timeout: 15000 });
+    const errorText = (await page.locator('.auth-error').innerText()).trim();
+    expect(errorText).toMatch(/Email or password is incorrect/i);
+    expect(errorText).not.toMatch(/Ungültige Anmeldedaten/);
+
     await page.fill('input[type="email"], form input[type="text"]', ADMIN.email);
     await page.fill('form input[type="password"]', ADMIN.password);
     await page.click('form button[type="submit"]');

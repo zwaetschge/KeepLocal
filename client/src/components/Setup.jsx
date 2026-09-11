@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './Auth.css';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageSelector from './LanguageSelector';
+import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 function Setup({ onSetup }) {
   const { t } = useLanguage();
@@ -56,7 +57,7 @@ function Setup({ onSetup }) {
     try {
       await onSetup(username, email, password);
     } catch (err) {
-      setError(err.message || t('setupFailed'));
+      setError(resolveApiErrorMessage(err, t, 'setupFailed'));
     } finally {
       setLoading(false);
     }
