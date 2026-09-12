@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import NoteList from './NoteList';
+import ConfirmDialog from './ConfirmDialog';
 import { useLanguage } from '../contexts/LanguageContext';
 
 /**
@@ -47,17 +48,35 @@ export function NotesSection({ title, notes, actions }) {
 /** Header of the trash view: retention hint plus the "empty trash" action. */
 export function TrashHeader({ count, busy, onEmpty }) {
   const { t } = useLanguage();
+  // Audit 2026-09-12 (Top-30 Nr. 10): Ein Klick loeschte bisher ALLE Notizen im
+  // Papierkorb endgueltig - ohne Bestaetigung und ohne Undo (der Undo-Toast
+  // gilt nur dem einzelnen Loeschen). Die Rueckfrage nennt die Zahl, damit ein
+  // Fehlklick nicht die ganzen letzten 30 Tage kostet.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   return (
     <div className="trash-header">
       <h2 className="section-title">{t('trash')}</h2>
       <p className="trash-hint">{t('trashRetentionHint')}</p>
       <button
         className="btn-empty-trash"
-        onClick={onEmpty}
+        onClick={() => setConfirmOpen(true)}
         disabled={busy || count === 0}
+        aria-haspopup="dialog"
       >
         {t('emptyTrash')}
       </button>
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title={t('emptyTrashConfirmTitle')}
+        message={t('emptyTrashConfirmMessage', { count })}
+        confirmLabel={t('emptyTrashConfirm')}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          onEmpty?.();
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

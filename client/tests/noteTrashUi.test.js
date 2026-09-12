@@ -116,3 +116,29 @@ test('toasts can carry an action button that dismisses on click', async () => {
   toastBus.clear();
   assert.equal(clicks, 0);
 });
+
+// Audit 2026-09-12 (Top-30 Nr. 10): "Papierkorb leeren" loeschte mit einem
+// Klick alles endgueltig - ohne Bestaetigung und ohne Undo (der Undo-Toast
+// deckt nur das einzelne Loeschen ab). Ein Fehlklick kostete damit bis zu
+// 30 Tage geloeschter Notizen inklusive Bildern.
+test('emptying the trash asks before deleting everything', () => {
+  const states = read('components', 'AppStates.jsx');
+
+  assert.match(states, /import ConfirmDialog from '\.\/ConfirmDialog';/);
+  assert.match(states, /const \[confirmOpen, setConfirmOpen\] = useState\(false\);/);
+  assert.match(states, /onClick=\{\(\) => setConfirmOpen\(true\)\}/, 'the button opens the dialog instead of deleting');
+  assert.doesNotMatch(states, /className="btn-empty-trash"\n\s+onClick=\{onEmpty\}/, 'no direct delete on click');
+  assert.match(states, /message=\{t\('emptyTrashConfirmMessage', \{ count \}\)\}/, 'the dialog names how many notes die');
+  assert.match(states, /confirmLabel=\{t\('emptyTrashConfirm'\)\}/);
+  assert.match(states, /onConfirm=\{\(\) => \{\s*setConfirmOpen\(false\);\s*onEmpty\?\.\(\);\s*\}\}/);
+  assert.match(states, /onCancel=\{\(\) => setConfirmOpen\(false\)\}/);
+  assert.match(states, /aria-haspopup="dialog"/);
+
+  for (const file of ['de.js', 'en.js']) {
+    const translations = read('translations', file);
+    for (const key of ['emptyTrashConfirmTitle', 'emptyTrashConfirmMessage', 'emptyTrashConfirm']) {
+      assert.match(translations, new RegExp(`${key}:`), `${file} must translate ${key}`);
+    }
+    assert.match(translations, /emptyTrashConfirmMessage: '[^']*\{count\}/, `${file} must interpolate the count`);
+  }
+});

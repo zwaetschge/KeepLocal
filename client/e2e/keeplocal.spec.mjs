@@ -382,7 +382,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     expect(afterPurge).toEqual({ active: false, trash: false });
     await expectAppHealthy(page);
 
-    // 4) Empty trash clears everything that is left.
+    // 4) Empty trash asks first, cancels cleanly and then clears everything.
     await page.locator('.sidebar-item[aria-label="All Notes"]').click();
     await expect(page.locator('.App')).toBeVisible();
     const trashCount = await page.evaluate(async () => {
@@ -392,7 +392,18 @@ test.describe.serial('KeepLocal production smoke', () => {
     if (trashCount > 0) {
       await page.locator('.sidebar-item[aria-label="Trash"]').click();
       await expect(page.locator('.trash-header')).toBeVisible();
+
+      // A single click must not wipe the trash: the action is final and has no
+      // undo (the undo toast only covers single deletes).
       await page.locator('.btn-empty-trash').click();
+      await expect(page.locator('.confirm-dialog')).toBeVisible();
+      await expect(page.locator('.confirm-dialog')).toContainText(/for good|endgültig/i);
+      await page.locator('.confirm-dialog .btn-cancel-confirm').click();
+      await expect(page.locator('.confirm-dialog')).toHaveCount(0);
+      await expect(page.locator('[role="article"]').first()).toBeVisible({ timeout: 15000 });
+
+      await page.locator('.btn-empty-trash').click();
+      await page.locator('.confirm-dialog .btn-confirm').click();
       await expect(page.locator('[role="article"]')).toHaveCount(0, { timeout: 20000 });
       await expect(page.locator('.empty-state')).toBeVisible();
     }
