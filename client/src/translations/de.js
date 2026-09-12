@@ -503,6 +503,7 @@ export const de = {
   errInvalidSettings: 'Ungültige Einstellung.',
   errInvalidUserId: 'Ungültige Benutzer-ID.',
   errInvalidUsername: 'Ungültiger Benutzername.',
+  errLastAdmin: 'Mindestens ein Administrator muss bleiben.',
   errLinkPreviewFailed: 'Link-Vorschau konnte nicht geladen werden.',
   errLinkPreviewRateLimited: 'Zu viele Link-Vorschauen in kurzer Zeit. Bitte einen Moment warten.',
   errTranscriptionRateLimited: 'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.',

@@ -201,6 +201,31 @@ shows corruption; an image rollback and a data rollback are separate decisions.
 Never use `docker compose down -v` for an update or rollback. It deletes named
 volumes.
 
+## Locked out of the admin console
+
+Password recovery needs an administrator: reset tokens are issued by
+`POST /api/admin/users/:id/password-reset` behind `requireAdmin`, and there is no
+mail delivery. The API refuses to revoke or delete the last administrator
+(`409`, code `LAST_ADMIN`), so a running instance cannot lose its admin by
+accident. For databases that already lost it (old dumps, manual MongoDB edits),
+promote an account from the host:
+
+```bash
+# All-in-one
+docker exec keeplocal node /app/server/scripts/promote-admin.js you@example.com
+
+# Split server
+docker exec keeplocal-server node /app/scripts/promote-admin.js you@example.com
+
+# Local checkout (dry run first)
+cd server && node scripts/promote-admin.js you@example.com --dry-run
+```
+
+The script prints the account it found and the current number of admins, sets
+only `isAdmin`, and never touches passwords, tokens or the unique
+`single_bootstrap_admin` slot. Afterwards issue a reset token in the admin
+console for anyone who lost their password.
+
 ## CI secrets
 
 The publication workflow requires repository secrets:

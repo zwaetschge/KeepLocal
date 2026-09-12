@@ -114,6 +114,15 @@ jobs:
           UPGRADE_MONGODB_URI: mongodb://127.0.0.1:27017/keeplocal_upgrade
         run: npm run verify:upgrade-boot
 
+      # Same reason as the upgrade check: the "last admin" guard has to survive
+      # concurrent demotions, and the promote-admin recovery tool has to work —
+      # both are only provable against a real MongoDB.
+      - name: Admin guard check (no self-lockout, recovery works)
+        working-directory: server
+        env:
+          ADMIN_GUARD_MONGODB_URI: mongodb://127.0.0.1:27017/keeplocal_adminguard
+        run: npm run verify:admin-guard
+
       # npm runs pretest:e2e (production build) and drops the E2E database first.
       - name: Run E2E smoke suite
         working-directory: client

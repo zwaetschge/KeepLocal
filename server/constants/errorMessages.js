@@ -47,6 +47,7 @@ module.exports = {
     USER_NOT_FOUND: 'Benutzer nicht gefunden',
     CANNOT_DELETE_SELF: 'Sie können sich nicht selbst löschen',
     CANNOT_MODIFY_SELF: 'Sie können Ihre eigenen Admin-Rechte nicht ändern',
+    LAST_ADMIN: 'Mindestens ein Administrator muss bleiben',
     UPDATE_FAILED: 'Fehler beim Aktualisieren',
   },
 

@@ -78,6 +78,9 @@ const MESSAGE_TO_CODE = {
   'Zugriff verweigert. Admin-Rechte erforderlich.': 'ADMIN_REQUIRED',
   'Sie können sich nicht selbst löschen': 'CANNOT_DELETE_SELF',
   'Sie können Ihren eigenen Admin-Status nicht ändern': 'CANNOT_MODIFY_SELF',
+  // Derselbe Fall, von adminService formuliert (die Route nutzt den Service).
+  'Sie können Ihre eigenen Admin-Rechte nicht ändern': 'CANNOT_MODIFY_SELF',
+  'Mindestens ein Administrator muss bleiben': 'LAST_ADMIN',
   'Benutzername, E-Mail und Passwort sind erforderlich': 'FIELDS_REQUIRED',
   'registrationEnabled muss ein Boolean sein': 'INVALID_SETTINGS',
   'Anfrage nicht gefunden': 'FRIEND_REQUEST_NOT_FOUND',

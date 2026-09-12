@@ -223,18 +223,11 @@ router.patch('/users/:id/admin', async (req, res) => {
       return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
     }
 
-    // Prevent admin from removing their own admin status
-    if (id === req.user._id.toString()) {
-      return res.status(400).json({ error: 'Sie können Ihren eigenen Admin-Status nicht ändern' });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ error: 'Benutzer nicht gefunden' });
-    }
-
-    user.isAdmin = !user.isAdmin;
-    await user.save();
+    // Guard lives in the service, so this route and the delete route cannot
+    // drift apart: no self-modification, and the last admin keeps their rights
+    // (without an admin there is no way back — password reset tokens are
+    // admin-only and there is no SMTP path).
+    const user = await adminService.toggleUserAdmin(id, req.user._id.toString());
 
     res.json({
       message: user.isAdmin ? 'Benutzer wurde zum Admin ernannt' : 'Admin-Rechte wurden entzogen',
@@ -246,6 +239,9 @@ router.patch('/users/:id/admin', async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
     console.error('Error updating user admin status:', error);
     res.status(500).json({ error: 'Fehler beim Aktualisieren des Admin-Status' });
   }
