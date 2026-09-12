@@ -181,3 +181,20 @@ test('CI restores a real backup before anybody needs to', () => {
   assert.match(script, /backup\|e2e\|test\|ci/, 'refuses to drop a database that is not a test database');
   assert.match(script, /sha256\(original\) === originalSha/, 'restored files are compared byte-for-byte');
 });
+
+test('recovery point names cannot collide within the same second', () => {
+  // `timestamp()` hat Sekunden-Auflösung. Ein fester Verzeichnisname würde zwei
+  // Läufe in derselben Sekunde kollidieren lassen — und weil ein
+  // unvollständiges Backup sein Zielverzeichnis verwirft, hätte ein
+  // fehlgeschlagener Lauf den vorhandenen Recovery Point gelöscht (in CI
+  // passiert, bevor --verify auffiel).
+  const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
+
+  assert.match(source, /fs\.mkdtempSync\(path\.join\(BACKUP_DIR, `\$\{PREFIX\}\$\{timestamp\(\)\}-`\)\)/);
+  assert.doesNotMatch(source, /const target = path\.join\(BACKUP_DIR, `\$\{PREFIX\}\$\{timestamp\(\)\}`\)/);
+  assert.match(source, /fs\.mkdirSync\(BACKUP_DIR, \{ recursive: true \}\);/, 'the backup root may not exist yet');
+
+  const verifyScript = fs.readFileSync(path.join(__dirname, '../scripts/verify-backup-restore.js'), 'utf8');
+  assert.match(verifyScript, /two backups in the same second get distinct directories/);
+  assert.match(verifyScript, /the good recovery point survived the failed run/);
+});

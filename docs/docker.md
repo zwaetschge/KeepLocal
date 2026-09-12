@@ -116,11 +116,11 @@ MONGODB_URI=mongodb://mongodb:27017/keeplocal \
 # List and restore (restore is destructive and requires --force)
 docker compose -f docker-compose.yml exec server node scripts/backup.js --list
 docker compose -f docker-compose.yml exec server \
-  node scripts/backup.js --restore backups/keeplocal-20260911-221925 --force
+  node scripts/backup.js --restore backups/keeplocal-20260911-221925-a1b2c3 --force
 
 # Check a recovery point without touching anything (needs no database)
 docker compose -f docker-compose.yml exec server \
-  node scripts/backup.js --verify backups/keeplocal-20260911-221925
+  node scripts/backup.js --verify backups/keeplocal-20260911-221925-a1b2c3
 ```
 
 Environment: `MONGODB_URI` (required for create/restore), `BACKUP_DIR` (default

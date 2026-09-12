@@ -399,8 +399,8 @@ instant instead of another outbound fetch.
 # and a SHA-256 manifest. Needs no mongodump, so it also runs in the server image.
 (cd server && MONGODB_URI=mongodb://localhost:27017/keeplocal node scripts/backup.js --keep 7)
 (cd server && node scripts/backup.js --list)
-(cd server && node scripts/backup.js --verify backups/keeplocal-YYYYMMDD-HHMMSS)
-(cd server && node scripts/backup.js --restore backups/keeplocal-YYYYMMDD-HHMMSS --force)
+(cd server && node scripts/backup.js --verify backups/keeplocal-YYYYMMDD-HHMMSS-XXXXXX)
+(cd server && node scripts/backup.js --restore backups/keeplocal-YYYYMMDD-HHMMSS-XXXXXX --force)
 ```
 
 A backup is only reported as written when every image the database references was

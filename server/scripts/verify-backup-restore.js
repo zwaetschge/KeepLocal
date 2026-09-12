@@ -105,6 +105,12 @@ async function main() {
 
     // --- 1) Backup anlegen -------------------------------------------------
     const target = await backupScript.createBackup(7);
+    // Zwei Läufe in derselben Sekunde dürfen sich nicht dasselbe Verzeichnis
+    // teilen (Sekunden-Timestamp) — sonst löscht ein fehlgeschlagener Lauf den
+    // vorhandenen Recovery Point.
+    const second = await backupScript.createBackup(7);
+    check(second !== target, 'two backups in the same second get distinct directories');
+    check(fs.readdirSync(backups).length === 2, 'both recovery points exist side by side');
     const manifest = JSON.parse(fs.readFileSync(path.join(target, 'manifest.json'), 'utf8'));
     check(manifest.format === 2, 'manifest uses format 2');
     check(manifest.uploads.files === 2, `both image files are captured (got ${manifest.uploads.files})`);
@@ -145,7 +151,8 @@ async function main() {
       incomplete = error.message;
     }
     check(/Backup unvollständig/.test(incomplete || ''), 'a backup with a missing referenced image fails');
-    check(fs.readdirSync(backups).length === 1, 'the incomplete backup left no recovery point behind');
+    check(fs.readdirSync(backups).length === 2, 'the incomplete backup left the existing recovery points untouched');
+    check(fs.existsSync(path.join(target, 'manifest.json')), 'the good recovery point survived the failed run');
     fs.writeFileSync(original, 'PNG-ORIGINAL-CONTENT');
 
     // --- 4) Zerstören und wiederherstellen ---------------------------------

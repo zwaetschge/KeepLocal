@@ -114,7 +114,13 @@ async function referencedImageFilenames() {
 // ---------------------------------------------------------------------------
 
 async function createBackup(keep) {
-  const target = path.join(BACKUP_DIR, `${PREFIX}${timestamp()}`);
+  // mkdtemp statt fester Name: `timestamp()` hat Sekunden-Auflösung, zwei Läufe
+  // in derselben Sekunde (oder ein fehlgeschlagener Lauf direkt nach einem
+  // erfolgreichen) würden sonst dasselbe Verzeichnis treffen — und ein
+  // unvollständiges Backup hätte mit `rmSync(target)` den vorhandenen Recovery
+  // Point gelöscht. Genau das ist in CI passiert.
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const target = fs.mkdtempSync(path.join(BACKUP_DIR, `${PREFIX}${timestamp()}-`));
   const dbDir = path.join(target, 'db');
   const uploadsTarget = path.join(target, 'uploads');
   const images = imagesDir();
