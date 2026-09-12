@@ -191,6 +191,9 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   // Der Build-Kontext ist die zweite Hälfte der Wahrheit: Das Image wird auch
   // dann geprüft, wenn jemand lokal mit Host-node_modules oder einer .env baut.
   assert.match(testJob, /no host artifacts are baked into the image/);
+  // Drittpakete liefern eigene *.test.js mit (fast-uri u. a.) - ohne Prune
+  // wird der Check zum False Positive und blockiert jeden Publish.
+  assert.match(testJob, /find \/app -path "\*\/node_modules" -prune/);
 });
 
 test('dockerignore patterns reach into subdirectories', () => {
