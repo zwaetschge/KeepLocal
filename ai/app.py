@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
+import hmac
 import os
 import tempfile
 import re
@@ -12,6 +13,32 @@ MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny, base, small, mediu
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"  # Quantization for CPU speed
 
+
+def service_token():
+    """Shared secret between the Node server and this service.
+
+    Read per request (not at import time) so tests and reloads can change it.
+    Unset means "deployment did not configure one" — the service stays open,
+    which is only acceptable while it is reachable on loopback (all-in-one) or
+    on a private backend network (split compose).
+    """
+    return os.environ.get("AI_SERVICE_TOKEN", "").strip()
+
+
+def is_authorized():
+    expected = service_token()
+    if not expected:
+        return True
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header[len("Bearer "):].strip(), expected)
+
+
+if not service_token():
+    print("WARNING: AI_SERVICE_TOKEN is not set - /transcribe accepts requests "
+          "from anyone who can reach this service.")
+
 print(f"Loading Whisper Model: {MODEL_SIZE} on {DEVICE} ({COMPUTE_TYPE})...")
 # Load model once at startup
 model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
@@ -19,6 +46,8 @@ print("Model loaded successfully.")
 
 @app.route('/health', methods=['GET'])
 def health():
+    # Health stays unauthenticated: container healthchecks and the server's
+    # readiness probe call it, and it reveals nothing but the model size.
     return jsonify({"status": "ok", "model": MODEL_SIZE})
 
 @app.route('/transcribe', methods=['POST'])
@@ -26,6 +55,9 @@ def transcribe():
     # Correlation id from the Node server (middleware/requestId.js), so one user
     # action can be followed across both services.
     request_id = request.headers.get('X-Request-Id', '-')
+    if not is_authorized():
+        app.logger.warning("Unauthorized transcription attempt request_id=%s", request_id)
+        return jsonify({'error': 'Unauthorized', 'code': 'AI_UNAUTHORIZED'}), 401
     if 'audio' not in request.files:
         return jsonify({'error': 'No audio file provided'}), 400
 

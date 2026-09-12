@@ -34,6 +34,19 @@ if [ -n "$CSRF_SECRET" ] && [ ${#CSRF_SECRET} -lt 32 ]; then
 fi
 echo "✓ CSRF_SECRET is configured correctly"
 
+# Der AI-Dienst nimmt /transcribe sonst von jedem an, der ihn erreichen kann.
+# Im All-in-One-Image bindet er zwar nur auf Loopback, aber "intern" ist kein
+# Credential: Deshalb pro Container-Start ein Shared Secret erzeugen, das node
+# und gunicorn ueber denselben Prozessbaum (supervisord) erben. Explizit
+# gesetzte Werte bleiben stabil ueber Restarts - der Token wird nie geloggt.
+if [ -z "$AI_SERVICE_TOKEN" ]; then
+    AI_SERVICE_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    export AI_SERVICE_TOKEN
+    echo "✓ AI_SERVICE_TOKEN generated for this container start"
+else
+    echo "✓ AI_SERVICE_TOKEN is configured"
+fi
+
 # The all-in-one image bakes the Whisper model at build time. Overriding
 # WHISPER_MODEL at runtime would force a download at every boot and can leave
 # the AI service dead on offline hosts — fail fast with instructions instead.

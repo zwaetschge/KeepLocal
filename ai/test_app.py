@@ -1,7 +1,9 @@
 import io
+import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 
 class FakeWhisperModel:
@@ -67,6 +69,48 @@ class TranscriptionApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("language", RECORDED_OPTIONS[-1])
         self.assertEqual(RECORDED_OPTIONS[-1]["beam_size"], 5)
+
+
+class ServiceTokenTest(unittest.TestCase):
+    """Audit 2026-09-12 (Top-30 Nr. 9): /transcribe ran without any credential.
+
+    Whoever could reach the service (a published AI port in a split compose, or
+    anything else on the backend network) could transcribe audio on this host's
+    CPU for free. A shared bearer token between the Node server and Flask closes
+    that; /health deliberately stays open for the container healthchecks.
+    """
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def post(self, headers=None):
+        # Fresh BytesIO per request: werkzeug consumes (and closes) the stream.
+        return self.client.post(
+            "/transcribe",
+            data={"audio": (io.BytesIO(b"audio"), "sample.webm")},
+            content_type="multipart/form-data",
+            headers=headers or {}
+        )
+
+    def test_without_token_the_service_stays_reachable(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AI_SERVICE_TOKEN", None)
+            self.assertEqual(self.post().status_code, 200)
+
+    def test_with_token_anonymous_requests_are_rejected(self):
+        with mock.patch.dict(os.environ, {"AI_SERVICE_TOKEN": "s3cret-token"}):
+            self.assertEqual(self.post().status_code, 401)
+            self.assertEqual(self.post().get_json()["code"], "AI_UNAUTHORIZED")
+            self.assertEqual(self.post({"Authorization": "Bearer wrong"}).status_code, 401)
+            self.assertEqual(self.post({"Authorization": "s3cret-token"}).status_code, 401)
+
+    def test_with_token_the_server_header_is_accepted(self):
+        with mock.patch.dict(os.environ, {"AI_SERVICE_TOKEN": "s3cret-token"}):
+            self.assertEqual(self.post({"Authorization": "Bearer s3cret-token"}).status_code, 200)
+
+    def test_health_never_requires_the_token(self):
+        with mock.patch.dict(os.environ, {"AI_SERVICE_TOKEN": "s3cret-token"}):
+            self.assertEqual(self.client.get("/health").status_code, 200)
 
 
 if __name__ == "__main__":

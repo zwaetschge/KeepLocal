@@ -48,7 +48,13 @@ const tooManyRequests = (code, message, retryAfterSeconds) => (req, res) => {
 const LINK_PREVIEW_LIMIT_PER_MINUTE = numberFromEnv('LINK_PREVIEW_LIMIT_PER_MINUTE', 30);
 const TRANSCRIPTION_LIMIT_PER_HOUR = numberFromEnv('TRANSCRIPTION_LIMIT_PER_HOUR', 10);
 const TRANSCRIPTION_LIMIT_PER_DAY = numberFromEnv('TRANSCRIPTION_LIMIT_PER_DAY', 60);
-const MAX_CONCURRENT_TRANSCRIPTIONS = numberFromEnv('MAX_CONCURRENT_TRANSCRIPTIONS', 2);
+// Gunicorn laeuft mit `--workers 1` (ai/Dockerfile, supervisord.conf): Der
+// AI-Dienst kann genau eine Transkription gleichzeitig bedienen. Ein Gate ueber
+// 1 wuerde den zweiten Request also nicht abweisen, sondern bis zum
+// Axios-Timeout (300 s) warten lassen — der Nutzer sieht einen haengenden
+// Spinner statt eines ehrlichen 429. Wer `--workers N` konfiguriert (RAM!),
+// setzt MAX_CONCURRENT_TRANSCRIPTIONS=N dazu.
+const MAX_CONCURRENT_TRANSCRIPTIONS = numberFromEnv('MAX_CONCURRENT_TRANSCRIPTIONS', 1);
 
 const linkPreviewLimiter = rateLimit({
   windowMs: 60 * 1000,

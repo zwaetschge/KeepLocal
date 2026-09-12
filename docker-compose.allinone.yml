@@ -23,6 +23,10 @@ services:
       - HOST=127.0.0.1
       - CLIENT_URL=${CLIENT_URL:-}
       - WHISPER_MODEL=${WHISPER_MODEL:-tiny}
+      # Optional: eigenes Shared Secret zwischen node und whisper. Leer lassen
+      # erzeugt der Entrypoint pro Container-Start eines (beide Programme erben
+      # es ueber denselben Prozessbaum).
+      - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
