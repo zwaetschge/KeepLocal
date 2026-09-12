@@ -168,11 +168,17 @@ jobs:
             echo "count=$found_uploads"
             [ "$found_uploads" = "0" ]
 
-            echo "--- Host-node_modules / Test-Dateien ---"
+            echo "--- Host-node_modules / eigene Test-Dateien ---"
             [ ! -d /app/client/node_modules ]
-            found_tests=$(find /app -name "*.test.js" -o -name "test_*.py" | wc -l)
+            # node_modules wird ausgeklammert: Drittpakete liefern eigene
+            # *.test.js mit (z. B. fast-uri), das sind keine Host-Artefakte.
+            found_tests=$(find /app -path "*/node_modules" -prune -o \( -name "*.test.js" -o -name "test_*.py" \) -print | wc -l)
             echo "count=$found_tests"
             [ "$found_tests" = "0" ]
+            [ ! -e /app/ai/test_app.py ]
+            found_server_tests=$(find /app/server/tests -type f 2>/dev/null | wc -l)
+            echo "server/tests files=$found_server_tests"
+            [ "$found_server_tests" = "0" ]
 
             echo "OK: Image enthält keine Host-Artefakte"
           '
