@@ -306,8 +306,12 @@ test('401-Session-Expiry: apiUtils feuert gedrosseltes Event, AuthContext reagie
 
 test('HTTP-Fehler tragen Status und Body (409-Durchreichung für NoteModal)', () => {
   const apiUtils = readClientFile('src/services/api/apiUtils.js');
-  assert.match(apiUtils, /error\.status = status/);
-  assert.match(apiUtils, /error\.data = payload/);
+  // Status/Body werden in utils/httpErrors.mjs gesetzt (ausführbar getestet in
+  // tests/errorPropagation.test.js); apiUtils delegiert dorthin.
+  const httpErrors = readClientFile('src/utils/httpErrors.mjs');
+  assert.match(httpErrors, /error\.status = status/);
+  assert.match(httpErrors, /error\.data = payload/);
+  assert.match(apiUtils, /buildHttpError\(\{ status, payload \}\)/);
 
   const hook = readClientFile('src/hooks/useNotesManager.js');
   assert.match(hook, /error\.status === 409/);

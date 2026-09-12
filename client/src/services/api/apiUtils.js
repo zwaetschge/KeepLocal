@@ -1,4 +1,5 @@
 import { API_BASE_URL, API_ENDPOINTS, CSRF_METHODS, ERROR_MESSAGES } from '../../constants/api';
+import { buildHttpError, unauthorizedError } from '../../utils/httpErrors.mjs';
 
 // Re-export API_BASE_URL for use in other API modules
 export { API_BASE_URL };
@@ -29,19 +30,30 @@ function notifyUnauthorizedOncePerWindow(endpoint) {
 /**
  * HTTP-Fehler mit Status und geparstem Body anreichern, damit Aufrufer
  * gezielt reagieren können (z.B. 409 { error, currentNote } in NoteModal/B2).
- *
- * Antworten mit einem `code` aber ohne `error`-Text (z.B. die Offline-Antwort
- * des Service Workers) erzeugen bewusst keine Nachricht: Die Aufrufer fallen
- * dann auf ihre übersetzten `t(...)`-Meldungen zurück, statt einen rohen
- * Server-String in der falschen Sprache zu zeigen.
+ * Die Logik liegt in utils/httpErrors.mjs, damit sie testbar ist.
  */
 function createHttpError(payload, status) {
-  const message = payload.error || (payload.code ? '' : `HTTP ${status}`);
-  const error = new Error(message);
-  error.status = status;
-  error.code = payload.code;
-  error.data = payload;
-  return error;
+  return buildHttpError({ status, payload });
+}
+
+/**
+ * Fehler aus einer rohen Response bauen — mit `code`, `status`, `data` und
+ * `Retry-After`.
+ *
+ * Warum exportiert: Die beiden Multipart-Pfade (Bild-Upload, Transkription)
+ * rufen `fetch()` direkt, weil FormData keinen JSON-Wrapper verträgt. Sie warfen
+ * ein nacktes `new Error(serverText)`: `resolveApiErrorMessage` sah kein `code`
+ * und toastete den deutschen Server-Satz in der englischen UI — obwohl
+ * `errTranscriptionBusy`, `errImageLimitReached` und `errAiUnavailable` längst
+ * übersetzt sind. Ohne `status`/`retryAfter` war außerdem kein „erneut
+ * versuchen in 30 s" möglich, und die Aufnahme war verloren.
+ *
+ * @param {Response} response
+ * @param {string} [fallbackMessage] nur verwendet, wenn der Body weder Text noch Code hat
+ */
+export async function toHttpError(response, fallbackMessage) {
+  const payload = await parseResponse(response);
+  return buildHttpError({ status: response.status, payload, headers: response.headers, fallbackMessage });
 }
 
 /**
@@ -107,9 +119,10 @@ export async function fetchWithAuth(url, options = {}) {
   // Event (gedrosselt) feuern, damit der AuthContext die Session beenden kann.
   if (response.status === 401) {
     notifyUnauthorizedOncePerWindow(url);
-    const error = new Error(ERROR_MESSAGES.UNAUTHORIZED);
-    error.status = 401;
-    throw error;
+    // Code mitgeben, sonst toastet die englische UI den hartkodierten deutschen
+    // Satz „Nicht autorisiert" neben dem korrekt übersetzten Session-Banner.
+    const payload = await parseResponse(response);
+    throw unauthorizedError({ payload, headers: response.headers, fallbackMessage: ERROR_MESSAGES.UNAUTHORIZED });
   }
 
   // Handle other errors (inkl. 409-Konflikt: Status/Body durchreichen)

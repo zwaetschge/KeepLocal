@@ -336,6 +336,8 @@ export const de = {
   setupCreateAdmin: 'Admin-Konto erstellen',
   setupFooterHint: 'Nach dem Setup können Sie weitere Benutzer über die normale Registrierung hinzufügen.',
   errorTranscribing: 'Fehler bei der Transkription',
+  transcriptionBusyRetry: 'Transkriptionsdienst ausgelastet — erneut versuchen in {seconds} s',
+  retryTranscription: 'Erneut versuchen',
   noDescription: 'Keine Beschreibung',
   loadingFriends: 'Lade Freunde...',
   noFriendsFound: 'Keine Freunde gefunden',
