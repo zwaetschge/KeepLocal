@@ -1,9 +1,21 @@
 name: Docker Build and Push
 
+# Bilder werden erst veroeffentlicht, NACHDEM die CI fuer denselben Commit gruen
+# ist. Vorher lief dieser Workflow parallel zur CI: Ein roter Test auf main hat
+# `latest` nicht aufgehalten - genau das Image, das Self-Hoster pullen.
+#   - workflow_run: startet nach Abschluss des CI-Workflows (nur push auf main,
+#     nur bei conclusion=success, siehe `if` am Job).
+#   - push tags: Release-Tags werden aus einem gruenen main geschnitten; fuer
+#     Tags laeuft keine CI, deshalb bleibt der direkte Weg.
+#   - workflow_dispatch: manueller Release, ebenfalls ohne CI-Gate.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - main
+  push:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -25,6 +37,14 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Nur veroeffentlichen, wenn die CI desselben Commits erfolgreich war.
+    # `workflow_run.event == 'push'` schliesst PR-Laeufe aus, deren head_branch
+    # zufaellig main heisst (z. B. Forks).
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     outputs:
       test-tag: ${{ steps.meta.outputs.test-tag }}
     permissions:
@@ -34,6 +54,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Bei workflow_run zeigt github.sha auf den Default-Branch-Stand des
+          # Workflows, nicht auf den Commit des ausgeloesten Laufs.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -52,6 +76,11 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           INPUT_VERSION: ${{ inputs.version }}
+          # Der gebaute Commit muss in Label und immutablem Tag stehen, nicht
+          # der (bei workflow_run andere) Default-Branch-Sha.
+          GITHUB_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          GITHUB_REF_NAME: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          GITHUB_REF_TYPE: ${{ github.event_name == 'workflow_run' && 'branch' || github.ref_type }}
         run: .github/scripts/docker-metadata.sh
 
       - name: Build and push All-in-One Docker image
