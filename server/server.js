@@ -262,7 +262,19 @@ async function startServer() {
     console.error('Index-Migration fehlgeschlagen:', error.message);
     throw error;
   }
-  await Promise.all(Object.values(mongoose.models).map(model => model.init()));
+  // syncIndexes() statt init(): Bestandsinstallationen können Indizes mit
+  // gleichem Namen, aber anderen Optionen haben — z. B. provider_1_providerId_1,
+  // der früher nicht-eindeutig war und jetzt unique+partial ist. createIndex()
+  // bricht dann mit "An existing index has the same name as the requested index"
+  // ab, model.init() rejectet und der Server startet in einer Crash-Schleife,
+  // obwohl die Daten völlig in Ordnung sind. syncIndexes() wirft veraltete und
+  // konflikthafte Indizes weg und legt die Schema-Indizes neu an.
+  await Promise.all(Object.values(mongoose.models).map(async (model) => {
+    const dropped = await model.syncIndexes();
+    if (Array.isArray(dropped) && dropped.length > 0) {
+      logger.info('indexes synchronised', { model: model.modelName, dropped });
+    }
+  }));
 
   return (httpServer = app.listen(PORT, HOST, () => {
     console.log(`Server laeuft auf ${HOST}:${PORT}`);

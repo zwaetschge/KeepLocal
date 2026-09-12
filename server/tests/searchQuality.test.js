@@ -106,10 +106,12 @@ test('model index definition and migration target agree', () => {
 test('the server runs the migration before building schema indexes', () => {
   const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
   const migrationIndex = server.indexOf('await ensureNoteTextIndex(mongoose.connection)');
-  const initIndex = server.indexOf('Object.values(mongoose.models).map(model => model.init())');
+  // Since the upgrade fix, startup calls syncIndexes() (drops conflicting or
+  // stale indexes, recreates the schema ones) instead of the bare init().
+  const initIndex = server.indexOf('model.syncIndexes()');
 
   assert.ok(migrationIndex > -1, 'the migration must be called at startup');
-  assert.ok(initIndex > -1, 'model.init() must still run');
+  assert.ok(initIndex > -1, 'the schema indexes must still be synchronised at startup');
   assert.ok(migrationIndex < initIndex, 'the migration must run BEFORE the indexes are built');
 });
 

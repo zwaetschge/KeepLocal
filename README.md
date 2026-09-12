@@ -158,6 +158,28 @@ new image, recreate the services without deleting volumes, verify
 `/api/health`, and keep the previous immutable image tag available for rollback.
 The exact procedure is in [docs/docker.md](docs/docker.md).
 
+### Index layout is repaired on startup
+
+Indexes change between releases — for example `users.provider_1_providerId_1`
+used to be a plain index and is now `unique` with a partial filter, and the note
+text index gained weights. An existing index with the same name but different
+options makes MongoDB reject `createIndex()`, which used to stop the server
+before it ever listened on its port: the container crash-looped with
+`An existing index has the same name as the requested index` although the data
+was fine.
+
+Startup therefore runs `syncIndexes()` per model: indexes that no longer match
+the schema are dropped, the schema indexes are recreated, and every dropped
+index is logged as `indexes synchronised`. Existing documents are untouched.
+The all-in-one entrypoint additionally repairs ownership **recursively** — a
+single root-owned file inside `/data/db` (for example left behind by maintenance
+with `docker run -u root`) is enough to make `mongod` exit with code 14 forever
+while the top-level directory still looks correct.
+
+`npm run verify:upgrade-boot` (in `server/`) reproduces that upgrade: it seeds a
+MongoDB with the July index layout, boots the real server and asserts the
+indexes come back correctly. CI runs it against a real MongoDB on every push.
+
 ## Local development
 
 Use Node.js 22 and MongoDB 7. A disposable local MongoDB can run in Docker:
@@ -199,6 +221,19 @@ docker compose -f docker-compose.yml config
 docker compose -f docker-compose.npm.yml config
 docker compose -f docker-compose.allinone.yml config
 ```
+
+### Upgrade boot check
+
+Needs a reachable MongoDB and boots the real server once:
+
+```bash
+export UPGRADE_MONGODB_URI=mongodb://127.0.0.1:27017/keeplocal_upgrade
+(cd server && npm run verify:upgrade-boot)
+```
+
+It drops that database (the name must contain `upgrade`, `e2e`, `test` or `ci`),
+recreates the legacy index layout, waits for `/api/health/ready` and verifies
+the repaired indexes plus the surviving documents.
 
 The client uses Vite's `client/build/` output. The AI service's Python packages
 are installed from `ai/requirements.txt`.
