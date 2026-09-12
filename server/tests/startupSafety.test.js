@@ -60,13 +60,18 @@ test('CI proves the upgrade boot against a real MongoDB', () => {
 test('health endpoint reports database disconnects', () => {
   // Improvement #10: the checks moved into services/healthService.js and go
   // beyond mongoose's cached readyState (real ping, writable uploads, AI probe).
-  assert.match(serverSource, /const \{ collectHealth \} = require\('\.\/services\/healthService'\);/);
+  assert.match(serverSource, /const \{ collectHealth, publicHealth \} = require\('\.\/services\/healthService'\);/);
   assert.match(serverSource, /res\.status\(health\.ready \? 200 : 503\)/);
   assert.match(serverSource, /database: health\.database\.status/);
 
   const healthSource = fs.readFileSync(path.join(__dirname, '../services/healthService.js'), 'utf8');
   assert.match(healthSource, /mongoose\.connection\.readyState !== 1/);
   assert.match(healthSource, /mongoose\.connection\.db\.admin\(\)\.ping\(\)/);
+  // Readiness ist anonym erreichbar: Interna (absoluter Uploads-Pfad,
+  // DB-Fehlertext, AI-Endpunkt) duerfen nur mit Opt-in raus, und die Probes
+  // muessen gecacht sein, damit niemand gratis I/O verstaerken kann.
+  assert.match(healthSource, /function publicHealth\(health\)/);
+  assert.match(healthSource, /PROBE_TTL_MS/);
 });
 
 test('server shuts down gracefully on SIGTERM and SIGINT', () => {

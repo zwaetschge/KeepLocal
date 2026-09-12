@@ -13,6 +13,22 @@ const mongoose = require('mongoose');
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(__dirname, '../uploads/images');
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:5000';
 const AI_TIMEOUT_MS = Number(process.env.AI_HEALTH_TIMEOUT_MS || 2000);
+// Readiness wird von Docker-/Compose-Healthchecks (30 s), Load Balancern und
+// anonymen Neugierigen aufgerufen. Ohne Cache macht jeder Aufruf einen
+// synchronen Schreibtest plus einen ausgehenden Fetch zum AI-Dienst - ein
+// Aufrufer ohne Auth könnte daraus kostenlose I/O-Verstärkung machen.
+const PROBE_TTL_MS = Number(process.env.HEALTH_PROBE_TTL_MS || 30000);
+
+const uploadsProbeCache = { at: 0, value: null };
+const aiProbeCache = { at: 0, value: null };
+
+/** Cache leeren (Tests, erzwungene Neu-Probe). */
+function resetHealthCaches() {
+  uploadsProbeCache.at = 0;
+  uploadsProbeCache.value = null;
+  aiProbeCache.at = 0;
+  aiProbeCache.value = null;
+}
 
 /** Real round trip instead of trusting the driver's cached state. */
 async function pingDatabase() {
@@ -28,7 +44,7 @@ async function pingDatabase() {
 }
 
 /** The upload volume must be writable, otherwise every image upload 500s. */
-function checkUploadsWritable() {
+function probeUploadsWritable() {
   try {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     const probe = path.join(UPLOADS_DIR, `.health-${process.pid}`);
@@ -44,7 +60,7 @@ function checkUploadsWritable() {
  * Optional AI check. It never decides readiness (transcription is a feature, not
  * a core dependency) — set REQUIRE_AI_FOR_READY=true to make it fatal.
  */
-async function checkAiService() {
+async function probeAiService() {
   if (process.env.AI_FEATURES_DISABLED === 'true') {
     return { ok: true, detail: 'disabled', checked: false };
   }
@@ -58,6 +74,28 @@ async function checkAiService() {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Cached write probe; see PROBE_TTL_MS. */
+function checkUploadsWritable() {
+  const now = Date.now();
+  if (uploadsProbeCache.value && now - uploadsProbeCache.at < PROBE_TTL_MS) {
+    return uploadsProbeCache.value;
+  }
+  uploadsProbeCache.value = probeUploadsWritable();
+  uploadsProbeCache.at = now;
+  return uploadsProbeCache.value;
+}
+
+/** Cached AI probe; see PROBE_TTL_MS. */
+async function checkAiService() {
+  const now = Date.now();
+  if (aiProbeCache.value && now - aiProbeCache.at < PROBE_TTL_MS) {
+    return aiProbeCache.value;
+  }
+  aiProbeCache.value = await probeAiService();
+  aiProbeCache.at = now;
+  return aiProbeCache.value;
 }
 
 /**
@@ -80,4 +118,32 @@ async function collectHealth() {
   };
 }
 
-module.exports = { collectHealth, pingDatabase, checkUploadsWritable, checkAiService, UPLOADS_DIR };
+/**
+ * Public readiness payload: same shape and same status code, but without the
+ * internals. `uploads.detail` is an absolute server path, `database.detail` is a
+ * verbatim driver error and `ai.detail` names the internal AI endpoint — all of
+ * them useful for the operator, all of them free information for an anonymous
+ * caller. Operators get the full object with HEALTH_DETAILS=true.
+ */
+function publicHealth(health) {
+  return {
+    status: health.status,
+    ready: health.ready,
+    database: { status: health.database.status },
+    uploads: { writable: health.uploads.writable },
+    ai: { reachable: health.ai.reachable, checked: health.ai.checked, fatal: health.ai.fatal },
+    uptime: health.uptime,
+    timestamp: health.timestamp
+  };
+}
+
+module.exports = {
+  collectHealth,
+  publicHealth,
+  pingDatabase,
+  checkUploadsWritable,
+  checkAiService,
+  resetHealthCaches,
+  PROBE_TTL_MS,
+  UPLOADS_DIR
+};

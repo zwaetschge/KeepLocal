@@ -93,13 +93,81 @@ test('an unreachable AI service is reported but not fatal by default', async () 
   assert.equal(strict.ai.fatal, true);
 });
 
+test('the public readiness payload keeps the shape but hides internals', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const { collectHealth, publicHealth } = loadHealth();
+
+  const full = await collectHealth();
+  const exposed = publicHealth(full);
+
+  assert.equal(exposed.ready, true);
+  assert.equal(exposed.status, 'ok');
+  assert.equal(exposed.database.status, 'connected');
+  assert.equal(exposed.uploads.writable, true);
+  assert.equal(exposed.ai.checked, false);
+  assert.equal(exposed.database.detail, undefined, 'driver error text is internal');
+  assert.equal(exposed.uploads.detail, undefined, 'the absolute uploads path is internal');
+  assert.equal(exposed.ai.detail, undefined, 'the AI endpoint is internal');
+  assert.equal(JSON.stringify(exposed).includes(uploadsDir), false, 'no server path may leak');
+});
+
+test('readiness details are opt-in outside development', () => {
+  const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+
+  assert.match(server, /const healthDetailsEnabled = process\.env\.HEALTH_DETAILS/);
+  assert.match(server, /process\.env\.NODE_ENV !== 'production'/);
+  assert.match(server, /const \{ collectHealth, publicHealth \} = require\('\.\/services\/healthService'\);/);
+
+  const envExample = fs.readFileSync(path.join(__dirname, '../..', '.env.example'), 'utf8');
+  assert.match(envExample, /HEALTH_DETAILS/, 'the opt-in must be documented for operators');
+});
+
+test('the readiness probes are cached so anonymous callers cannot amplify I/O', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const health = loadHealth({
+    AI_FEATURES_DISABLED: '',
+    AI_SERVICE_URL: 'http://127.0.0.1:1',
+    AI_HEALTH_TIMEOUT_MS: '200',
+    HEALTH_PROBE_TTL_MS: '60000'
+  });
+
+  let writes = 0;
+  let fetches = 0;
+  const originalWrite = fs.writeFileSync;
+  const originalFetch = globalThis.fetch;
+  fs.writeFileSync = (...args) => { writes += 1; return originalWrite(...args); };
+  globalThis.fetch = (...args) => { fetches += 1; return originalFetch(...args); };
+  try {
+    await health.collectHealth();
+    await health.collectHealth();
+    await health.collectHealth();
+  } finally {
+    fs.writeFileSync = originalWrite;
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(writes, 1, 'the upload write probe must run once per TTL window');
+  assert.equal(fetches, 1, 'the AI probe must run once per TTL window');
+
+  health.resetHealthCaches();
+  const originalWrite2 = fs.writeFileSync;
+  let writesAfterReset = 0;
+  fs.writeFileSync = (...args) => { writesAfterReset += 1; return originalWrite2(...args); };
+  try {
+    await health.collectHealth();
+  } finally {
+    fs.writeFileSync = originalWrite2;
+  }
+  assert.equal(writesAfterReset, 1, 'resetting the cache forces a fresh probe');
+});
+
 test('the server exposes live and ready endpoints next to the legacy one', () => {
   const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 
   assert.match(server, /app\.get\('\/api\/health', async \(req, res\) => \{/);
   assert.match(server, /app\.get\('\/api\/health\/live'/);
   assert.match(server, /app\.get\('\/api\/health\/ready'/);
-  assert.match(server, /res\.status\(health\.ready \? 200 : 503\)\.json\(health\)/);
+  assert.match(server, /res\.status\(health\.ready \? 200 : 503\)\.json\(healthDetailsEnabled \? health : publicHealth\(health\)\)/);
   assert.match(server, /app\.use\(requestId\);/);
 
   for (const file of ['docker-compose.yml', 'docker-compose.npm.yml', 'docker-compose.allinone.yml', 'docker-compose.demo.yml']) {

@@ -89,6 +89,13 @@ additionally performs a real database ping, checks that the uploads directory is
 writable and (optionally) probes the AI service — the compose healthchecks use the
 readiness endpoint.
 
+The readiness payload is trimmed for anonymous callers: `database.detail` (driver
+error text), `uploads.detail` (absolute server path) and `ai.detail` are only
+included when `HEALTH_DETAILS=true` (the default outside production). Status
+codes are identical either way, so healthchecks and load balancers keep working.
+The uploads write probe and the AI probe are cached for `HEALTH_PROBE_TTL_MS`
+(default 30000) so a healthcheck storm cannot be turned into I/O amplification.
+
 ## Backup
 
 ### Recommended: the built-in backup script
