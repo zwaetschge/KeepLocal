@@ -126,8 +126,13 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Create log directories
-RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal
+# Create log directories and route nginx's own logs to the container output.
+# supervisord schickt die Programm-Logs nach /dev/stdout; nginx schreibt
+# access/error aber selbst in Dateien. Dieselben Symlinks wie im offiziellen
+# nginx-Image, damit nginx-Fehler in `docker logs` sichtbar sind.
+RUN mkdir -p /var/log/supervisor /var/log/mongodb /var/log/keeplocal \
+    && ln -sf /dev/stdout /var/log/nginx/access.log \
+    && ln -sf /dev/stderr /var/log/nginx/error.log
 
 # Expose ports
 # 80: Nginx (Web UI + API proxy)

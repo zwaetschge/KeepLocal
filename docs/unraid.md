@@ -103,15 +103,35 @@ clears only KeepLocal web caches and display preferences.
 
 ### Health is degraded
 
+All program logs (MongoDB, API, Whisper, nginx) go to the container output, so
+Unraid's log view and `docker logs` are enough:
+
 ```bash
-docker logs KeepLocal
-docker exec KeepLocal tail -n 100 /var/log/supervisor/mongodb-stdout.log
+docker logs --tail 200 KeepLocal
+docker logs --since 10m KeepLocal        # JSON lines with LOG_FORMAT=json
 docker exec KeepLocal curl -fsS http://127.0.0.1:5001/health
 ```
 
-Do not delete the database to fix a forgotten password. KeepLocal currently has
-no self-service password reset; use another administrator where available or
-restore a known-good backup.
+Set `Log Level`/`Log Format` in the template to raise verbosity or switch to
+structured JSON logs with request ids.
+
+### Forgotten password / no administrator left
+
+Password recovery works with one-time tokens that an administrator issues
+(Admin console → Users → *Reset password*); the affected person redeems the token
+on the login screen under *Forgot password?*. There is no e-mail delivery.
+
+If the instance has **no** administrator any more (old dump, manual MongoDB
+edit), promote one from the host — the API refuses to revoke or delete the last
+administrator, so this should stay a rare case:
+
+```bash
+docker exec KeepLocal node /app/server/scripts/promote-admin.js you@example.com
+docker exec KeepLocal node /app/server/scripts/promote-admin.js you@example.com --dry-run
+```
+
+Then issue a reset token in the admin console. Do not delete the database to fix
+a forgotten password.
 
 ## Included runtime
 

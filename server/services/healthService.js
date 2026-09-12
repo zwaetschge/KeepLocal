@@ -17,12 +17,15 @@ const { imagesDir } = require('../config/paths');
 // einen Pfad, den kein Upload je benutzt.
 const UPLOADS_DIR = imagesDir();
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:5000';
+// `|| Default` statt `Number(x)`: Compose reicht Variablen als `${VAR:-}`
+// durch, und `Number('')` ist 0 — ein AI-Timeout von 0 ms wuerde jede Probe
+// sofort abbrechen und die Readiness grundlos auf `ai unreachable` ziehen.
 const AI_TIMEOUT_MS = Number(process.env.AI_HEALTH_TIMEOUT_MS || 2000);
 // Readiness wird von Docker-/Compose-Healthchecks (30 s), Load Balancern und
 // anonymen Neugierigen aufgerufen. Ohne Cache macht jeder Aufruf einen
 // synchronen Schreibtest plus einen ausgehenden Fetch zum AI-Dienst - ein
 // Aufrufer ohne Auth könnte daraus kostenlose I/O-Verstärkung machen.
-const PROBE_TTL_MS = Number(process.env.HEALTH_PROBE_TTL_MS || 30000);
+const PROBE_TTL_MS = Number(process.env.HEALTH_PROBE_TTL_MS || 30000); // '' -> Default, nicht 0
 
 const uploadsProbeCache = { at: 0, value: null };
 const aiProbeCache = { at: 0, value: null };
