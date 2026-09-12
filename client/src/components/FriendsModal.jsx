@@ -8,7 +8,7 @@ import { toastBus } from './ToastStack';
 import ConfirmDialog from './ConfirmDialog';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
-function FriendsModal({ isOpen, onClose, isAdmin }) {
+function FriendsModal({ isOpen, onClose, isAdmin, onFriendsChanged }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('friends'); // 'friends', 'requests', 'add'
   const [friends, setFriends] = useState([]);
@@ -108,6 +108,11 @@ function FriendsModal({ isOpen, onClose, isAdmin }) {
       await friendsAPI.removeFriend(friendId);
       setRemoveConfirm(null);
       loadFriends();
+      // Der Server widerruft beim Entfreunden auch `sharedWith` in beiden
+      // Richtungen. Ohne Refresh blieben die Notizliste und der
+      // Mitbearbeiter-Avatar des Ex-Freunds bis zum nächsten Poll sichtbar —
+      // die UI würde also einen Zugriff zeigen, den es nicht mehr gibt.
+      onFriendsChanged?.();
     } catch (err) {
       setError(resolveApiErrorMessage(err, t));
     }

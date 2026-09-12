@@ -364,7 +364,8 @@ function AppContent() {
       {!user?.isDemo && (
         <>
           <FriendsModal isOpen={showFriendsModal} onClose={() => setShowFriendsModal(false)}
-            isAdmin={user?.isAdmin} />
+            isAdmin={user?.isAdmin}
+            onFriendsChanged={() => fetchNotes(searchTerm, pagination.page, { background: true })} />
           <CollaborateModal isOpen={showCollaborateModal} onClose={() => setShowCollaborateModal(false)}
             note={collaborateNote} onNoteUpdate={handleNoteShared} />
         </>

@@ -784,6 +784,77 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
   });
 
+  // Audit 2026-09-12 (Top-30 Nr. 2): removing a friend used to keep
+  // `sharedWith` intact, so an ex-friend kept read AND write access to notes
+  // that were shared while the friendship existed.
+  test('removing a friend revokes access to notes shared before', async ({ browser }) => {
+    const TITLE = 'Geteilt vor dem Entfreunden';
+
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.fill('.note-modal-title', TITLE);
+    await page.fill('.note-modal-content', 'Der Zugriff muss mit der Freundschaft enden');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+
+    // Share through the UI.
+    await page.locator('[role="article"]', { hasText: TITLE }).click();
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.click('.btn-modal-collaborate');
+    await expect(page.locator('.collaborate-modal')).toBeVisible();
+    const shareButton = page.locator('.collaborate-modal .friend-item', { hasText: FRIEND.username }).locator('.btn-share');
+    if (!(await shareButton.evaluate((el) => el.classList.contains('shared')))) {
+      await shareButton.click();
+    }
+    await expect(shareButton).toHaveClass(/shared/, { timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.collaborate-modal')).toHaveCount(0);
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 15000 });
+
+    const listBefore = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const sharedNote = listBefore.notes.find((note) => note.title === TITLE);
+    expect(sharedNote, 'the note must exist before unfriending').toBeTruthy();
+    const sharedIds = sharedNote.sharedWith.map((user) => String(user._id ?? user));
+    expect(sharedIds.length, 'the note must be shared before unfriending').toBe(1);
+    const noteId = sharedNote._id;
+
+    // The collaborator can see it right now.
+    const friendContext = await browser.newContext();
+    const friendPage = await friendContext.newPage();
+    await friendPage.goto('/');
+    await friendPage.fill('input[type="email"], form input[type="text"]', FRIEND.email);
+    await friendPage.fill('form input[type="password"]', FRIEND.password);
+    await friendPage.click('form button[type="submit"]');
+    await expect(friendPage.locator('.App')).toBeVisible({ timeout: 25000 });
+    await expect(friendPage.locator('[role="article"]', { hasText: TITLE })).toBeVisible({ timeout: 20000 });
+
+    // Remove the friend through the UI (sidebar -> friends -> remove -> confirm).
+    await page.locator('.sidebar-item', { hasText: /Friends|Freunde/ }).click();
+    await expect(page.locator('.friends-modal')).toBeVisible();
+    await page.locator('.friends-modal .friend-item', { hasText: FRIEND.username }).locator('.btn-remove').click();
+    await expect(page.locator('.confirm-dialog')).toBeVisible();
+    await page.locator('.confirm-dialog .btn-confirm').click();
+    await expect(page.locator('.friends-modal .friend-item', { hasText: FRIEND.username })).toHaveCount(0, { timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.friends-modal')).toHaveCount(0, { timeout: 15000 });
+
+    // The share is gone server-side …
+    const listAfter = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const noteAfter = listAfter.notes.find((note) => note._id === noteId);
+    expect(noteAfter.sharedWith, 'the ex-friend must be removed from sharedWith').toEqual([]);
+
+    // … and the ex-friend really loses access (list + direct read).
+    await friendPage.reload();
+    await expect(friendPage.locator('.App')).toBeVisible({ timeout: 25000 });
+    await expect(friendPage.locator('[role="article"]', { hasText: TITLE })).toHaveCount(0, { timeout: 20000 });
+    const direct = await friendPage.request.get(`/api/notes/${noteId}`);
+    expect(direct.status(), 'a direct read must not leak the note').toBe(404);
+    await expect(friendPage.locator('body')).not.toContainText(errorBoundaryText);
+    await friendContext.close();
+
+    await expect(page.locator('body')).not.toContainText(errorBoundaryText);
+  });
+
   // The password tests run last: they change credentials the other tests use.
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';

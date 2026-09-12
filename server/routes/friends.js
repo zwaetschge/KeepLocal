@@ -5,6 +5,7 @@ const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const { escapeRegex } = require('../utils/sanitize');
 const { blockDemoUser } = require('../middleware/demoPolicy');
+const { revokeSharedNotesBetween } = require('../services/notesService');
 
 // Alle Routen erfordern Authentifizierung
 router.use(authenticateToken);
@@ -211,7 +212,14 @@ router.delete('/:friendId', async (req, res, next) => {
       { $pull: { friends: friend._id } }
     );
 
-    res.json({ message: 'Freund entfernt' });
+    // Ohne diesen Schritt behalten Ex-Freunde Lese- UND Schreibzugriff auf alle
+    // früher geteilten Notizen (Mitbearbeiter dürfen Inhalt, Titel, Tags, Farbe,
+    // Pin und Bilder ändern): `sharedWith` überlebt die Freundschaft sonst.
+    // $pull ist idempotent, der Aufruf kann also zusammen mit den beiden
+    // Updates wiederholt werden.
+    const { revoked } = await revokeSharedNotesBetween(req.user._id, friend._id);
+
+    res.json({ message: 'Freund entfernt', revokedShares: revoked });
   } catch (error) {
     next(error);
   }
