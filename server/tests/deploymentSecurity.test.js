@@ -218,6 +218,28 @@ test('dockerignore patterns reach into subdirectories', () => {
   assert.doesNotMatch(dockerfile, /COPY[^\n]*node_modules/, 'node_modules must be installed, never copied');
 });
 
+test('images are published only after CI is green for the same commit', () => {
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
+
+  // Kein push-Trigger auf main mehr: sonst laeuft die Bild-Publikation parallel
+  // zur CI und ein roter Test haelt `latest` nicht auf.
+  assert.doesNotMatch(workflow, /on:[\s\S]*?\n  push:\n\s+branches:/);
+  assert.match(workflow, /workflow_run:\n\s+workflows: \["CI"\]\n\s+types:\n\s+- completed\n\s+branches:\n\s+- main/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
+  assert.match(workflow, /github\.event\.workflow_run\.head_branch == 'main'/);
+
+  // Release-Tags und manuelle Releases bleiben direkt moeglich (fuer Tags laeuft
+  // keine CI).
+  assert.match(workflow, /push:\n\s+tags:\n\s+- 'v\*\.\*\.\*'/);
+  assert.match(workflow, /workflow_dispatch:/);
+
+  // Gebaut und gelabelt werden muss der Commit, den die CI geprueft hat -
+  // github.sha zeigt bei workflow_run auf den Default-Branch-Stand.
+  assert.match(workflow, /ref: \$\{\{ github\.event_name == 'workflow_run' && github\.event\.workflow_run\.head_sha \|\| github\.ref \}\}/);
+  assert.match(workflow, /GITHUB_SHA: \$\{\{ github\.event_name == 'workflow_run' && github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
+});
+
 test('Docker metadata is generated locally for main and semantic-version releases', () => {
   const main = runDockerMetadata();
   assert.equal(main.status, 0, main.stderr);
