@@ -28,8 +28,14 @@ const logger = require('../utils/logger');
 const paths = require('../config/paths');
 const { deleteNoteImages } = require('./notesService');
 
+// Leere Werte muessen den Default behalten: Compose-Dateien reichen Variablen
+// als `${VAR:-}` durch, also als leerer String. `Number('')` ist 0 — bei
+// TRASH_RETENTION_DAYS wuerde das den kompletten Papierkorb sofort endgueltig
+// loeschen.
 const numberFromEnv = (name, fallback) => {
-  const parsed = Number(process.env[name]);
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === '') return fallback;
+  const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 

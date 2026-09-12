@@ -96,6 +96,30 @@ codes are identical either way, so healthchecks and load balancers keep working.
 The uploads write probe and the AI probe are cached for `HEALTH_PROBE_TTL_MS`
 (default 30000) so a healthcheck storm cannot be turned into I/O amplification.
 
+## Logs
+
+Every program in the all-in-one image logs to the container output: supervisord
+writes `nodejs`, `mongodb`, `ai`, `demo-reset` and `nginx` to `/dev/stdout` and
+`/dev/stderr`, and nginx's own `access.log`/`error.log` are symlinked there too.
+
+```bash
+docker logs --tail 200 keeplocal-allinone
+docker logs --since 10m keeplocal-allinone
+docker compose -f docker-compose.allinone.yml logs -f
+```
+
+`LOG_LEVEL` (`error`/`warn`/`info`/`debug`) and `LOG_FORMAT=json` (one JSON
+object per line, including `requestId`) are passed through by every compose file
+and by the Unraid template; unset means the application default (`info`, human
+readable lines). Rotation is the log driver's job — the compose files set
+`json-file` with `max-size: 10m` and `max-file: 3` per service. If you run a
+different driver (journald, Loki, syslog), override the `logging:` block with a
+compose override file.
+
+Logs used to live in `/var/log/supervisor/*.log` inside the container layer, so
+they disappeared on every update — which is exactly when you need them. Nothing
+writes there any more except supervisord's own start-up log.
+
 ## Backup
 
 ### Recommended: the built-in backup script

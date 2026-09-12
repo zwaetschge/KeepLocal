@@ -8,6 +8,11 @@ services:
     image: keeplocal-allinone:latest
     container_name: keeplocal-allinone
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "3000:80"
     environment:
@@ -28,6 +33,20 @@ services:
       # es ueber denselben Prozessbaum).
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}
       - BACKUP_DIR=/app/server/backups
+      # Betriebs-Variablen (leer = Default der App): Logs, Readiness, Budgets,
+      # Papierkorb/Janitor. Dokumentiert in README und .env.example.
+      - LOG_LEVEL=${LOG_LEVEL:-}
+      - LOG_FORMAT=${LOG_FORMAT:-}
+      - REQUIRE_AI_FOR_READY=${REQUIRE_AI_FOR_READY:-}
+      - HEALTH_DETAILS=${HEALTH_DETAILS:-}
+      - HEALTH_PROBE_TTL_MS=${HEALTH_PROBE_TTL_MS:-}
+      - AI_HEALTH_TIMEOUT_MS=${AI_HEALTH_TIMEOUT_MS:-}
+      - LINK_PREVIEW_LIMIT_PER_MINUTE=${LINK_PREVIEW_LIMIT_PER_MINUTE:-}
+      - TRANSCRIPTION_LIMIT_PER_HOUR=${TRANSCRIPTION_LIMIT_PER_HOUR:-}
+      - TRANSCRIPTION_LIMIT_PER_DAY=${TRANSCRIPTION_LIMIT_PER_DAY:-}
+      - MAX_CONCURRENT_TRANSCRIPTIONS=${MAX_CONCURRENT_TRANSCRIPTIONS:-}
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-}
+      - STORAGE_JANITOR_INTERVAL_HOURS=${STORAGE_JANITOR_INTERVAL_HOURS:-}
       - UPLOADS_DIR=/app/server/uploads
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

@@ -4,6 +4,11 @@ services:
     image: mongo:7-jammy
     container_name: keeplocal-mongodb
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       MONGO_INITDB_DATABASE: keeplocal
     volumes:
@@ -25,6 +30,11 @@ services:
         WHISPER_MODEL: ${WHISPER_MODEL:-base}
     container_name: keeplocal-ai
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       # Shared secret mit dem Server: ohne Token nimmt /transcribe Anfragen von
@@ -46,6 +56,11 @@ services:
       dockerfile: Dockerfile
     container_name: keeplocal-server
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - NODE_ENV=production
       - PORT=5000
@@ -60,6 +75,20 @@ services:
       - AI_SERVICE_URL=http://ai:5000
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}  # muss zum Token des ai-Services passen
       - BACKUP_DIR=/app/backups
+      # Betriebs-Variablen (leer = Default der App): Logs, Readiness, Budgets,
+      # Papierkorb/Janitor. Dokumentiert in README und .env.example.
+      - LOG_LEVEL=${LOG_LEVEL:-}
+      - LOG_FORMAT=${LOG_FORMAT:-}
+      - REQUIRE_AI_FOR_READY=${REQUIRE_AI_FOR_READY:-}
+      - HEALTH_DETAILS=${HEALTH_DETAILS:-}
+      - HEALTH_PROBE_TTL_MS=${HEALTH_PROBE_TTL_MS:-}
+      - AI_HEALTH_TIMEOUT_MS=${AI_HEALTH_TIMEOUT_MS:-}
+      - LINK_PREVIEW_LIMIT_PER_MINUTE=${LINK_PREVIEW_LIMIT_PER_MINUTE:-}
+      - TRANSCRIPTION_LIMIT_PER_HOUR=${TRANSCRIPTION_LIMIT_PER_HOUR:-}
+      - TRANSCRIPTION_LIMIT_PER_DAY=${TRANSCRIPTION_LIMIT_PER_DAY:-}
+      - MAX_CONCURRENT_TRANSCRIPTIONS=${MAX_CONCURRENT_TRANSCRIPTIONS:-}
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-}
+      - STORAGE_JANITOR_INTERVAL_HOURS=${STORAGE_JANITOR_INTERVAL_HOURS:-}
       - UPLOADS_DIR=/app/uploads
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -94,6 +123,11 @@ services:
       dockerfile: Dockerfile
     container_name: keeplocal-client
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Only the frontend joins the external proxy network.
     expose:
       - "80"
