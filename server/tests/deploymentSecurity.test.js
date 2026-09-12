@@ -107,6 +107,24 @@ test('CI runs the full test, lint and build suites before images are published',
   assert.match(ci, /uses: actions\/setup-node@v4/);
 });
 
+test('CI blocks known high advisories in both dependency trees', () => {
+  // Audit 2026-09-12 (Top-30 Nr. 4): 5 High-Advisories im Server-Tree (multer und
+  // sharp direkt im Upload-Pfad) blieben monatelang unbemerkt, weil CI nie
+  // auditierte. `npm audit --audit-level=high` ist jetzt ein Build-Schritt.
+  const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  const serverJob = ci.match(/\n  server:\n([\s\S]*?)\n  client:\n/)?.[1] || '';
+  const clientJob = ci.match(/\n  client:\n([\s\S]*?)\n  e2e:\n/)?.[1] || '';
+
+  assert.match(serverJob, /name: Audit dependencies\n\s+working-directory: server\n\s+run: npm audit --audit-level=high/);
+  assert.match(clientJob, /name: Audit dependencies\n\s+working-directory: client\n\s+run: npm audit --audit-level=high/);
+
+  // Der Upload-Pfad braucht die gefixten Versionen, nicht nur einen grünen Job.
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'server/package.json'), 'utf8'));
+  assert.match(pkg.dependencies.multer, /^\^2\.(?:[3-9]|\d{2,})/, 'multer must stay at or above 2.3.0');
+  assert.match(pkg.dependencies.sharp, /^\^0\.(?:3[5-9]|\d{3,})/, 'sharp must stay at or above 0.35.4');
+  assert.equal(pkg.overrides.qs, '^6.16.0', 'express pins a vulnerable qs without the override');
+});
+
 test('split deployments persist the upload directory actually used by the server', () => {
   for (const filename of ['docker-compose.yml', 'docker-compose.npm.yml']) {
     const compose = fs.readFileSync(path.join(root, filename), 'utf8');

@@ -217,10 +217,31 @@ Vite serves <http://localhost:3000> and proxies `/api` and `/uploads` to
 (cd client && npm test && npm run lint && npm run build)
 (cd ai && python3 -m unittest test_app.py)
 
+# Known vulnerabilities block CI as well (both trees must stay clean):
+(cd server && npm audit --audit-level=high)
+(cd client && npm audit --audit-level=high)
+
 docker compose -f docker-compose.yml config
 docker compose -f docker-compose.npm.yml config
 docker compose -f docker-compose.allinone.yml config
 ```
+
+### Dependency policy
+
+CI runs `npm audit --audit-level=high` for both trees after `npm ci`, so a new
+high advisory breaks the build instead of shipping. The upload path deserves
+particular attention: `multer` parses attacker-controlled multipart data and
+`sharp` decodes attacker-controlled pixels, which is why `multer >= 2.3.0` and
+`sharp >= 0.35.4` are asserted by a test, and why `qs` is pinned through
+`server/package.json` `overrides` (Express 4 still depends on a vulnerable
+range).
+
+When an advisory has no fix inside the current major, record it here with the
+reason and the date instead of silencing the gate. Known backlog of major
+upgrades — deliberately not done in a drive-by, each needs the E2E suite green
+before and after: Express 4 → 5, mongoose 8 → 9, Helmet 7 → 8, React 18 → 19.
+After a `sharp` or `multer` bump, re-run the image path once with real files
+(`generateThumbnail`, `validateImageDimensions`, an upload through the editor).
 
 ### Upgrade boot check
 
