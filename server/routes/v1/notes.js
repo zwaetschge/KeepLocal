@@ -162,6 +162,13 @@ const { httpStatus } = require('../../constants');
  *           default: "false"
  *         description: Archivierte Notizen anzeigen
  *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: ["true", "false"]
+ *           default: "false"
+ *         description: Papierkorb anzeigen (nur eigene, gelöschte Notizen)
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -186,7 +193,7 @@ const { httpStatus } = require('../../constants');
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { search, tag, page, limit, archived } = req.query;
+    const { search, tag, page, limit, archived, deleted } = req.query;
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
@@ -194,7 +201,10 @@ router.get('/', async (req, res, next) => {
       tag,
       page: page || 1,
       limit: Math.min(parseInt(limit) || 50, 100),
-      archived: archived || 'false'
+      archived: archived || 'false',
+      // Ohne diesen Filter konnte ein Sync-Script den Papierkorb nicht lesen —
+      // und damit eine Löschung über die API nie rückgängig machen.
+      deleted: deleted || 'false'
     });
 
     res.json({
@@ -375,18 +385,75 @@ router.put('/:id', async (req, res, next) => {
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: permanent
+ *         schema:
+ *           type: string
+ *           enum: ["true", "false"]
+ *           default: "false"
+ *         description: "true" löscht eine Notiz im Papierkorb endgültig (inkl. Bilder)
  *     responses:
  *       200:
- *         description: Notiz gelöscht
+ *         description: Ohne permanent in den Papierkorb verschoben (30 Tage), mit permanent=true endgültig gelöscht
  *       404:
  *         description: Notiz nicht gefunden
  */
 router.delete('/:id', async (req, res, next) => {
   try {
-    await notesService.deleteNote(req.params.id, req.user._id);
+    // Ehrliche Semantik: Seit dem Papierkorb (PR #106) ist deleteNote ein Soft
+    // Delete. Die v1-API antwortete weiter „Notiz gelöscht“ und bot weder
+    // `permanent` noch `restore` noch einen `deleted`-Filter — ein Sync-Script
+    // sah die Notiz verschwinden und konnte sie über die API nie zurückholen.
+    const permanent = req.query.permanent === 'true';
+    const deletedNote = permanent
+      ? await notesService.purgeNote(req.params.id, req.user._id)
+      : await notesService.deleteNote(req.params.id, req.user._id);
+
     res.json({
       success: true,
-      message: 'Notiz gelöscht'
+      message: permanent ? 'Notiz endgültig gelöscht' : 'Notiz in den Papierkorb verschoben',
+      permanent,
+      deletedAt: deletedNote?.deletedAt || null,
+      data: deletedNote
+    });
+  } catch (error) {
+    if (error.statusCode === 404 || error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({
+        success: false,
+        error: 'Notiz nicht gefunden'
+      });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/{id}/restore:
+ *   post:
+ *     summary: Notiz aus dem Papierkorb wiederherstellen
+ *     tags: [Notes v1]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Notiz wiederhergestellt
+ *       404:
+ *         description: Notiz nicht gefunden oder nicht im Papierkorb
+ */
+router.post('/:id/restore', async (req, res, next) => {
+  try {
+    const note = await notesService.restoreNote(req.params.id, req.user._id);
+    res.json({
+      success: true,
+      message: 'Notiz wiederhergestellt',
+      data: note
     });
   } catch (error) {
     if (error.statusCode === 404 || error.kind === 'ObjectId') {
