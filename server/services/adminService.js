@@ -65,6 +65,41 @@ async function createUser(userData) {
   return userObject;
 }
 
+function lastAdminError() {
+  const error = new Error(errorMessages.ADMIN.LAST_ADMIN);
+  error.statusCode = 409;
+  error.code = 'LAST_ADMIN';
+  return error;
+}
+
+/**
+ * Guard against locking the instance out of its own administration.
+ *
+ * Password recovery only works through an admin-issued one-time token
+ * (routes/auth.js `reset-password`, tokens created in routes/admin.js behind
+ * `requireAdmin`) and there is no SMTP path, so an instance without an admin is
+ * unrecoverable from the UI: no admin → no reset token → no password → no admin.
+ *
+ * Counting first is not enough: two admins revoking each other concurrently both
+ * see "one admin remains" and both write, which leaves zero admins (verified
+ * against a real MongoDB). Standalone MongoDB has no transactions, so the
+ * demotion is executed and then verified — whoever observes an empty admin set
+ * rolls their own demotion back and answers 409. Every interleaving ends with at
+ * least one admin.
+ *
+ * @param {string} userId - the user whose admin rights are about to disappear
+ */
+async function assertNotLastAdmin(userId) {
+  const remainingAdmins = await User.countDocuments({
+    isAdmin: true,
+    _id: { $ne: userId }
+  });
+  if (!remainingAdmins) {
+    throw lastAdminError();
+  }
+  return remainingAdmins;
+}
+
 /**
  * Delete a user
  * @param {string} userId - User ID to delete
@@ -83,6 +118,11 @@ async function deleteUser(userId, currentUserId) {
     const error = new Error(errorMessages.ADMIN.USER_NOT_FOUND);
     error.statusCode = 404;
     throw error;
+  }
+
+  // Deleting the last admin would leave the instance unmanageable.
+  if (user.isAdmin) {
+    await assertNotLastAdmin(userId);
   }
 
   const userNotes = await Note.find({ userId });
@@ -136,8 +176,32 @@ async function toggleUserAdmin(userId, currentUserId) {
     throw error;
   }
 
+  const revoking = Boolean(user.isAdmin);
+  if (revoking) {
+    // Fast path: a clear 409 without touching the document.
+    await assertNotLastAdmin(userId);
+  }
+
   user.isAdmin = !user.isAdmin;
   await user.save();
+
+  if (revoking) {
+    // Act-then-verify: covers the concurrent-demotion race the pre-check cannot
+    // see. If this demotion emptied the admin set, undo it and fail.
+    const remaining = await User.countDocuments({ isAdmin: true });
+    if (!remaining) {
+      user.isAdmin = true;
+      await user.save();
+      throw lastAdminError();
+    }
+    // Frees the unique partial index `single_bootstrap_admin`: it is only ever
+    // set for the first account, and a revoked user keeping it would block any
+    // future bootstrap admin. Cleared only after the demotion is final.
+    if (user.isBootstrapAdmin) {
+      user.isBootstrapAdmin = false;
+      await user.save();
+    }
+  }
 
   const userObject = user.toObject();
   delete userObject.password;
@@ -200,4 +264,5 @@ module.exports = {
   getStats,
   getSettings,
   updateSettings,
+  assertNotLastAdmin,
 };

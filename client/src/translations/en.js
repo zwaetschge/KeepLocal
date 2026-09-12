@@ -503,6 +503,7 @@ export const en = {
   errInvalidSettings: 'Invalid setting.',
   errInvalidUserId: 'Invalid user id.',
   errInvalidUsername: 'Invalid username.',
+  errLastAdmin: 'At least one administrator must remain.',
   errLinkPreviewFailed: 'Could not fetch the link preview.',
   errLinkPreviewRateLimited: 'Too many link previews in a short time. Please wait a moment.',
   errTranscriptionRateLimited: 'Hourly transcription limit reached. Please try again later.',

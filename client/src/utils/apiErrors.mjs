@@ -58,6 +58,7 @@ export const API_ERROR_KEYS = {
   ADMIN_REQUIRED: 'errAdminRequired',
   CANNOT_DELETE_SELF: 'errCannotDeleteSelf',
   CANNOT_MODIFY_SELF: 'errCannotModifySelf',
+  LAST_ADMIN: 'errLastAdmin',
   FIELDS_REQUIRED: 'errFieldsRequired',
   INVALID_SETTINGS: 'errInvalidSettings',
   FRIEND_REQUEST_NOT_FOUND: 'errFriendRequestNotFound',

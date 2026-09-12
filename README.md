@@ -315,6 +315,26 @@ that sign in through OAuth have no local password and cannot use
 `change-password`; an administrator can still issue a reset token, which sets a
 local password alongside the OAuth identity.
 
+Because reset tokens are admin-only and there is no mail delivery, an instance
+without an administrator cannot recover itself through the UI. The API therefore
+refuses to revoke the last administrator (`409` with code `LAST_ADMIN`, both for
+the admin toggle and for deleting an admin account), and revoking admin rights
+also releases the unique `single_bootstrap_admin` slot. If you inherit a database
+that already lost its admin, use the recovery tool:
+
+```bash
+# All-in-one container
+docker exec keeplocal node /app/server/scripts/promote-admin.js you@example.com
+
+# Split server container / local checkout
+cd server && MONGODB_URI=mongodb://127.0.0.1:27017/keeplocal \
+  node scripts/promote-admin.js you@example.com --dry-run
+```
+
+It looks the account up by e-mail or username, prints what it found, and sets
+`isAdmin` (never anything else — no passwords, no tokens). Rights apply from the
+next request on; no re-login is needed.
+
 ## Important environment variables
 
 | Variable | Purpose | Default |
