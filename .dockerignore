@@ -3,44 +3,55 @@
 .gitignore
 .gitattributes
 
-# Node modules (will be reinstalled)
-node_modules
+# Node modules (werden im Image neu installiert).
+# WICHTIG: `node_modules` ohne `**/` matcht in Docker nur die Kontext-Wurzel.
+# server/node_modules und client/node_modules (~245 MB, anderer Stand als
+# package-lock.json) würden mitkopiert — und `COPY client/ ./` läuft NACH
+# `npm ci`, überschreibt also den frisch installierten Tree mit dem Host-Stand.
+**/node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Environment files
-.env
-.env.local
-.env.*.local
-.env.development
-.env.test
-.env.production
+# Environment files (Secrets) — ebenfalls in jeder Tiefe: `server/.env` war mit
+# dem alten Muster `.env` nicht erfasst und wäre ins Image gebacken worden.
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.development
+**/.env.test
+**/.env.production
+
+# Nutzerdaten gehören ins Volume, niemals ins Image (sonst landen lokale
+# Test-Uploads im veröffentlichten Image).
+**/uploads/images/*
+**/uploads/temp/*
+**/backups
 
 # Build artifacts
 client/build
 server/dist
-build
-dist
+**/dist
+**/coverage
 
 # IDE
-.vscode
-.idea
-*.swp
-*.swo
-*.swn
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+**/*.swn
 
 # OS
-.DS_Store
-Thumbs.db
+**/.DS_Store
+**/Thumbs.db
 
 # Testing
-coverage
-.nyc_output
-*.test.js
-*.spec.js
-test_*.py
-__pycache__
+**/.nyc_output
+**/*.test.js
+**/*.spec.js
+**/test_*.py
+**/__pycache__
+**/*.pyc
 
 # Documentation and non-runtime assets
 *.md
@@ -59,10 +70,16 @@ server/Dockerfile
 build-images.sh
 
 # Misc
-*.log
+**/*.log
 tmp
 temp
-.cache
+**/.cache
 
 # GitHub
 .github
+
+# Die .gitkeep-Dateien müssen trotz der Upload-Muster erhalten bleiben. Das
+# letzte matchende Muster gewinnt, deshalb stehen die Ausnahmen am Ende.
+!server/uploads/.gitkeep
+!server/uploads/images/.gitkeep
+!server/uploads/temp/.gitkeep

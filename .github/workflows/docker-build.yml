@@ -122,6 +122,32 @@ jobs:
           echo "=== Container Logs ==="
           docker logs keeplocal-test
 
+      # .dockerignore ist nur die halbe Wahrheit: Dieser Schritt prüft das
+      # fertige Image. Er schlägt an, wenn jemand den Build-Kontext wieder
+      # aufweicht (Host-node_modules, server/.env, lokale Test-Uploads).
+      - name: Assert no host artifacts are baked into the image
+        run: |
+          docker exec keeplocal-test sh -c '
+            set -eu
+            echo "--- .env Dateien unter /app ---"
+            found_env=$(find /app -maxdepth 4 -name ".env*" -not -name ".env.example" | wc -l)
+            echo "count=$found_env"
+            [ "$found_env" = "0" ]
+
+            echo "--- Nutzer-Uploads im Image ---"
+            found_uploads=$(find /app/server/uploads -type f ! -name ".gitkeep" 2>/dev/null | wc -l)
+            echo "count=$found_uploads"
+            [ "$found_uploads" = "0" ]
+
+            echo "--- Host-node_modules / Test-Dateien ---"
+            [ ! -d /app/client/node_modules ]
+            found_tests=$(find /app -name "*.test.js" -o -name "test_*.py" | wc -l)
+            echo "count=$found_tests"
+            [ "$found_tests" = "0" ]
+
+            echo "OK: Image enthält keine Host-Artefakte"
+          '
+
       - name: Test health endpoint
         run: |
           echo "Testing health endpoint..."

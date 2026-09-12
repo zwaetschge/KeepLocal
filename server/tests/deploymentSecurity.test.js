@@ -177,7 +177,6 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
   const buildJob = workflow.match(/\n  build-and-push:\n([\s\S]*?)\n  test-image:\n/)?.[1] || '';
   const testJob = workflow.match(/\n  test-image:\n([\s\S]*)/)?.[1] || '';
-
   assert.match(workflow, /concurrency:\n\s+group: docker-publish-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/);
   assert.match(buildJob, /timeout-minutes: 45/);
   assert.match(buildJob, /run: \.github\/scripts\/docker-metadata\.sh/);
@@ -189,6 +188,34 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   assert.match(testJob, /docker run[\s\S]*?--platform "linux\/\$\{\{ matrix\.architecture \}\}"/);
   assert.match(testJob, /needs\.build-and-push\.outputs\.test-tag/);
   assert.match(testJob, /docker exec keeplocal-test curl -f http:\/\/127\.0\.0\.1:5001\/health/);
+  // Der Build-Kontext ist die zweite Hälfte der Wahrheit: Das Image wird auch
+  // dann geprüft, wenn jemand lokal mit Host-node_modules oder einer .env baut.
+  assert.match(testJob, /no host artifacts are baked into the image/);
+});
+
+test('dockerignore patterns reach into subdirectories', () => {
+  // Docker matcht .dockerignore-Muster gegen den Pfad relativ zur Kontext-Wurzel:
+  // `node_modules` erfasst NUR ./node_modules, nicht ./server/node_modules.
+  // Folgen im lokalen Build: `COPY client/ ./` läuft nach `npm ci` und
+  // überschreibt den frischen Tree mit dem Host-Stand; `server/.env` und lokale
+  // Test-Uploads landen im Image.
+  const ignore = fs.readFileSync(path.join(root, '.dockerignore'), 'utf8');
+  const patterns = ignore.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+
+  for (const pattern of ['**/node_modules', '**/.env', '**/.env.local', '**/.env.production', '**/__pycache__']) {
+    assert.ok(patterns.includes(pattern), `${pattern} must be depth-anchored`);
+  }
+  for (const bare of ['node_modules', '.env', '__pycache__']) {
+    assert.ok(!patterns.includes(bare), `a bare ${bare} pattern only matches the context root`);
+  }
+  // Uploads: Inhalt raus, Verzeichnisstruktur (gitkeep) bleibt erhalten.
+  assert.ok(patterns.includes('**/uploads/images/*'), 'user uploads must not enter the build context');
+  assert.ok(patterns.indexOf('!server/uploads/images/.gitkeep') > patterns.indexOf('**/uploads/images/*'),
+    'the gitkeep exception must come after the pattern it overrides (last match wins)');
+
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
+  assert.doesNotMatch(dockerfile, /COPY[^\n]*\.env/, 'the image must never copy an env file explicitly');
+  assert.doesNotMatch(dockerfile, /COPY[^\n]*node_modules/, 'node_modules must be installed, never copied');
 });
 
 test('Docker metadata is generated locally for main and semantic-version releases', () => {
