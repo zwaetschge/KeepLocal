@@ -103,6 +103,7 @@ test('every documented v1 path survives the swagger-jsdoc YAML parse', () => {
     '/api/v1/notes/{id}/archive',
     '/api/v1/notes/{id}/share',
     '/api/v1/notes/{id}/share/{userId}',
+    '/api/v1/notes/{id}/restore',
     '/api/api-keys',
     '/api/api-keys/{id}'
   ];

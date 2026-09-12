@@ -291,6 +291,14 @@ When the API is running, interactive documentation is available at
 - Browser routes use the HttpOnly session cookie and a signed CSRF token.
 - External `/api/v1` routes use API keys and do not accept browser bearer
   tokens.
+- `/api/v1` mirrors the trash semantics of the browser API: `DELETE
+  /api/v1/notes/:id` moves the note to the trash (the response says so and
+  returns `deletedAt`), `?permanent=true` deletes a trashed note for good,
+  `POST /api/v1/notes/:id/restore` brings it back, and `GET
+  /api/v1/notes?deleted=true` lists the trash. Without `deleted=true` the list
+  never contains trashed notes — the same filter applies to `GET /api/v1/tags`
+  and to `noteCount` in `GET /api/v1/user/me`, so integrations see the numbers
+  the app shows.
 - Private `/uploads` requests require an authenticated user with access to the
   owning note.
 - `GET /api/notes?search=…` ranks by the weighted text index
