@@ -336,6 +336,8 @@ export const en = {
   setupCreateAdmin: 'Create admin account',
   setupFooterHint: 'After setup you can add more users through regular registration.',
   errorTranscribing: 'Transcription failed',
+  transcriptionBusyRetry: 'Transcription service busy — retry in {seconds} s',
+  retryTranscription: 'Try again',
   noDescription: 'No description',
   loadingFriends: 'Loading friends...',
   noFriendsFound: 'No friends found',

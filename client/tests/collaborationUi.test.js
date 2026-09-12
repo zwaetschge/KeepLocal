@@ -108,8 +108,12 @@ test('offline API responses carry a code instead of a hardcoded language', () =>
 
   assert.match(worker, /JSON\.stringify\(\{ code: 'OFFLINE' \}\)/);
   assert.doesNotMatch(worker, /Offline - API nicht verfügbar/);
-  assert.match(apiUtils, /payload\.error \|\| \(payload\.code \? '' : `HTTP \$\{status\}`\)/);
-  assert.match(apiUtils, /error\.code = payload\.code;/);
+  // Die Bau-Logik liegt in utils/httpErrors.mjs (mit node --test ausführbar),
+  // apiUtils reicht sie durch.
+  const httpErrors = read('utils', 'httpErrors.mjs');
+  assert.match(httpErrors, /payload\.error \|\| \(payload\.code \? '' : \(fallbackMessage \|\| `HTTP \$\{status\}`\)\)/);
+  assert.match(httpErrors, /error\.code = payload\.code;/);
+  assert.match(apiUtils, /buildHttpError\(\{ status, payload \}\)/);
 });
 
 // Audit 2026-09-12 (Top-30 Nr. 2): "Freund entfernen" widerruft serverseitig

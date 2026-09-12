@@ -1,5 +1,5 @@
 import { API_ENDPOINTS } from '../../constants/api';
-import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, API_BASE_URL } from './apiUtils';
+import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, toHttpError, API_BASE_URL } from './apiUtils';
 
 /**
  * Notes API module
@@ -174,8 +174,10 @@ const notesAPI = {
     });
 
     if (!response.ok) {
-      const errorData = await parseResponse(response);
-      throw new Error(errorData.error || 'Bild-Upload fehlgeschlagen');
+      // code/status/retryAfter mitnehmen: ohne sie toastet die UI den deutschen
+      // Server-Satz (z. B. „Maximal 25 Bilder pro Notiz erlaubt") statt der
+      // vorhandenen Übersetzung errImageLimitReached.
+      throw await toHttpError(response, 'Bild-Upload fehlgeschlagen');
     }
 
     return parseResponse(response);
@@ -222,8 +224,9 @@ const notesAPI = {
     });
 
     if (!response.ok) {
-      const errorData = await parseResponse(response);
-      throw new Error(errorData.error || 'Transkription fehlgeschlagen');
+      // 429 TRANSCRIPTION_BUSY kommt mit Retry-After: NoteModal behält die
+      // Aufnahme und bietet „Erneut versuchen" an, statt sie wegzuwerfen.
+      throw await toHttpError(response, 'Transkription fehlgeschlagen');
     }
 
     return parseResponse(response);

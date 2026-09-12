@@ -66,6 +66,10 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
+  // Die letzte Aufnahme bleibt hier liegen, damit ein 429 (Transkriptionsdienst
+  // ausgelastet) nicht die gesprochene Minute kostet: Der Toast bietet
+  // „Erneut versuchen" mit demselben Blob an.
+  const lastAudioBlobRef = useRef(null);
 
   useEffect(() => () => {
     // Without an explicit null check this cleanup throws on EVERY unmount:
@@ -78,6 +82,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       recorder.stop();
     }
     mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+    lastAudioBlobRef.current = null;
   }, []);
 
   // Custom hooks for link preview and todo list management
@@ -430,6 +435,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         stream.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
+        lastAudioBlobRef.current = audioBlob;
 
         // Automatically transcribe after recording stops
         await handleTranscribe(audioBlob);
@@ -485,7 +491,18 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       }
     } catch (error) {
       console.error('Fehler bei der Transkription:', error);
-      toastBus.error(resolveApiErrorMessage(error, t, 'errorTranscribing'));
+      // TRANSCRIPTION_BUSY ist kein Endzustand, sondern eine Warteschlange von
+      // einem Platz: Blob behalten, Sekunden aus Retry-After zeigen und den
+      // Retry als Toast-Aktion anbieten (Muster wie beim Undo im Papierkorb).
+      const seconds = Number.isFinite(error?.retryAfter) ? error.retryAfter : 30;
+      if (error?.code === 'TRANSCRIPTION_BUSY' && lastAudioBlobRef.current) {
+        const blob = lastAudioBlobRef.current;
+        toastBus.publish(t('transcriptionBusyRetry', { seconds }), 'error', Math.max(10000, seconds * 1000), {
+          action: { label: t('retryTranscription'), onClick: () => handleTranscribe(blob) }
+        });
+      } else {
+        toastBus.error(resolveApiErrorMessage(error, t, 'errorTranscribing'));
+      }
     } finally {
       setIsTranscribing(false);
     }
