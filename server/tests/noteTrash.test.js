@@ -139,7 +139,12 @@ test('emptying the trash removes documents and their files', async () => {
   const removed = await service.emptyTrash(OWNER_ID);
 
   assert.equal(removed, 1);
-  assert.deepEqual(seen[0], { userId: OWNER_ID, deletedAt: { $ne: null } });
+  // Mengentreu: geloescht wird genau die gelesene Menge (plus Prädikat), sonst
+  // erwischen wir Notizen, die zwischen Find und Delete in den Papierkorb
+  // wanderten — deren Dokumente wären weg, ihre Dateien für immer verwaist.
+  assert.deepEqual(seen[0]._id.$in.map(String), [String(NOTE_ID)]);
+  assert.equal(seen[0].userId, OWNER_ID);
+  assert.deepEqual(seen[0].deletedAt, { $ne: null });
   assert.equal(fs.existsSync(path.join(uploadsDir, filename)), false);
 });
 
@@ -166,12 +171,18 @@ test('a trashed note cannot be edited, pinned or archived', async () => {
   }
 });
 
-test('the note model declares a 30-day TTL index on deletedAt', () => {
+test('the note model keeps a TTL backstop behind the janitor retention', () => {
   const source = fs.readFileSync(path.join(__dirname, '../models/Note.js'), 'utf8');
   assert.match(source, /deletedAt: \{/);
   assert.match(source, /name: 'trash_ttl'/);
-  assert.match(source, /expireAfterSeconds: 30 \* 24 \* 60 \* 60/);
+  // Endgültig aufräumen tut services/storageJanitor.js bei 30 Tagen (erst die
+  // Dateien, dann das Dokument); MongoDBs TTL-Monitor löscht nur Dokumente und
+  // läuft deshalb einen Tag später als Backstop.
+  assert.match(source, /expireAfterSeconds: 31 \* 24 \* 60 \* 60/);
   assert.match(source, /partialFilterExpression: \{ deletedAt: \{ \$type: 'date' \} \}/);
+
+  const janitor = fs.readFileSync(path.join(__dirname, '../services/storageJanitor.js'), 'utf8');
+  assert.match(janitor, /TRASH_RETENTION_DAYS', 30/);
 });
 
 // ---------------------------------------------------------------------------

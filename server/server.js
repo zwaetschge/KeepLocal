@@ -27,6 +27,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const mongoose = require('mongoose');
 const { ensureNoteTextIndex } = require('./config/indexMigration');
+const { startStorageJanitor } = require('./services/storageJanitor');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -284,6 +285,12 @@ async function startServer() {
       logger.info('indexes synchronised', { model: model.modelName, dropped });
     }
   }));
+
+  // Papierkorb zu Ende: MongoDBs TTL-Monitor loescht nur Dokumente, die
+  // Bilddateien blieben bisher fuer immer liegen. Der erste Janitor-Lauf ist um
+  // STORAGE_JANITOR_INITIAL_DELAY_MS (Default 60 s) verzoegert und die Timer
+  // sind unref'd — der Start wird also weder blockiert noch offen gehalten.
+  startStorageJanitor();
 
   return (httpServer = app.listen(PORT, HOST, () => {
     console.log(`Server laeuft auf ${HOST}:${PORT}`);

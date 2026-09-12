@@ -57,7 +57,9 @@ const Note = require('../../models/Note');
 router.get('/', async (req, res, next) => {
   try {
     // Match the browser tag list, which counts only the active (or only the
-    // archived) view — otherwise API counts disagree with the app.
+    // archived) view — otherwise API counts disagree with the app. Trashed notes
+    // count for neither: `GET /api/v1/notes` does not return them, so their tags
+    // and counts must not show up here.
     const isArchived = req.query.archived === 'true';
     const tags = await Note.aggregate([
       {
@@ -66,7 +68,8 @@ router.get('/', async (req, res, next) => {
             { userId: req.user._id },
             { sharedWith: req.user._id }
           ],
-          isArchived
+          isArchived,
+          deletedAt: null
         }
       },
       { $unwind: '$tags' },

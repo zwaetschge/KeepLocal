@@ -139,10 +139,14 @@ noteSchema.index(
   { deletedAt: 1 },
   {
     name: 'trash_ttl',
-    expireAfterSeconds: 30 * 24 * 60 * 60,
+    // 31 Tage = Backstop. Endgültig aufräumen tut services/storageJanitor.js bei
+    // 30 Tagen, denn MongoDBs TTL-Monitor löscht nur das Dokument — die
+    // Bilddateien bleiben sonst für immer liegen. Der eine Tag Abstand lässt den
+    // Janitor das Rennen gewinnen.
+    expireAfterSeconds: 31 * 24 * 60 * 60,
     partialFilterExpression: { deletedAt: { $type: 'date' } }
   }
-); // Papierkorb: automatische Endlöschung nach 30 Tagen
+); // Papierkorb: automatische Endlöschung nach 30 Tagen (+1 Tag Backstop)
 
 // Validation: Ensure either content or todo items exist
 noteSchema.pre('save', function(next) {
