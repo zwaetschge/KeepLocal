@@ -45,9 +45,12 @@ if [ -n "$BAKED_WHISPER_MODEL" ] && [ -n "$WHISPER_MODEL" ] && [ "$WHISPER_MODEL
 fi
 
 # Fix MongoDB data directory permissions
+# Nicht nur das oberste Verzeichnis prüfen: einzelne root-owned Dateien (z. B.
+# nach Wartungsarbeiten mit `docker run -u root ... mongod`) lassen mongod mit
+# exit code 14 crash-loopen, obwohl /data/db selbst mongodb:mongodb gehört.
 echo "Checking /data/db permissions..."
 if [ -d "/data/db" ]; then
-    if [ "$(stat -c '%U:%G' /data/db)" != "mongodb:mongodb" ]; then
+    if [ "$(stat -c '%U:%G' /data/db)" != "mongodb:mongodb" ] || [ -n "$(find /data/db ! -user mongodb -print -quit 2>/dev/null)" ]; then
         echo "Setting correct ownership for MongoDB data directory..."
         chown -R mongodb:mongodb /data/db
         chmod -R u=rwX,go= /data/db
@@ -68,7 +71,7 @@ chown -R mongodb:mongodb /var/log/mongodb
 # Fix uploads directory permissions
 echo "Checking /app/server/uploads permissions..."
 if [ -d "/app/server/uploads" ]; then
-    if [ "$(stat -c '%U:%G' /app/server/uploads)" != "node:node" ]; then
+    if [ "$(stat -c '%U:%G' /app/server/uploads)" != "node:node" ] || [ -n "$(find /app/server/uploads ! -user node -print -quit 2>/dev/null)" ]; then
         echo "Setting correct permissions for uploads directory..."
         chown -R node:node /app/server/uploads
         chmod -R u=rwX,g=rX,o= /app/server/uploads
