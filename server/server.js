@@ -19,7 +19,7 @@ const noStore = require('./middleware/noStore');
 const errorCodeMiddleware = require('./middleware/errorCodes');
 const requestId = require('./middleware/requestId');
 const logger = require('./utils/logger');
-const { collectHealth } = require('./services/healthService');
+const { collectHealth, publicHealth } = require('./services/healthService');
 const { csrfProtection, issueCsrfToken } = require('./middleware/csrfProtection');
 const passport = require('passport');
 const { configurePassport } = require('./config/passport');
@@ -31,6 +31,12 @@ const { ensureNoteTextIndex } = require('./config/indexMigration');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Readiness-Details: außerhalb von production standardmäßig an (lokale
+// Fehlersuche), in production nur mit HEALTH_DETAILS=true.
+const healthDetailsEnabled = process.env.HEALTH_DETAILS
+  ? process.env.HEALTH_DETAILS === 'true'
+  : process.env.NODE_ENV !== 'production';
 
 function parseTrustProxy(value) {
   if (!value) return false;
@@ -230,9 +236,12 @@ app.get('/api/health/live', (req, res) => {
 
 // Readiness: echter DB-Ping, beschreibbares Upload-Volume, optional AI-Dienst.
 // Compose-/Nginx-Healthchecks sollten diesen Endpunkt verwenden.
+// Details (absolute Pfade, DB-Fehlertexte, AI-Endpunkt) sind für Betreiber
+// nützlich, für anonyme Aufrufer aber eine kostenlose Informationsquelle über
+// das interne Layout — deshalb außerhalb von development nur mit Opt-in.
 app.get('/api/health/ready', async (req, res) => {
   const health = await collectHealth();
-  res.status(health.ready ? 200 : 503).json(health);
+  res.status(health.ready ? 200 : 503).json(healthDetailsEnabled ? health : publicHealth(health));
 });
 
 app.use('/api', (req, res) => {
