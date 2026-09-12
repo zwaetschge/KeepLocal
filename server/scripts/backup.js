@@ -12,12 +12,25 @@
  *   MONGODB_URI=... node scripts/backup.js                 # create a backup
  *   MONGODB_URI=... node scripts/backup.js --keep 5        # retention (default 7)
  *   MONGODB_URI=... node scripts/backup.js --list
+ *   node scripts/backup.js --verify <dir>                  # check a recovery point (no DB needed)
  *   MONGODB_URI=... node scripts/backup.js --restore <dir> --force
  *
  * Environment:
- *   MONGODB_URI   (required)
- *   BACKUP_DIR    default <server>/backups
- *   UPLOADS_DIR   default <server>/uploads
+ *   MONGODB_URI   (required for create/restore, not for --verify/--list)
+ *   BACKUP_DIR    default <server>/backups — mount this, or the recovery point
+ *                 dies with the container layer on the next update
+ *   UPLOADS_DIR   default <server>/uploads — the ROOT that contains images/ and
+ *                 temp/ (config/paths.js is the single source of truth, so the
+ *                 app, the readiness probe and this script cannot disagree)
+ *
+ * Hard guarantees (audit 2026-09-12, Top-30 Nr. 6):
+ *   - A backup is only "written" when every image referenced by the database was
+ *     captured. A missing uploads directory used to produce a successful-looking
+ *     backup with zero files.
+ *   - Every upload file has a size and a SHA-256 in the manifest.
+ *   - Restore verifies the WHOLE recovery point before the first destructive
+ *     statement, inserts with `ordered: false` and compares the resulting
+ *     document counts against the manifest.
  *
  * Restore is destructive and refuses to run without --force.
  */
@@ -26,12 +39,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const mongoose = require('mongoose');
+const { backupRoot, uploadsRoot, imagesDir } = require('../config/paths');
 
-const SERVER_ROOT = path.resolve(__dirname, '..');
-const BACKUP_DIR = path.resolve(process.env.BACKUP_DIR || path.join(SERVER_ROOT, 'backups'));
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(SERVER_ROOT, 'uploads'));
+const BACKUP_DIR = backupRoot();
 const DEFAULT_KEEP = 7;
 const PREFIX = 'keeplocal-';
+const MANIFEST_FORMAT = 2;
+const INSERT_CHUNK = 500;
 
 // ---------------------------------------------------------------------------
 // Type-preserving JSON (ObjectId/Date/Buffer/Decimal128 survive the round trip)
@@ -80,15 +94,40 @@ function timestamp() {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+/** Which image files does the database expect to exist? */
+async function referencedImageFilenames() {
+  const referenced = new Set();
+  const exists = await mongoose.connection.db.listCollections({ name: 'notes' }).hasNext();
+  if (!exists) return referenced;
+  const cursor = mongoose.connection.db.collection('notes').find({}, { projection: { images: 1 } });
+  for await (const doc of cursor) {
+    for (const image of doc.images || []) {
+      if (image?.filename) referenced.add(image.filename);
+      if (image?.thumbnailFilename) referenced.add(image.thumbnailFilename);
+    }
+  }
+  return referenced;
+}
+
 // ---------------------------------------------------------------------------
 // Backup
 // ---------------------------------------------------------------------------
 
 async function createBackup(keep) {
-  const target = path.join(BACKUP_DIR, `${PREFIX}${timestamp()}`);
+  // mkdtemp statt fester Name: `timestamp()` hat Sekunden-Auflösung, zwei Läufe
+  // in derselben Sekunde (oder ein fehlgeschlagener Lauf direkt nach einem
+  // erfolgreichen) würden sonst dasselbe Verzeichnis treffen — und ein
+  // unvollständiges Backup hätte mit `rmSync(target)` den vorhandenen Recovery
+  // Point gelöscht. Genau das ist in CI passiert.
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const target = fs.mkdtempSync(path.join(BACKUP_DIR, `${PREFIX}${timestamp()}-`));
   const dbDir = path.join(target, 'db');
   const uploadsTarget = path.join(target, 'uploads');
+  const images = imagesDir();
   fs.mkdirSync(dbDir, { recursive: true });
+
+  console.log(`Backup-Ziel: ${target}`);
+  console.log(`  Uploads-Wurzel: ${uploadsRoot()} (Bilder: ${images})`);
 
   const collections = (await mongoose.connection.db.listCollections().toArray())
     .map(entry => entry.name)
@@ -97,10 +136,10 @@ async function createBackup(keep) {
 
   const manifest = {
     createdAt: new Date().toISOString(),
-    format: 1,
+    format: MANIFEST_FORMAT,
     database: mongoose.connection.name,
     collections: [],
-    uploads: { files: 0, dir: path.relative(target, uploadsTarget) }
+    uploads: { dir: path.relative(target, uploadsTarget), files: 0, bytes: 0, referenced: 0, entries: [] }
   };
 
   for (const name of collections) {
@@ -118,22 +157,47 @@ async function createBackup(keep) {
   }
 
   // Uploads: images and nothing else (temp files are transient).
-  const imagesDir = path.join(UPLOADS_DIR, 'images');
-  if (fs.existsSync(imagesDir)) {
+  const referenced = await referencedImageFilenames();
+  manifest.uploads.referenced = referenced.size;
+  const copied = new Set();
+  if (fs.existsSync(images)) {
     const targetImages = path.join(uploadsTarget, 'images');
     fs.mkdirSync(targetImages, { recursive: true });
-    for (const entry of fs.readdirSync(imagesDir)) {
+    for (const entry of fs.readdirSync(images)) {
       if (entry === '.gitkeep') continue;
-      fs.copyFileSync(path.join(imagesDir, entry), path.join(targetImages, entry));
+      const source = path.join(images, entry);
+      if (!fs.statSync(source).isFile()) continue;
+      const destination = path.join(targetImages, entry);
+      fs.copyFileSync(source, destination);
+      copied.add(entry);
       manifest.uploads.files += 1;
+      manifest.uploads.bytes += fs.statSync(destination).size;
+      manifest.uploads.entries.push({ name: entry, size: fs.statSync(destination).size, sha256: sha256File(destination) });
     }
+  }
+
+  // Vollständigkeit: Jede von der Datenbank referenzierte Datei muss im Backup
+  // sein. Ohne diese Prüfung entstand bei falsch gesetztem UPLOADS_DIR ein
+  // „erfolgreiches" Backup ohne ein einziges Bild.
+  const missing = [...referenced].filter(name => !copied.has(name));
+  if (missing.length > 0) {
+    fs.rmSync(target, { recursive: true, force: true });
+    throw new Error(
+      `Backup unvollständig: ${missing.length} von ${referenced.size} referenzierten Bilddateien fehlen `
+      + `(z. B. ${missing.slice(0, 3).join(', ')}). Quelle: ${images} — passt UPLOADS_DIR? `
+      + 'Das unvollständige Backup wurde verworfen.'
+    );
+  }
+  if (referenced.size > 0 && manifest.uploads.files === 0) {
+    fs.rmSync(target, { recursive: true, force: true });
+    throw new Error(`Backup unvollständig: Datenbank referenziert ${referenced.size} Bilder, aber keine Datei wurde erfasst (${images}).`);
   }
 
   fs.writeFileSync(path.join(target, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   applyRetention(keep);
 
   console.log(`Backup geschrieben: ${target}`);
-  console.log(`  ${manifest.collections.length} Collections, ${manifest.uploads.files} Upload-Dateien`);
+  console.log(`  ${manifest.collections.length} Collections, ${manifest.uploads.files} Upload-Dateien (${manifest.uploads.bytes} Bytes), ${referenced.size} referenziert`);
   return target;
 }
 
@@ -156,16 +220,34 @@ function applyRetention(keep) {
 }
 
 // ---------------------------------------------------------------------------
-// Restore
+// Verify / Restore
 // ---------------------------------------------------------------------------
 
-async function restoreBackup(dir) {
-  const target = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
+function resolveBackupDir(dir) {
+  return path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
+}
+
+function readManifest(target) {
   const manifestPath = path.join(target, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`kein Backup: ${manifestPath} fehlt`);
   }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  if (!Array.isArray(manifest.collections)) {
+    throw new Error(`Manifest unlesbar: ${manifestPath} hat keine collections`);
+  }
+  return manifest;
+}
+
+/**
+ * Check a recovery point without touching anything: collection files, their
+ * checksums and document counts, upload files with size and checksum, and (for
+ * format >= 2) that every image the database references is present.
+ */
+function verifyBackup(dir) {
+  const target = resolveBackupDir(dir);
+  const manifest = readManifest(target);
+  const report = { target, format: manifest.format || 1, collections: 0, documents: 0, uploads: 0, warnings: [] };
 
   for (const entry of manifest.collections) {
     const file = path.join(target, entry.file);
@@ -174,7 +256,55 @@ async function restoreBackup(dir) {
     if (checksum !== entry.sha256) {
       throw new Error(`Prüfsumme stimmt nicht für ${entry.file} (erwartet ${entry.sha256}, gefunden ${checksum})`);
     }
+    const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length;
+    if (lines !== entry.count) {
+      throw new Error(`Dokumentzahl stimmt nicht für ${entry.file} (erwartet ${entry.count}, gefunden ${lines})`);
+    }
+    report.collections += 1;
+    report.documents += lines;
   }
+
+  const uploadsDirInBackup = path.join(target, manifest.uploads?.dir || 'uploads', 'images');
+  const entries = manifest.uploads?.entries;
+  if (Array.isArray(entries)) {
+    const present = new Set();
+    for (const entry of entries) {
+      const file = path.join(uploadsDirInBackup, entry.name);
+      if (!fs.existsSync(file)) throw new Error(`Upload-Datei fehlt: ${entry.name}`);
+      const stats = fs.statSync(file);
+      if (stats.size !== entry.size) {
+        throw new Error(`Upload-Größe stimmt nicht für ${entry.name} (erwartet ${entry.size}, gefunden ${stats.size})`);
+      }
+      const checksum = sha256File(file);
+      if (checksum !== entry.sha256) {
+        throw new Error(`Prüfsumme stimmt nicht für Upload ${entry.name} (erwartet ${entry.sha256}, gefunden ${checksum})`);
+      }
+      present.add(entry.name);
+      report.uploads += 1;
+    }
+    if ((manifest.uploads?.referenced || 0) > present.size) {
+      throw new Error(`Backup unvollständig: ${manifest.uploads.referenced} Bilder referenziert, ${present.size} vorhanden`);
+    }
+  } else {
+    report.warnings.push('Manifest format 1: Uploads haben keine Prüfsummen, nur die Dateien werden gezählt');
+    if (fs.existsSync(uploadsDirInBackup)) {
+      report.uploads = fs.readdirSync(uploadsDirInBackup).filter(name => name !== '.gitkeep').length;
+    }
+    if ((manifest.uploads?.files || 0) !== report.uploads) {
+      throw new Error(`Upload-Zahl stimmt nicht (erwartet ${manifest.uploads?.files || 0}, gefunden ${report.uploads})`);
+    }
+  }
+
+  return report;
+}
+
+async function restoreBackup(dir) {
+  const target = resolveBackupDir(dir);
+  // Alles prüfen, BEVOR das erste deleteMany läuft: ein halbleer restaurierter
+  // Zustand ist schlechter als gar keiner.
+  const report = verifyBackup(target);
+  const manifest = readManifest(target);
+  for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
 
   for (const entry of manifest.collections) {
     const file = path.join(target, entry.file);
@@ -184,39 +314,68 @@ async function restoreBackup(dir) {
     await collection.deleteMany({});
     if (docs.length > 0) {
       // Chunked, so a large notes collection does not exceed the 16 MB command
-      // limit or the driver's buffer.
-      for (let index = 0; index < docs.length; index += 500) {
-        await collection.insertMany(docs.slice(index, index + 500));
+      // limit or the driver's buffer. `ordered: false` keeps going after a
+      // duplicate-key error instead of leaving a half-filled collection behind;
+      // the errors are aggregated and reported below.
+      const problems = [];
+      for (let index = 0; index < docs.length; index += INSERT_CHUNK) {
+        try {
+          await collection.insertMany(docs.slice(index, index + INSERT_CHUNK), { ordered: false });
+        } catch (error) {
+          const writeErrors = error?.writeErrors?.length ?? (error?.result?.getResult?.().writeErrors?.length ?? 0);
+          problems.push(`${entry.name} ab Dokument ${index}: ${error.message} (${writeErrors} WriteErrors)`);
+        }
+      }
+      if (problems.length > 0) {
+        throw new Error(`Restore unvollständig: ${problems.join(' | ')}`);
       }
     }
-    console.log(`  ${entry.name}: ${docs.length} Dokumente wiederhergestellt`);
+
+    const restored = await collection.countDocuments();
+    if (restored !== entry.count) {
+      throw new Error(`Restore-Prüfung fehlgeschlagen: ${entry.name} hat ${restored} Dokumente, das Manifest erwartet ${entry.count}`);
+    }
+    console.log(`  ${entry.name}: ${restored} Dokumente wiederhergestellt`);
   }
 
   const uploadsSource = path.join(target, manifest.uploads?.dir || 'uploads', 'images');
   if (fs.existsSync(uploadsSource)) {
-    const imagesDir = path.join(UPLOADS_DIR, 'images');
-    fs.mkdirSync(imagesDir, { recursive: true });
+    const images = imagesDir();
+    fs.mkdirSync(images, { recursive: true });
     let files = 0;
     for (const entry of fs.readdirSync(uploadsSource)) {
-      fs.copyFileSync(path.join(uploadsSource, entry), path.join(imagesDir, entry));
+      const source = path.join(uploadsSource, entry);
+      if (!fs.statSync(source).isFile()) continue;
+      const destination = path.join(images, entry);
+      fs.copyFileSync(source, destination);
+      // Auch die Kopie prüfen: eine abgeschnittene Datei wäre sonst ein
+      // stilles Loch im Restore.
+      const expected = manifest.uploads?.entries?.find(item => item.name === entry);
+      if (expected && sha256File(destination) !== expected.sha256) {
+        throw new Error(`Prüfsumme stimmt nicht für wiederhergestellte Datei ${entry}`);
+      }
       files += 1;
     }
     console.log(`  uploads: ${files} Dateien wiederhergestellt`);
+  } else if ((manifest.uploads?.files || 0) > 0) {
+    throw new Error(`Restore unvollständig: Manifest nennt ${manifest.uploads.files} Uploads, aber ${uploadsSource} fehlt`);
   }
 
-  console.log(`Wiederhergestellt aus ${target} (Backup von ${manifest.createdAt})`);
+  console.log(`Wiederhergestellt aus ${target} (Backup von ${manifest.createdAt}, ${report.documents} Dokumente, ${report.uploads} Uploads)`);
+  return report;
 }
 
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { keep: DEFAULT_KEEP, list: false, restore: null, force: false };
+  const args = { keep: DEFAULT_KEEP, list: false, restore: null, verify: null, force: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--list') args.list = true;
     else if (arg === '--force') args.force = true;
     else if (arg === '--keep') args.keep = Number(argv[index + 1]) || DEFAULT_KEEP;
     else if (arg === '--restore') args.restore = argv[index + 1];
+    else if (arg === '--verify') args.verify = argv[index + 1];
   }
   return args;
 }
@@ -224,13 +383,23 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  if (!process.env.MONGODB_URI) {
-    throw new Error('MONGODB_URI ist erforderlich (siehe server/.env.example)');
+  // --verify und --list brauchen keine Datenbank.
+  if (args.verify) {
+    const report = verifyBackup(args.verify);
+    for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
+    console.log(`Recovery Point OK: ${report.target}`);
+    console.log(`  ${report.collections} Collections, ${report.documents} Dokumente, ${report.uploads} Uploads (Format ${report.format})`);
+    return;
   }
+
   if (args.list) {
     const backups = listBackups();
     console.log(backups.length ? backups.join('\n') : 'Keine Backups vorhanden.');
     return;
+  }
+
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI ist erforderlich (siehe server/.env.example)');
   }
 
   await mongoose.connect(process.env.MONGODB_URI);
@@ -255,4 +424,15 @@ if (require.main === module) {
   });
 }
 
-module.exports = { encode, decode, createBackup, restoreBackup, listBackups, applyRetention, parseArgs, BACKUP_DIR };
+module.exports = {
+  encode,
+  decode,
+  createBackup,
+  verifyBackup,
+  restoreBackup,
+  listBackups,
+  applyRetention,
+  parseArgs,
+  referencedImageFilenames,
+  BACKUP_DIR
+};

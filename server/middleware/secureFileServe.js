@@ -1,9 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 const Note = require('../models/Note');
+const { uploadsRoot } = require('../config/paths');
 
-// Resolve uploads directory once at startup
-const uploadsDir = path.resolve(__dirname, '../uploads');
+// Uploads-Wurzel aus config/paths (UPLOADS_DIR), nicht hartkodiert: sonst liest
+// dieser Pfad ein anderes Verzeichnis als Backup/Healthcheck.
+const uploadsDir = uploadsRoot();
 
 /**
  * Secure file serving middleware for uploaded images

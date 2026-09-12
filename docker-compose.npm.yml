@@ -59,6 +59,8 @@ services:
       - TRUST_PROXY=2
       - AI_SERVICE_URL=http://ai:5000
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}  # muss zum Token des ai-Services passen
+      - BACKUP_DIR=/app/backups
+      - UPLOADS_DIR=/app/uploads
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
@@ -68,6 +70,9 @@ services:
       - CLIENT_URL=${CLIENT_URL:-}
     volumes:
       - uploads_data:/app/uploads
+      # Recovery points von scripts/backup.js muessen auf ein Volume, sonst
+      # sterben sie mit dem Container-Layer beim naechsten Update.
+      - backups_data:/app/backups
     depends_on:
       mongodb:
         condition: service_healthy
@@ -116,4 +121,6 @@ volumes:
   mongodb_data:
     driver: local
   uploads_data:
+    driver: local
+  backups_data:
     driver: local

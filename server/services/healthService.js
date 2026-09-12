@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const mongoose = require('mongoose');
+const { imagesDir } = require('../config/paths');
 
 /**
  * Readiness checks that go beyond mongoose's cached connection state.
@@ -10,7 +11,11 @@ const mongoose = require('mongoose');
  * uploads volume was read-only, or the AI service was dead.
  */
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(__dirname, '../uploads/images');
+// Geprobt wird das Verzeichnis, in das die App wirklich schreibt
+// (config/paths: UPLOADS_DIR ist die Wurzel, Bilder liegen in images/). Vorher
+// las dieser Check UPLOADS_DIR als Bildverzeichnis und meldete „writable" fuer
+// einen Pfad, den kein Upload je benutzt.
+const UPLOADS_DIR = imagesDir();
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:5000';
 const AI_TIMEOUT_MS = Number(process.env.AI_HEALTH_TIMEOUT_MS || 2000);
 // Readiness wird von Docker-/Compose-Healthchecks (30 s), Load Balancern und
@@ -45,12 +50,13 @@ async function pingDatabase() {
 
 /** The upload volume must be writable, otherwise every image upload 500s. */
 function probeUploadsWritable() {
+  const probeDir = imagesDir();
   try {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-    const probe = path.join(UPLOADS_DIR, `.health-${process.pid}`);
+    fs.mkdirSync(probeDir, { recursive: true });
+    const probe = path.join(probeDir, `.health-${process.pid}`);
     fs.writeFileSync(probe, 'ok');
     fs.rmSync(probe, { force: true });
-    return { ok: true, detail: UPLOADS_DIR };
+    return { ok: true, detail: probeDir };
   } catch (error) {
     return { ok: false, detail: error.message };
   }

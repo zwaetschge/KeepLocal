@@ -116,13 +116,49 @@ MONGODB_URI=mongodb://mongodb:27017/keeplocal \
 # List and restore (restore is destructive and requires --force)
 docker compose -f docker-compose.yml exec server node scripts/backup.js --list
 docker compose -f docker-compose.yml exec server \
-  node scripts/backup.js --restore backups/keeplocal-20260911-221925 --force
+  node scripts/backup.js --restore backups/keeplocal-20260911-221925-a1b2c3 --force
+
+# Check a recovery point without touching anything (needs no database)
+docker compose -f docker-compose.yml exec server \
+  node scripts/backup.js --verify backups/keeplocal-20260911-221925-a1b2c3
 ```
 
-Environment: `MONGODB_URI` (required), `BACKUP_DIR` (default `server/backups`),
-`UPLOADS_DIR` (default `server/uploads`). Retention defaults to the newest seven
-backups. Schedule it with your usual cron/host tooling and **test the restore
-before** you need it — the manifest checksums are verified on restore.
+Environment: `MONGODB_URI` (required for create/restore), `BACKUP_DIR` (default
+`server/backups`), `UPLOADS_DIR` (default `server/uploads`). `UPLOADS_DIR` is the
+**root** that contains `images/` and `temp/`; application, readiness probe and
+backup script all resolve it through `server/config/paths.js`, so they cannot
+disagree. Retention defaults to the newest seven backups.
+
+**Mount `BACKUP_DIR` on a volume.** The compose files ship a `backups_data`
+volume for exactly this reason — a recovery point inside the container layer is
+deleted by the next update, i.e. precisely when you want to roll back. Copy the
+recovery points off the host as well; a backup on the same disk as the database
+is not a backup.
+
+What the script guarantees:
+
+- A backup is only reported as written when **every image the database
+  references** was captured, with size and SHA-256 per file in the manifest. A
+  wrong `UPLOADS_DIR` used to produce a successful-looking backup with zero
+  files; it now fails with the offending filenames and the resolved path, and the
+  incomplete directory is removed.
+- `--verify` (and every restore) checks collection files, their checksums and
+  document counts, and every upload's size and checksum.
+- A restore verifies the whole recovery point **before** the first `deleteMany`,
+  inserts with `ordered: false` (a duplicate key no longer leaves a half-filled
+  collection), re-checks the restored document counts against the manifest and
+  checksums the copied upload files.
+- CI runs the full round trip on every push (`npm run verify:backup-restore`):
+  seed → backup → tamper checks → drop database and delete files → restore →
+  compare documents and checksums.
+
+Schedule the backup with your usual cron/host tooling and **test the restore
+before** you need it:
+
+```bash
+MONGODB_URI=mongodb://127.0.0.1:27017/keeplocal_restoretest \
+  node scripts/backup.js --restore backups/<recovery-point> --force
+```
 
 ### Alternative: filesystem or mongodump copies
 

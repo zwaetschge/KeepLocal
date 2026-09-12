@@ -134,6 +134,15 @@ jobs:
           ADMIN_GUARD_MONGODB_URI: mongodb://127.0.0.1:27017/keeplocal_adminguard
         run: npm run verify:admin-guard
 
+      # The docs promise "test the restore before you need it". This is that
+      # test: real MongoDB, real image files, backup -> tamper checks -> drop
+      # everything -> restore -> compare documents and checksums.
+      - name: Backup/restore round trip (real MongoDB)
+        working-directory: server
+        env:
+          BACKUP_MONGODB_URI: mongodb://127.0.0.1:27017/keeplocal_backup
+        run: npm run verify:backup-restore
+
       # npm runs pretest:e2e (production build) and drops the E2E database first.
       - name: Run E2E smoke suite
         working-directory: client
