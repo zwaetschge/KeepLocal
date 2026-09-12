@@ -43,12 +43,14 @@ const Note = require('../../models/Note');
  */
 router.get('/me', async (req, res, next) => {
   try {
-    // Get note count for the user
+    // Get note count for the user (trashed notes are not part of any list view,
+    // so they must not inflate the profile count either).
     const noteCount = await Note.countDocuments({
       $or: [
         { userId: req.user._id },
         { sharedWith: req.user._id }
-      ]
+      ],
+      deletedAt: null
     });
 
     res.json({

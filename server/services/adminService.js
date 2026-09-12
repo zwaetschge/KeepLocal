@@ -209,25 +209,6 @@ async function toggleUserAdmin(userId, currentUserId) {
 }
 
 /**
- * Get system statistics
- * @returns {Promise<Object>} System stats
- */
-async function getStats() {
-  const [userCount, noteCount, archivedCount] = await Promise.all([
-    User.countDocuments(),
-    Note.countDocuments({ isArchived: false }),
-    Note.countDocuments({ isArchived: true })
-  ]);
-
-  return {
-    users: userCount,
-    notes: noteCount,
-    archivedNotes: archivedCount,
-    totalNotes: noteCount + archivedCount
-  };
-}
-
-/**
  * Get system settings
  * @returns {Promise<Object>} Settings
  */
@@ -261,7 +242,6 @@ module.exports = {
   createUser,
   deleteUser,
   toggleUserAdmin,
-  getStats,
   getSettings,
   updateSettings,
   assertNotLastAdmin,

@@ -39,6 +39,7 @@ export const en = {
 
   // Notes
   notes: 'Notes',
+  notesInTrash: 'Notes in trash',
   newNote: 'New Note',
   title: 'Title',
   content: 'Content',

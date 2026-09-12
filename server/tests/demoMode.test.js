@@ -116,7 +116,7 @@ test('demo note limit is checked per owner and returns a stable error contract',
     else process.env.DEMO_NOTE_LIMIT = previousLimit;
   }
 
-  assert.deepEqual(query, { userId: 'demo-user-id' });
+  assert.deepEqual(query, { userId: 'demo-user-id', deletedAt: null }, 'the quota counts visible notes only');
   assert.equal(response.statusCode, 429);
   assert.equal(response.payload.code, 'DEMO_NOTE_LIMIT');
 });

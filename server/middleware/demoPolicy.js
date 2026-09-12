@@ -66,7 +66,9 @@ function createDemoNoteLimitMiddleware(countDocuments = (query) => Note.countDoc
     };
 
     try {
-      const noteCount = await countDocuments({ userId: req.user._id });
+      // Nur sichtbare Notizen zählen: Wer Notizen in den Papierkorb legt, läuft
+      // sonst früher in das 429, obwohl die eigene Liste kurz ist.
+      const noteCount = await countDocuments({ userId: req.user._id, deletedAt: null });
       const limit = parseDemoNoteLimit();
       if (noteCount >= limit) {
         release();

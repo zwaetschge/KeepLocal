@@ -728,9 +728,17 @@ async function emptyTrash(userId) {
     return 0;
   }
 
-  await Note.deleteMany({ userId, deletedAt: { $ne: null } });
+  // Mengentreu: gelöscht wird genau die gelesene Menge (plus erneutes
+  // deletedAt-Prädikat). Nach Prädikat allein zu löschen erwischte auch Notizen,
+  // die zwischen Find und Delete in den Papierkorb wanderten — deren Dokumente
+  // wären weg, ihre Dateien für immer verwaist.
+  const deleted = await Note.deleteMany({
+    _id: { $in: notes.map((note) => note._id) },
+    userId,
+    deletedAt: { $ne: null }
+  });
   await Promise.all(notes.map(note => deleteNoteImages(note)));
-  return notes.length;
+  return deleted.deletedCount ?? notes.length;
 }
 
 /**

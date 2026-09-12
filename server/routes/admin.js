@@ -124,9 +124,12 @@ router.post('/users', async (req, res) => {
 // GET /api/admin/stats - Get system statistics
 router.get('/stats', async (req, res) => {
   try {
-    const [userCount, noteCount, recentUsers] = await Promise.all([
+    const [userCount, noteCount, trashCount, recentUsers] = await Promise.all([
       User.countDocuments(),
-      Note.countDocuments(),
+      // Papierkorb-Notizen sind in keiner Listenansicht sichtbar — sie hier
+      // mitzuzählen ließ die Admin-Statistik über der echten Notizzahl liegen.
+      Note.countDocuments({ deletedAt: null }),
+      Note.countDocuments({ deletedAt: { $ne: null } }),
       User.find()
         .select('-password')
         .sort({ createdAt: -1 })
@@ -135,6 +138,7 @@ router.get('/stats', async (req, res) => {
 
     // Get notes per user
     const notesPerUser = await Note.aggregate([
+      { $match: { deletedAt: null } },
       {
         $group: {
           _id: '$userId',
@@ -171,6 +175,7 @@ router.get('/stats', async (req, res) => {
       stats: {
         totalUsers: userCount,
         totalNotes: noteCount,
+        trashNotes: trashCount,
         recentUsers,
         topUsers: notesPerUser
       }

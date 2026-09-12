@@ -229,6 +229,12 @@ function AdminConsole({ onClose }) {
                         <span className="stat-label">📝 {t('notes')}</span>
                         <span className="stat-value">{stats.totalNotes}</span>
                       </div>
+                      {typeof stats.trashNotes === 'number' && (
+                        <div className="stat-item">
+                          <span className="stat-label">🗑️ {t('notesInTrash')}</span>
+                          <span className="stat-value">{stats.trashNotes}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
