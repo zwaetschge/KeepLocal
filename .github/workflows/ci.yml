@@ -30,6 +30,13 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # Der Upload-Pfad (multer, sharp) verarbeitet angreifer-kontrollierte
+      # Bytes: bekannte High-Advisories sollen den Build bremsen, nicht erst im
+      # Audit-Bericht eines Self-Hosters auftauchen.
+      - name: Audit dependencies
+        working-directory: server
+        run: npm audit --audit-level=high
+
       - name: Run tests
         working-directory: server
         run: npm test
@@ -50,6 +57,10 @@ jobs:
       - name: Install dependencies
         working-directory: client
         run: npm ci
+
+      - name: Audit dependencies
+        working-directory: client
+        run: npm audit --audit-level=high
 
       - name: Run tests
         working-directory: client
