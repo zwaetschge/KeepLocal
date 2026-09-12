@@ -869,6 +869,33 @@ async function unshareNote(noteId, userId, targetUserId) {
 }
 
 /**
+ * Revoke every share between two users, in both directions.
+ *
+ * Called when a friendship ends. Collaborators may read AND edit a shared note
+ * (content, title, tags, colour, pin, images, transcription), so keeping the
+ * `sharedWith` entry would silently leave an ex-friend with write access to
+ * somebody else's notes. Deleting a user already does the same cleanup
+ * (adminService), unfriending did not.
+ *
+ * @param {string|ObjectId} firstUserId
+ * @param {string|ObjectId} secondUserId
+ * @returns {Promise<{revoked: number}>} number of notes that lost a collaborator
+ */
+async function revokeSharedNotesBetween(firstUserId, secondUserId) {
+  const [mine, theirs] = await Promise.all([
+    Note.updateMany(
+      { userId: firstUserId, sharedWith: secondUserId },
+      { $pull: { sharedWith: secondUserId } }
+    ),
+    Note.updateMany(
+      { userId: secondUserId, sharedWith: firstUserId },
+      { $pull: { sharedWith: firstUserId } }
+    )
+  ]);
+  return { revoked: (mine?.modifiedCount || 0) + (theirs?.modifiedCount || 0) };
+}
+
+/**
  * Add images to a note
  * @param {string} noteId - Note ID
  * @param {string} userId - Owner user ID
@@ -961,6 +988,7 @@ module.exports = {
   toggleArchiveNote,
   shareNote,
   unshareNote,
+  revokeSharedNotesBetween,
   addImages,
   removeImage,
   generateThumbnail, // Export for use in routes

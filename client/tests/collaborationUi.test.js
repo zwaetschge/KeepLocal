@@ -111,3 +111,24 @@ test('offline API responses carry a code instead of a hardcoded language', () =>
   assert.match(apiUtils, /payload\.error \|\| \(payload\.code \? '' : `HTTP \$\{status\}`\)/);
   assert.match(apiUtils, /error\.code = payload\.code;/);
 });
+
+// Audit 2026-09-12 (Top-30 Nr. 2): "Freund entfernen" widerruft serverseitig
+// `sharedWith` in beiden Richtungen. Die UI muss danach nachziehen, sonst zeigt
+// die Notizkarte bis zum nächsten 60-Sekunden-Poll einen Mitbearbeiter, der
+// längst keinen Zugriff mehr hat.
+test('removing a friend refreshes the notes instead of waiting for the poll', () => {
+  const modal = read('components', 'FriendsModal.jsx');
+  const app = read('App.jsx');
+
+  assert.match(modal, /function FriendsModal\(\{ isOpen, onClose, isAdmin, onFriendsChanged \}\)/);
+  assert.match(
+    modal,
+    /await friendsAPI\.removeFriend\(friendId\);[\s\S]{0,400}?onFriendsChanged\?\.\(\);/,
+    'the callback must fire after a successful removal'
+  );
+  assert.match(
+    app,
+    /onFriendsChanged=\{\(\) => fetchNotes\(searchTerm, pagination\.page, \{ background: true \}\)\}/,
+    'App must refresh in the background (no spinner, no scroll reset)'
+  );
+});
