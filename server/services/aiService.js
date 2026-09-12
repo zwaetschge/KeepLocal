@@ -8,6 +8,9 @@ const FormData = require('form-data');
 const fs = require('fs');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:5000';
+// Shared secret for the AI service. Read per call so tests (and a restart with a
+// freshly generated token) do not need a module reload.
+const aiServiceToken = () => (process.env.AI_SERVICE_TOKEN || '').trim();
 
 /**
  * Transcribe audio file using Whisper AI service
@@ -34,6 +37,7 @@ async function transcribeAudio(filePath, language = null, requestId = null) {
       headers: {
         ...form.getHeaders(),
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
+        ...(aiServiceToken() ? { Authorization: `Bearer ${aiServiceToken()}` } : {}),
       },
       timeout: 300000,
       maxBodyLength: 26 * 1024 * 1024,
@@ -46,6 +50,11 @@ async function transcribeAudio(filePath, language = null, requestId = null) {
     logger.error('AI service call failed', { requestId, message: error.message, code: error.code });
     if (error.code === 'ECONNREFUSED') {
       throw new Error('AI Service ist nicht erreichbar. Läuft der Container?');
+    }
+    if (error.response?.status === 401) {
+      // The AI service rejected our shared token: misconfigured deployment, not
+      // a user error. Never surface the token itself.
+      throw new Error('AI Service lehnt die Anfrage ab (AI_SERVICE_TOKEN passt nicht)');
     }
     if (error.response) {
       throw new Error(`AI Service error: ${error.response.data.error || error.response.statusText}`);

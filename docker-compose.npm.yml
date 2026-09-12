@@ -27,6 +27,9 @@ services:
     restart: unless-stopped
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      # Shared secret mit dem Server: ohne Token nimmt /transcribe Anfragen von
+      # jedem im backend-Netz an. In .env setzen (openssl rand -hex 32).
+      - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}
     networks:
       - backend
     healthcheck:
@@ -55,6 +58,7 @@ services:
       # Browser -> Nginx Proxy Manager -> client Nginx -> Express
       - TRUST_PROXY=2
       - AI_SERVICE_URL=http://ai:5000
+      - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}  # muss zum Token des ai-Services passen
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
