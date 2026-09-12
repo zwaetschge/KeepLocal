@@ -134,6 +134,15 @@ noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // 
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
 noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
+// Bildauslieferung: middleware/secureFileServe.js sucht die Notiz zu jeder
+// /uploads/images/*-Anfrage über genau diese beiden Array-Felder. Ohne Index
+// war jeder Thumbnail ein COLLSCAN über die gesamte (instanzweite)
+// notes-Collection — 30 Bildnotizen an der Wand bedeuteten 30-60 Vollscans pro
+// Board-Rendering. Bewusst NICHT unique: ein fehlgeschlagener Unique-Build auf
+// Bestandsdaten würde syncIndexes() rejecten und den Startup vor app.listen()
+// töten (siehe UPGRADE_FIX_2026-09-12.md).
+noteSchema.index({ 'images.filename': 1 });
+noteSchema.index({ 'images.thumbnailFilename': 1 });
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, order: -1, updatedAt: -1 }); // manuelle Reihenfolge
 noteSchema.index(
   { deletedAt: 1 },

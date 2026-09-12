@@ -172,6 +172,14 @@ async function main() {
       'the legacy unweighted text index is gone', failures);
     assert(!noteIndexes.some((i) => i.name === 'userId_1_legacyField_1'),
       'an orphaned index from an older version is dropped', failures);
+    // Bildauslieferung: ohne diese beiden Indizes ist jeder Thumbnail-Request
+    // ein COLLSCAN über die ganze Collection (middleware/secureFileServe.js).
+    assert(noteIndexes.some((i) => i.name === 'images.filename_1'),
+      'notes.images.filename_1 exists (image serving must not scan)', failures);
+    assert(noteIndexes.some((i) => i.name === 'images.thumbnailFilename_1'),
+      'notes.images.thumbnailFilename_1 exists (image serving must not scan)', failures);
+    assert(!noteIndexes.some((i) => i.name === 'images.filename_1' && i.unique),
+      'the image index must not be unique (a failed unique build would kill startup)', failures);
 
     const usersLeft = await db.collection('users').countDocuments();
     const notesLeft = await db.collection('notes').countDocuments();
