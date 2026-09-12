@@ -58,11 +58,13 @@ test('a document whose fields are literally named $date is not misread', () => {
 });
 
 test('CLI arguments are parsed with safe defaults', () => {
-  assert.deepEqual(backup.parseArgs([]), { keep: 7, list: false, restore: null, force: false });
-  assert.deepEqual(backup.parseArgs(['--keep', '3']), { keep: 3, list: false, restore: null, force: false });
-  assert.deepEqual(backup.parseArgs(['--list']), { keep: 7, list: true, restore: null, force: false });
+  assert.deepEqual(backup.parseArgs([]), { keep: 7, list: false, restore: null, verify: null, force: false });
+  assert.deepEqual(backup.parseArgs(['--keep', '3']), { keep: 3, list: false, restore: null, verify: null, force: false });
+  assert.deepEqual(backup.parseArgs(['--list']), { keep: 7, list: true, restore: null, verify: null, force: false });
   assert.deepEqual(backup.parseArgs(['--restore', '/tmp/x', '--force']),
-    { keep: 7, list: false, restore: '/tmp/x', force: true });
+    { keep: 7, list: false, restore: '/tmp/x', verify: null, force: true });
+  assert.deepEqual(backup.parseArgs(['--verify', '/tmp/x']),
+    { keep: 7, list: false, restore: null, verify: '/tmp/x', force: false });
   assert.equal(backup.parseArgs(['--keep', 'nonsense']).keep, 7);
 });
 
@@ -102,7 +104,80 @@ test('restore is guarded: --force, manifest and checksums', () => {
   assert.match(source, /if \(!args\.force\) \{/);
   assert.match(source, /Prüfsumme stimmt nicht/);
   assert.match(source, /await collection\.deleteMany\(\{\}\);/);
-  assert.match(source, /index \+= 500/, 'restores insert in chunks');
+  assert.match(source, /index \+= INSERT_CHUNK/, 'restores insert in chunks');
   assert.match(source, /mongoose\.connection\.db\.listCollections\(\)/);
   assert.match(source, /filter\(name => !name\.startsWith\('system\.'\)\)/);
+});
+
+test('restore verifies everything before the first destructive statement', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
+  const restoreBody = source.slice(source.indexOf('async function restoreBackup('));
+
+  const verifyAt = restoreBody.indexOf('verifyBackup(target)');
+  const deleteAt = restoreBody.indexOf('deleteMany({})');
+  assert.ok(verifyAt > -1 && deleteAt > -1, 'both steps must exist');
+  assert.ok(verifyAt < deleteAt, 'verification must happen before anything is deleted');
+
+  assert.match(restoreBody, /\{ ordered: false \}/, 'a duplicate key must not leave a half-filled collection');
+  assert.match(restoreBody, /Restore-Prüfung fehlgeschlagen/, 'the restored counts are compared with the manifest');
+  assert.match(restoreBody, /countDocuments\(\)/);
+  assert.match(restoreBody, /Prüfsumme stimmt nicht für wiederhergestellte Datei/, 'copies are checksummed after writing');
+});
+
+test('a backup is only written when every referenced image was captured', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
+
+  assert.match(source, /async function referencedImageFilenames\(\)/);
+  assert.match(source, /projection: \{ images: 1 \}/);
+  assert.match(source, /Backup unvollständig: \$\{missing\.length\} von \$\{referenced\.size\}/);
+  assert.match(source, /passt UPLOADS_DIR\?/, 'the error must point at the likely cause');
+  // Ein verworfenes Backup darf nicht als Recovery Point liegen bleiben.
+  assert.equal(source.match(/fs\.rmSync\(target, \{ recursive: true, force: true \}\);/g)?.length, 2);
+  assert.match(source, /referenced\.size > 0 && manifest\.uploads\.files === 0/, 'the silent empty-uploads case fails too');
+
+  // Manifest: pro Datei Name, Größe und Prüfsumme.
+  assert.match(source, /manifest\.uploads\.entries\.push\(\{ name: entry, size: [^}]+sha256: sha256File\(destination\) \}\)/);
+  assert.match(source, /format: MANIFEST_FORMAT/);
+});
+
+test('verifyBackup checks collections, uploads and referenced files', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
+
+  assert.match(source, /Collection-Datei fehlt/);
+  assert.match(source, /Dokumentzahl stimmt nicht/);
+  assert.match(source, /Upload-Datei fehlt/);
+  assert.match(source, /Upload-Größe stimmt nicht/);
+  assert.match(source, /Prüfsumme stimmt nicht für Upload/);
+  assert.match(source, /Bilder referenziert, \$\{present\.size\} vorhanden/);
+  // Format 1 (ohne Eintragsliste) bleibt lesbar, warnt aber ehrlich.
+  assert.match(source, /Manifest format 1: Uploads haben keine Prüfsummen/);
+});
+
+test('--verify and --list need no database connection', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
+  const mainBody = source.slice(source.indexOf('async function main()'));
+
+  const verifyAt = mainBody.indexOf('if (args.verify)');
+  const listAt = mainBody.indexOf('if (args.list)');
+  const connectAt = mainBody.indexOf('mongoose.connect');
+  const uriCheckAt = mainBody.indexOf("MONGODB_URI ist erforderlich");
+
+  assert.ok(verifyAt > -1 && verifyAt < uriCheckAt, '--verify must run without MONGODB_URI');
+  assert.ok(listAt > -1 && listAt < uriCheckAt, '--list must run without MONGODB_URI');
+  assert.ok(connectAt > uriCheckAt, 'only create/restore connect');
+});
+
+test('CI restores a real backup before anybody needs to', () => {
+  const ci = fs.readFileSync(path.join(__dirname, '../../.github/workflows/ci.yml'), 'utf8');
+  assert.match(ci, /Backup\/restore round trip \(real MongoDB\)/);
+  assert.match(ci, /run: npm run verify:backup-restore/);
+  assert.match(ci, /BACKUP_MONGODB_URI: mongodb:\/\/127\.0\.0\.1:27017\/keeplocal_backup/);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+  assert.equal(pkg.scripts['verify:backup-restore'], 'node scripts/verify-backup-restore.js');
+
+  const script = fs.readFileSync(path.join(__dirname, '../scripts/verify-backup-restore.js'), 'utf8');
+  assert.match(script, /dropDatabase\(\)/, 'the restore must be proven against an emptied database');
+  assert.match(script, /backup\|e2e\|test\|ci/, 'refuses to drop a database that is not a test database');
+  assert.match(script, /sha256\(original\) === originalSha/, 'restored files are compared byte-for-byte');
 });

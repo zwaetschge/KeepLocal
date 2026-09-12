@@ -33,7 +33,8 @@ const createStoredFilename = (file) => (
 );
 
 // Temporary upload directory for initial uploads (before validation)
-const tempUploadDir = path.join(__dirname, '../uploads/temp');
+const { tempDir, imagesDir } = require('../config/paths');
+const tempUploadDir = tempDir();
 try {
   if (!fs.existsSync(tempUploadDir)) {
     fs.mkdirSync(tempUploadDir, { recursive: true });
@@ -45,7 +46,7 @@ try {
 }
 
 // Final upload directory (after validation)
-const finalUploadDir = path.join(__dirname, '../uploads/images');
+const finalUploadDir = imagesDir();
 try {
   if (!fs.existsSync(finalUploadDir)) {
     fs.mkdirSync(finalUploadDir, { recursive: true });

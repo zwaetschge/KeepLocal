@@ -371,10 +371,13 @@ next request on; no re-login is needed.
 | `LINK_PREVIEW_LIMIT_PER_MINUTE` | Link previews per user and minute | `30` |
 | `TRANSCRIPTION_LIMIT_PER_HOUR` | Transcriptions per user and hour | `10` |
 | `TRANSCRIPTION_LIMIT_PER_DAY` | Transcriptions per user and day | `60` |
-| `MAX_CONCURRENT_TRANSCRIPTIONS` | Parallel Whisper jobs before answering 429 | `2` |
+| `MAX_CONCURRENT_TRANSCRIPTIONS` | Parallel Whisper jobs before answering 429 — keep equal to gunicorn's `--workers` | `1` |
+| `AI_SERVICE_TOKEN` | Shared bearer secret between the API server and the Whisper service (`/transcribe`) | generated per container start in the all-in-one image; **must** be set in split deployments |
 | `LOG_FORMAT`, `LOG_LEVEL` | `json` for structured logs; `error`/`warn`/`info`/`debug` | `text`, `info` |
 | `REQUIRE_AI_FOR_READY` | Make an unreachable AI service fail `/api/health/ready` | `false` |
-| `BACKUP_DIR`, `UPLOADS_DIR` | Backup destination and uploads root for `scripts/backup.js` | `server/backups`, `server/uploads` |
+| `HEALTH_DETAILS`, `HEALTH_PROBE_TTL_MS` | Show internal paths/driver errors on `/api/health/ready`; cache window for the upload and AI probes | details off in production, `30000` |
+| `BACKUP_DIR`, `UPLOADS_DIR` | Recovery points and the uploads **root** (contains `images/` and `temp/`). Resolved by `server/config/paths.js` for the app, the readiness probe and `scripts/backup.js` alike — mount both on volumes | `server/backups`, `server/uploads` |
+| `TRASH_RETENTION_DAYS`, `STORAGE_JANITOR_INTERVAL_HOURS` | Trash retention the janitor enforces (files first, then documents); janitor interval, `0` disables it | `30`, `6` |
 | `GOOGLE_*`, `GITHUB_*` | Optional OAuth credentials and callbacks | Disabled when empty |
 
 Production rejects wildcard CORS origins. Never commit `.env`, tokens, OAuth
@@ -396,12 +399,19 @@ instant instead of another outbound fetch.
 # and a SHA-256 manifest. Needs no mongodump, so it also runs in the server image.
 (cd server && MONGODB_URI=mongodb://localhost:27017/keeplocal node scripts/backup.js --keep 7)
 (cd server && node scripts/backup.js --list)
+(cd server && node scripts/backup.js --verify backups/keeplocal-YYYYMMDD-HHMMSS)
 (cd server && node scripts/backup.js --restore backups/keeplocal-YYYYMMDD-HHMMSS --force)
 ```
 
-Restore verifies the manifest checksums and refuses to run without `--force`.
-`BACKUP_DIR` and `UPLOADS_DIR` override the default locations; see
-`docs/docker.md` for the container variants and the cron/scheduling notes.
+A backup is only reported as written when every image the database references was
+captured (per-file size and SHA-256 in the manifest) — a wrong `UPLOADS_DIR`
+fails loudly instead of producing an image-less recovery point. Restore verifies
+the whole recovery point **before** the first `deleteMany`, inserts with
+`ordered: false`, re-checks document counts against the manifest and checksums
+the copied files; `--force` is still required. `npm run verify:backup-restore`
+runs that round trip against a throwaway MongoDB, and CI runs it on every push.
+See `docs/docker.md` for the container variants, the volume requirement and the
+cron/scheduling notes.
 
 Health: `/api/health/live` (process up), `/api/health/ready` (real database ping,
 writable uploads, optional AI probe) and `/api/health` (legacy shape). The compose

@@ -8,6 +8,7 @@ const Note = require('../models/Note');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
+const { imagesDir } = require('../config/paths');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -221,7 +222,7 @@ async function deleteNoteImages(note) {
 
     // Delete original image
     promises.push(new Promise((resolve) => {
-      const filepath = path.join(__dirname, '../uploads/images', image.filename);
+      const filepath = path.join(imagesDir(), image.filename);
       fs.unlink(filepath, (err) => {
         if (err) {
           console.warn(`Warning: Could not delete image file ${image.filename}:`, err.message);
@@ -233,7 +234,7 @@ async function deleteNoteImages(note) {
     // Delete thumbnail if it exists
     if (image.thumbnailFilename) {
       promises.push(new Promise((resolve) => {
-        const thumbpath = path.join(__dirname, '../uploads/images', image.thumbnailFilename);
+        const thumbpath = path.join(imagesDir(), image.thumbnailFilename);
         fs.unlink(thumbpath, (err) => {
           if (err) {
             console.warn(`Warning: Could not delete thumbnail ${image.thumbnailFilename}:`, err.message);

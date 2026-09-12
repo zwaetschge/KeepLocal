@@ -16,6 +16,7 @@ const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberV
 const notesService = require('../services/notesService');
 const aiService = require('../services/aiService');
 const { httpStatus } = require('../constants');
+const { imagesDir } = require('../config/paths');
 const {
   blockDemoUser,
   enforceDemoNoteLimit,
@@ -544,7 +545,7 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
     // Delete file from filesystem
     const fs = require('fs');
     const path = require('path');
-    const filepath = path.join(__dirname, '../uploads/images', req.params.filename);
+    const filepath = path.join(imagesDir(), req.params.filename);
 
     await fs.promises.rm(filepath, { force: true });
 
@@ -552,7 +553,7 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
     const ext = path.extname(req.params.filename);
     const nameWithoutExt = path.basename(req.params.filename, ext);
     const thumbnailFilename = `${nameWithoutExt}-thumb.webp`;
-    const thumbpath = path.join(__dirname, '../uploads/images', thumbnailFilename);
+    const thumbpath = path.join(imagesDir(), thumbnailFilename);
 
     await fs.promises.rm(thumbpath, { force: true });
 

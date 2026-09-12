@@ -25,10 +25,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Note = require('../models/Note');
 const logger = require('../utils/logger');
+const paths = require('../config/paths');
 const { deleteNoteImages } = require('./notesService');
-
-const IMAGES_DIR = path.join(__dirname, '../uploads/images');
-const TEMP_DIR = path.join(__dirname, '../uploads/temp');
 
 const numberFromEnv = (name, fallback) => {
   const parsed = Number(process.env[name]);
@@ -95,7 +93,7 @@ async function purgeExpiredTrash({ now = Date.now(), retentionDays = TRASH_RETEN
  * (b) Verwaiste Bilddateien entfernen. Referenziert = von irgendeiner Notiz
  * (auch einer gelöschten) als `images.filename` oder `thumbnailFilename` geführt.
  */
-async function removeOrphanedImages({ now = Date.now(), minAgeHours = ORPHAN_MIN_AGE_HOURS, imagesDir = IMAGES_DIR } = {}) {
+async function removeOrphanedImages({ now = Date.now(), minAgeHours = ORPHAN_MIN_AGE_HOURS, imagesDir = paths.imagesDir() } = {}) {
   const files = listFiles(imagesDir);
   if (files.length === 0) {
     return { files: 0, bytes: 0 };
@@ -129,7 +127,7 @@ async function removeOrphanedImages({ now = Date.now(), minAgeHours = ORPHAN_MIN
 }
 
 /** (c) uploads/temp leeren (abgebrochene oder gekillte Uploads). */
-function cleanTempUploads({ now = Date.now(), minAgeMinutes = TEMP_MIN_AGE_MINUTES, tempDir = TEMP_DIR } = {}) {
+function cleanTempUploads({ now = Date.now(), minAgeMinutes = TEMP_MIN_AGE_MINUTES, tempDir = paths.tempDir() } = {}) {
   let removed = 0;
   let bytes = 0;
   for (const name of listFiles(tempDir)) {
@@ -215,6 +213,6 @@ module.exports = {
   TRASH_RETENTION_DAYS,
   ORPHAN_MIN_AGE_HOURS,
   TEMP_MIN_AGE_MINUTES,
-  IMAGES_DIR,
-  TEMP_DIR
+  imagesDir: paths.imagesDir,
+  tempDir: paths.tempDir
 };

@@ -27,6 +27,8 @@ services:
       # erzeugt der Entrypoint pro Container-Start eines (beide Programme erben
       # es ueber denselben Prozessbaum).
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}
+      - BACKUP_DIR=/app/server/backups
+      - UPLOADS_DIR=/app/server/uploads
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
@@ -38,6 +40,9 @@ services:
       - uploads_data:/app/server/uploads
       # CRITICAL: Map MongoDB data directory to persist database across container restarts
       - mongodb_data:/data/db
+      # Recovery points von scripts/backup.js: ohne Volume liegen sie im
+      # Container-Layer und sind nach dem naechsten Update weg.
+      - backups_data:/app/server/backups
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/api/health/ready"]
       interval: 30s
@@ -51,4 +56,7 @@ volumes:
     driver: local
   # Persistent volume for MongoDB database
   mongodb_data:
+    driver: local
+  # Persistent volume for backup recovery points (scripts/backup.js)
+  backups_data:
     driver: local
