@@ -40,6 +40,9 @@ export const de = {
   // Notes
   notes: 'Notizen',
   notesInTrash: 'Notizen im Papierkorb',
+  offlineBanner: 'Keine Verbindung — Änderungen werden gerade nicht gespeichert.',
+  offlineRetry: 'Erneut versuchen',
+  backOnline: 'Wieder verbunden — Notizen wurden aktualisiert.',
   newNote: 'Neue Notiz',
   title: 'Titel',
   content: 'Inhalt',

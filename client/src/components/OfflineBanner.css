@@ -1,0 +1,39 @@
+/* Offline-Banner: volle Breite über der Liste, auffällig aber nicht modal.
+   Farben kommen aus den Theme-Variablen, damit alle fünf Themes funktionieren. */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  border: 1px solid var(--border-color, #d0b400);
+  border-left: 4px solid var(--warning-color, #f4b400);
+  border-radius: 8px;
+  background: var(--card-background, #fff8e1);
+  color: var(--text-color, #202124);
+  font-size: 0.9rem;
+}
+
+.offline-banner svg {
+  flex: 0 0 auto;
+  color: var(--warning-color, #b06000);
+}
+
+.offline-banner-text {
+  flex: 1 1 auto;
+}
+
+.offline-banner-retry {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color, #d0b400);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.offline-banner-retry:hover {
+  background: var(--hover-background, rgba(0, 0, 0, 0.06));
+}

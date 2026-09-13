@@ -18,7 +18,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
-import { useKeyboardShortcuts, useNotesManager } from './hooks';
+import { useKeyboardShortcuts, useNotesManager, useOnlineRefresh } from './hooks';
+import OfflineBanner from './components/OfflineBanner';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
 
 // Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden
@@ -89,10 +90,23 @@ function AppContent() {
     showArchived, showTrash, selectedTag, searchTerm,
   });
 
+  // Offline war der stillste Zustand der App: Der 60-s-Poll lief mit
+  // `silent: true` weiter, Speichern zeigte nur „Error updating note", und die
+  // Liste blieb ohne Hinweis stehen. Der Banner macht den Zustand sichtbar, beim
+  // Wiederverbinden wird einmal nachgezogen (Logik im Hook, nicht hier).
+  const isOnline = useOnlineRefresh({
+    enabled: isLoggedIn,
+    onReconnect: () => {
+      fetchNotes(searchTerm, pagination.page, { background: true, silent: true });
+      showToast(t('backOnline'), 'success', { duration: 4000 });
+    }
+  });
+
   // Initialize CSRF token on mount
   useEffect(() => {
     initializeCSRF();
   }, []);
+
 
   // Theme anwenden (Persistenz übernimmt der SettingsContext)
   useEffect(() => {
@@ -300,6 +314,9 @@ function AppContent() {
 
         <main className="App-main" role="main" aria-busy={refreshing}
           style={refreshing ? REFRESHING_STYLE : undefined}>
+          {!isOnline && (
+            <OfflineBanner onRetry={() => fetchNotes(searchTerm, pagination.page, { background: true })} />
+          )}
           {showTrash ? (
             <TrashHeader
               count={noteCounts.trash}
