@@ -518,6 +518,8 @@ export const en = {
   errLinkPreviewRateLimited: 'Too many link previews in a short time. Please wait a moment.',
   errTranscriptionRateLimited: 'Hourly transcription limit reached. Please try again later.',
   errTranscriptionDailyLimit: 'Daily transcription limit reached. Please try again tomorrow.',
+  errTranscriptionMinuteLimit: 'Daily audio-minute budget exhausted. Please try again tomorrow.',
+  errAudioTooLong: 'The recording is too long to transcribe. Please shorten it and try again.',
   errTranscriptionBusy: 'The transcription service is busy. Please try again in half a minute.',
   errLinkUnreachable: 'The link is not reachable.',
   errNotFound: 'Not found.',

@@ -1,3 +1,6 @@
 flask==3.1.3
 faster-whisper==1.2.1
+# Direct import for the duration probe (Top-30 Nr. 18); the floor matches
+# faster-whisper's own constraint, so it adds no new version risk.
+av>=11
 gunicorn==26.0.0

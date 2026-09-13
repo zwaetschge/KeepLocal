@@ -56,6 +56,16 @@ async function transcribeAudio(filePath, language = null, requestId = null) {
       // a user error. Never surface the token itself.
       throw new Error('AI Service lehnt die Anfrage ab (AI_SERVICE_TOKEN passt nicht)');
     }
+    if (error.response?.status === 413) {
+      // The audio exceeds the per-file length cap (MAX_AUDIO_SECONDS on the AI
+      // service). This is a user-facing "shorten your recording", not a 500 —
+      // carry status, stable code and the limit through for the route.
+      const tooLong = new Error('Audio zu lang');
+      tooLong.statusCode = 413;
+      tooLong.code = error.response.data?.code || 'AUDIO_TOO_LONG';
+      tooLong.maxSeconds = Number(error.response.data?.max_seconds) || undefined;
+      throw tooLong;
+    }
     if (error.response) {
       throw new Error(`AI Service error: ${error.response.data.error || error.response.statusText}`);
     }
