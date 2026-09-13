@@ -247,11 +247,13 @@ test('toter useNotes-Hook ist entfernt und durch useNotesManager ersetzt', () =>
   const app = readClientFile('src/App.jsx');
   assert.match(app, /useNotesManager\(\{/);
   // Zeilen wie wc -l zählen (trailing newline nicht als eigene Zeile).
-  // Obergrenze 420: App.jsx darf keine Geschäftslogik zurückholen (die lebt in
+  // Obergrenze 440: App.jsx darf keine Geschäftslogik zurückholen (die lebt in
   // useNotesManager); der Spielraum über 400 kommt aus den Audit-Fixes
-  // 2026-09-10 (OAuth-Callback-State gegen das Login-Flackern, Ctrl+N-Guard).
+  // 2026-09-10 (OAuth-Callback-State, Ctrl+N-Guard) und Nr. 26 (2026-09-13:
+  // stabile Handler per useCallback, listActions in useMemo, Suspense-Wrapper
+  // für die drei lazy Modals — Verdrahtung, keine Logik).
   const lineCount = app.endsWith('\n') ? app.split('\n').length - 1 : app.split('\n').length;
-  assert.ok(lineCount < 420, `App.jsx sollte < 420 Zeilen haben, hat aber ${lineCount}`);
+  assert.ok(lineCount < 440, `App.jsx sollte < 440 Zeilen haben, hat aber ${lineCount}`);
 });
 
 test('App.jsx nutzt React.lazy + Suspense für AdminConsole, Settings und OAuthCallback', () => {
@@ -350,4 +352,97 @@ test('Build-Konfiguration: vendor-react Chunk, keine browserslist, latin-only De
   const entry = readClientFile('src/index.jsx');
   assert.match(entry, /@fontsource\/delius-swash-caps\/latin\.css/);
   assert.doesNotMatch(entry, /import '@fontsource\/delius-swash-caps';/);
+});
+
+// ---------------------------------------------------------------------------
+// Nr. 26 (Top-30, 2026-09-13): Die Notizliste renderte bei jedem 60-s-Poll und
+// jedem Tab-Fokus komplett neu — sichtbares Dimmen auf 60 %, 50× DOMPurify im
+// Leerlauf, operationLoading wuchs über die Session. Diese Tests pinnen die
+// Gegenmaßnahmen: memoisierte Karten, stabile Handler/listActions, verzögertes
+// Dimmen, Einträge werden entfernt statt auf false gesetzt, Modals lazy.
+// ---------------------------------------------------------------------------
+
+const hookUrl = () => import(pathToFileURL(path.join(__dirname, '..', 'src/hooks/useNotesManager.js')).href);
+
+test('shouldDimRefresh: schnell oder ohne Ergebnis wird nie gedimmt', async () => {
+  const { shouldDimRefresh, REFRESH_DIM_DELAY_MS } = await hookUrl();
+
+  assert.equal(REFRESH_DIM_DELAY_MS, 250, 'Delay bleibt Teil des Verhaltensvertrags');
+  // Der Idle-Poll auf einem schnellen Self-Host antwortet in <250 ms —
+  // genau der Fall, der die Liste vorher zweimal pro Minute pulsieren ließ.
+  assert.equal(shouldDimRefresh(30, true), false, 'schneller Refresh mit Ergebnis dimmt nicht');
+  assert.equal(shouldDimRefresh(249, true), false, 'knapp unter der Schwelle dimmt nicht');
+  assert.equal(shouldDimRefresh(2000, false), false, 'ein Langläufer ohne Ergebnis dimmt nicht');
+  assert.equal(shouldDimRefresh(250, true), true, 'spürbar lang UND mit Ergebnis dimmt');
+  assert.equal(shouldDimRefresh(4000, true), true, 'sehr lang mit Ergebnis dimmt');
+  assert.equal(shouldDimRefresh(4000, true, 1000), true, 'delayMs übersteuern senkt die Schwelle');
+  assert.equal(shouldDimRefresh(4000, true, 10000), false, 'delayMs übersteuern hebt die Schwelle');
+});
+
+test('withoutOperation: Einträge werden entfernt, Identität bleibt ohne Arbeit stabil', async () => {
+  const { withoutOperation } = await hookUrl();
+
+  const loading = { abc: 'pin', def: false, trash: true };
+  const next = withoutOperation(loading, 'abc');
+  assert.equal('abc' in next, false, 'der erledigte Eintrag ist weg');
+  assert.equal(next.def, false);
+  assert.equal(next.trash, true);
+  assert.notEqual(next, loading, 'bei einer Entfernung MUSS ein neues Objekt entstehen');
+
+  // Der Rückkehr-Fall: ein zweites Cleanup desselben Schlüssels (finally nach
+  // frühem Return) darf keine neue Identität erzeugen — sonst invalidiert es
+  // die memoisierten Karten doch wieder.
+  assert.equal(withoutOperation(next, 'abc'), next, 'no-op Cleanup hält die Referenz');
+  assert.equal(withoutOperation(next, 'never-existed'), next);
+});
+
+test('Nr. 26: Karte und Liste sind memoisiert, HTML nur noch aus useMemo', () => {
+  const note = readClientFile('src/components/Note.jsx');
+  assert.match(note, /export default React\.memo\(Note\)/);
+  assert.match(note, /const contentHtml = useMemo\(/);
+  assert.match(note, /dangerouslySetInnerHTML=\{\{ __html: contentHtml \}\}/);
+  assert.doesNotMatch(note, /dangerouslySetInnerHTML=\{\{ __html: sanitizeAndLinkify\(/);
+
+  const noteList = readClientFile('src/components/NoteList.jsx');
+  assert.match(noteList, /export default React\.memo\(NoteList\)/);
+
+  const states = readClientFile('src/components/AppStates.jsx');
+  assert.match(states, /export const NotesSection = React\.memo\(function NotesSection/);
+});
+
+test('Nr. 26: App.jsx liefert stabile Handler und listActions, Modals sind lazy', () => {
+  const app = readClientFile('src/App.jsx');
+
+  // Ohne stabile Identitäten läuft React.memo ins Leere.
+  assert.match(app, /const openNoteModal = useCallback\(/);
+  assert.match(app, /const openCollaborateModal = useCallback\(/);
+  assert.match(app, /const handleTagSelect = useCallback\(/);
+  assert.match(app, /const selectView = useCallback\(/);
+  assert.match(app, /const listActions = useMemo\(\(\) => \(showTrash/);
+
+  // Die drei großen Modals laden erst on demand (NoteModal-CSS war mit 33 kB
+  // die größte Datei im Initial-Chunk).
+  for (const component of ['NoteModal', 'FriendsModal', 'CollaborateModal']) {
+    assert.doesNotMatch(app, new RegExp(`import ${component} from`), `${component} darf nicht statisch importiert werden`);
+    assert.match(app, new RegExp(`const ${component} = React\\.lazy\\(\\(\\) => import\\('\\./components/${component}\\.jsx'\\)\\)`));
+  }
+});
+
+test('Nr. 26: refresh dimmt erst nach REFRESH_DIM_DELAY_MS, nicht sofort', () => {
+  const manager = readClientFile('src/hooks/useNotesManager.js');
+
+  assert.match(manager, /REFRESH_DIM_DELAY_MS = 250/);
+  assert.match(manager, /dimTimerRef\.current = setTimeout\(\(\) => setRefreshing\(true\), REFRESH_DIM_DELAY_MS\)/);
+  // Der Timer stirbt mit seinem Request: superseded, abgewürgt, beendet, unmount.
+  const clearCount = (manager.match(/clearTimeout\(dimTimerRef\.current\)/g) || []).length;
+  assert.ok(clearCount >= 4, `der Dimm-Timer muss an allen vier Lebensende-Räumen gecliert werden, gefunden: ${clearCount}`);
+  assert.doesNotMatch(manager, /if \(background\) setRefreshing\(true\)/, 'sofortiges Dimmen ist verboten');
+});
+
+test('Nr. 26: operationLoading schreibt keine false-Leichen mehr', () => {
+  const manager = readClientFile('src/hooks/useNotesManager.js');
+  assert.doesNotMatch(manager, /\.\.\.prev, \[id\]: false \}\)/, 'Einträge werden entfernt, nicht auf false gesetzt');
+  assert.doesNotMatch(manager, /\.\.\.prev, (create|trash): false \}\)/);
+  const uses = (manager.match(/setOperationLoading\(prev => withoutOperation\(prev, /g) || []).length;
+  assert.ok(uses === 8, `alle acht Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
 });
