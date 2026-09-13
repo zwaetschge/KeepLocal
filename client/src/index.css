@@ -130,14 +130,19 @@
   --accent-secondary: #E8A844;
   --accent-secondary-light: rgba(232, 168, 68, 0.15);
 
-  /* Status Colors - Muted, organic */
-  --success-color: #7D9B76;
+  /* Status Colors - Muted, organic. Nr. 27 (Top-30): die alten Werte
+     (#7D9B76/#D4A84B/#7B9BB5) lagen mit 2.07-2.88:1 unter der 3:1-Grenze
+     von WCAG 1.4.11 - Toast-Border/Icons transportieren die Bedeutung.
+     Die dunkleren Varianten erreichen 3.56-4.59:1 auf --bg-primary; die
+     *-light-Tints bleiben unangetastet, damit der "Warm Paper"-Look hält.
+     Verhältnisse werden in tests/themeContrast.test.js nachgerechnet. */
+  --success-color: #5F7D58;
   --success-light: rgba(125, 155, 118, 0.15);
-  --warning-color: #D4A84B;
+  --warning-color: #A87B22;
   --warning-light: rgba(212, 168, 75, 0.15);
   --error-color: #9F3F3F;
   --error-light: rgba(193, 123, 123, 0.15);
-  --info-color: #7B9BB5;
+  --info-color: #4F7591;
   --info-light: rgba(123, 155, 181, 0.15);
 
   /* Shadows - Warm, layered paper effect */
@@ -190,7 +195,11 @@ body.dark-mode {
   --text-primary: #F5F1EA;
   --text-secondary: #C9C0B0;
   --text-tertiary: #9E9484;
-  --text-muted: #6E6458;
+  /* Nr. 27 (Top-30): #6E6458 erreichte auf --bg-secondary/-tertiary nur
+     2.80/2.47:1 (WCAG AA verlangt 4.5) - betroffen u.a. NoteForm-CTA,
+     Sidebar-Zähler und Leerzustände. #9C8F7E = 5.13/4.52:1 und bleibt
+     dunkler als --text-tertiary (5.42/4.78:1), die Hierarchie hält. */
+  --text-muted: #9C8F7E;
   --text-inverse: #1A1814;
 
   --border-color: rgba(245, 241, 234, 0.1);
@@ -264,7 +273,10 @@ body.oled-mode {
   --text-primary: #F5F1EA;
   --text-secondary: #B8AFA0;
   --text-tertiary: #8A8070;
-  --text-muted: #5C5448;
+  /* Nr. 27 (Top-30): #5C5448 lag bei 2.67/2.51:1 auf den OLED-Flächen.
+     #897D6E = 4.95/4.65:1 und bleibt unter --text-tertiary (5.12/4.81:1),
+     bleibt also der leiseste Text - nur eben lesbar. */
+  --text-muted: #897D6E;
   --text-inverse: #000000;
   --accent-text: #E8A87C;
   --accent-button-bg: #A85C3F;
@@ -306,7 +318,9 @@ body.eink-mode {
   --text-primary: #000000;
   --text-secondary: #333333;
   --text-tertiary: #555555;
-  --text-muted: #777777;
+  /* Nr. 27 (Top-30): #777777 schaffte auf weiß nur 4.48:1 - ein Haar
+     unter AA. #6B6B6B = 5.33:1 (bg-primary) / 4.68:1 (bg-tertiary). */
+  --text-muted: #6B6B6B;
   --text-inverse: #ffffff;
 
   --border-color: #000000;

@@ -655,6 +655,66 @@ test.describe.serial('KeepLocal production smoke', () => {
     await runAxe('settings');
     await page.keyboard.press('Escape');
     await expect(page.locator('.settings-modal')).toHaveCount(0);
+
+    // Nr. 27 (Top-30): Dark, OLED, E-Ink und Doodle hat axe bisher nie
+    // gesehen — der Durchlauf lief nur im Standard-Light, obwohl gerade die
+    // dunklen Themes die Kontrast-Funde hatten. Der Theme-Toggle ist der
+    // ehrliche Weg hinein: Beim Login überschreibt die Konto-Präferenz vom
+    // Server jeden localStorage-Cache, ein direkter Theme-Write würde sofort
+    // wieder überschrieben.
+    const bodyTheme = () => page.evaluate(() => document.body.className);
+    const themeBefore = await bodyTheme();
+    for (const expected of ['dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode']) {
+      await page.click('.theme-toggle');
+      await expect.poll(bodyTheme, { timeout: 5000 }).toBe(expected);
+      await runAxe(`notes list · ${expected.replace('-mode', '')}`);
+    }
+    // deterministischen Zustand für die Folge-Tests wiederherstellen
+    for (let step = 0; step < 5; step += 1) {
+      if ((await bodyTheme()) === themeBefore) break;
+      await page.click('.theme-toggle');
+      await page.waitForTimeout(300);
+    }
+    expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
+
+    // Trash-Screen: eigene Karten-Zustände (Restore/Purge-Buttons, kein
+    // Bearbeiten) plus Trash-Header mit Empty-Trash-Bestätigung.
+    await page.locator('.sidebar-item[aria-label="Trash"]').click();
+    await expect(page.locator('.trash-header')).toBeVisible();
+    await runAxe('trash');
+    await page.locator('.sidebar-item[aria-label="All Notes"]').click();
+    await expect(page.locator('.App')).toBeVisible();
+
+    // AdminConsole: Statistik-Karten und Nutzer-Tabelle (Nr. 27: die
+    // Screen-Liste war vor diesem Fix Notes/Editor/Settings).
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.click('.btn-admin-console');
+    await expect(page.locator('.admin-console')).toBeVisible();
+    await expect(page.locator('.admin-stats, .admin-table').first()).toBeVisible({ timeout: 10000 });
+    await runAxe('admin console');
+    await page.click('.admin-close-btn');
+    await expect(page.locator('.admin-console')).toHaveCount(0);
+
+    // Die AdminConsole bringt eigene dark/oled-Overrides mit — ihr Kontrast
+    // ist theme-abhängig, deshalb ein zweiter Lauf im dunkelsten Theme.
+    await page.click('.theme-toggle');
+    await expect.poll(bodyTheme, { timeout: 5000 }).toBe('dark-mode');
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.click('.btn-admin-console');
+    await expect(page.locator('.admin-console')).toBeVisible();
+    await expect(page.locator('.admin-stats, .admin-table').first()).toBeVisible({ timeout: 10000 });
+    await runAxe('admin console · dark');
+    await page.click('.admin-close-btn');
+    await expect(page.locator('.admin-console')).toHaveCount(0);
+    // zurück zum Ausgangs-Theme für die Folge-Tests
+    for (let step = 0; step < 5; step += 1) {
+      if ((await bodyTheme()) === themeBefore) break;
+      await page.click('.theme-toggle');
+      await page.waitForTimeout(300);
+    }
+    expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
   });
 
   test('a dead bundle is forwarded to the recovery page and stops there', async ({ browser }) => {

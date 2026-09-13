@@ -30,7 +30,10 @@ body.doodle-mode {
   --text-primary: #111827;
   --text-secondary: #263D5B;
   --text-tertiary: #4B5563;
-  --text-muted: #6B7280;
+  /* Nr. 27 (Top-30): Tailwind gray-500 (#6B7280) rutschte auf
+     --bg-tertiary #EAF7FD auf 4.42:1 (AA braucht 4.5). #626B79 = 4.93:1
+     und bleibt der leiseste Ton unter --text-tertiary (6.92:1). */
+  --text-muted: #626B79;
   --text-inverse: #FFFFFF;
 
   --border-color: rgba(38, 61, 91, 0.28);

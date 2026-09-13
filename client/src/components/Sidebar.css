@@ -213,18 +213,22 @@
 .sidebar-item:hover .count,
 .sidebar-item.active .count {
   background: rgba(196, 120, 93, 0.2);
-  /* --accent-text (#8A4A34) erreicht auf dem Badge (akzent-getönte Fläche über
-     dem ebenfalls getönten aktiven Item) nur 4.49:1 — WCAG AA verlangt 4.5:1.
-     Sichtbar wurde es erst mit zweistelligem Zähler, weil axe einstelligem
-     Text die Kontrastprüfung erlassen hat. Eine Stufe dunkler = 5.3:1.
-     Top-30 Nr. 27 zieht die Tokens später systematisch nach. */
-  color: #7a4030;
+  /* Nr. 27 (Top-30): Badge = Akzent-Tint über dem getönten aktiven Item.
+     #7a4030 erreichte auf E-Ink nur 4.33:1 (axe, 12px zählen als kleiner
+     Text) — eine Stufe dunkler (#733c2d) bringt 4.68:1, auf Light ~7:1. */
+  color: #733c2d;
 }
 
 .dark-mode .sidebar-item:hover .count,
-.dark-mode .sidebar-item.active .count {
+.dark-mode .sidebar-item.active .count,
+.oled-mode .sidebar-item:hover .count,
+.oled-mode .sidebar-item.active .count {
+  /* Nr. 27 (Top-30): Die helle Variante braucht BEIDE dunklen Themes — ohne
+     den oled-Selektor fiel OLED auf die Light-Regel zurück (#7a4030 auf
+     fast schwarz = 1.36:1, praktisch unsichtbar). #F0B98D = 4.96:1 auf dem
+     dunklen Badge (vorher #E8A87C mit 4.25:1). */
   background: rgba(232, 168, 124, 0.2);
-  color: #E8A87C;
+  color: #F0B98D;
 }
 
 .sidebar.collapsed .sidebar-item {
