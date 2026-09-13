@@ -236,15 +236,14 @@ test('all-in-one runtime image carries no build toolchain (Top-30 Nr. 29)', () =
   assert.match(runtimeCommands, /\bnodejs\b[\s\S]*apt-get purge -y gnupg[\s\S]*apt-get autoremove[\s\S]*rm -rf \/var\/lib\/apt\/lists\/\*/);
 
   // Wheels kommen aus dem Builder — das Final-Image installiert kein pip-Paket.
-  assert.match(runtimeCommands, /COPY --from=ai-builder \/install \/usr\/local/);
+  // Debian/Ubuntu pip benutzt das posix_local-Schema: --prefix=/install legt
+  // den Payload unter /install/local ab (Replik des /usr/local-Baums). Der
+  // Builder testet die Lage, der Whisper-Preload direkt nach dem COPY
+  // verifiziert den Import im selben Build.
+  assert.match(runtimeCommands, /COPY --from=ai-builder \/install\/local \/usr\/local/);
   assert.doesNotMatch(runtimeCommands, /pip3 install -r/);
-
-  // pip-Scheme-Falle: das im Builder frisch aktualisierte (ungepatchte) pip
-  // legt --prefix-Layouts unter site-packages ab, Debians python3 durchsucht
-  // nur dist-packages. Der Builder normalisiert den Baum, damit der COPY in
-  // einen durchsuchten Pfad zeigt; der Whisper-Preload direkt danach verifiziert
-  // den Import im selben Build.
-  assert.match(commands(aiBuilder), /mv "\$\{libdir\}\/site-packages" "\$\{libdir\}\/dist-packages"/);
+  assert.match(commands(aiBuilder), /test -d \/install\/local\/lib\/python3\.10\/dist-packages/);
+  assert.match(commands(aiBuilder), /test -x \/install\/local\/bin\/gunicorn/);
 
   // Cache-Ordnung: Abhängigkeiten vor dem Quellcode, sonst baut jede
   // ai-Änderung 469 MB Python-Deps bzw. jede Server-Änderung npm ci neu.

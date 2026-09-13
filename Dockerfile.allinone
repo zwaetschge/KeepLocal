@@ -27,8 +27,7 @@ RUN npm run build
 # requirements ship manylinux wheels for amd64 and arm64; only if a wheel is
 # missing does pip compile against the headers — the resulting extension then
 # links the libav runtime libraries, which the final stage still carries via
-# ffmpeg. Both stages use the same base image, so --prefix=/install produces
-# exactly the layout pip would install under /usr/local.
+# ffmpeg. Both stages use the same base image, so the wheels stay valid.
 FROM ubuntu:22.04 AS ai-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -53,23 +52,17 @@ WORKDIR /install
 # requirements.txt alone, so an ai/ source change no longer rebuilds the
 # 469-MB pip layer (worst case under QEMU for two architectures).
 COPY ai/requirements.txt ./
-# pip layout trap: the freshly upgraded (unpatched) pip puts --prefix installs
-# into lib/python3.10/site-packages, while Debian's python3 only searches
-# dist-packages. Normalize the tree so the runtime COPY below lands in a
-# searched path — the Whisper preload right after the COPY verifies the import
-# in this same build instead of on a device.
+# pip layout trap (reproduced in ubuntu:22.04): Debian/Ubuntu patch the
+# install scheme to "posix_local", so --prefix=/install does NOT create
+# /install/lib/python3.10/site-packages — the payload lands under
+# /install/local/, replicating the /usr/local tree (lib/python3.10/dist-packages
+# + bin). The runtime stage therefore copies /install/local -> /usr/local, and
+# the test -d below fails HERE in the builder if a future pip ever changes the
+# scheme again, instead of at the Whisper preload or on a device.
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel \
     && pip3 install --no-cache-dir --prefix=/install -r requirements.txt \
-    && libdir=/install/lib/python3.10 \
-    && if [ -d "${libdir}/site-packages" ]; then \
-         if [ -d "${libdir}/dist-packages" ]; then \
-           cp -a "${libdir}/site-packages/." "${libdir}/dist-packages/" \
-             && rm -rf "${libdir}/site-packages"; \
-         else \
-           mv "${libdir}/site-packages" "${libdir}/dist-packages"; \
-         fi; \
-       fi \
-    && test -d "${libdir}/dist-packages"
+    && test -d /install/local/lib/python3.10/dist-packages \
+    && test -x /install/local/bin/gunicorn
 
 # Stage 3: Final All-in-One Image
 FROM ubuntu:22.04
@@ -131,7 +124,10 @@ RUN chown node:node /app/server \
 COPY --chown=node:node server/ ./
 
 # AI service: wheels from the builder, then the source (cache order again).
-COPY --from=ai-builder /install /usr/local
+# /install/local replicates the /usr/local tree — the gunicorn script's
+# #!/usr/bin/python3 shebang and the dist-packages path both match the runtime
+# stage, which runs the same ubuntu:22.04 python3.
+COPY --from=ai-builder /install/local /usr/local
 WORKDIR /app/ai
 RUN chown node:node /app/ai
 COPY --chown=node:node ai/ ./
