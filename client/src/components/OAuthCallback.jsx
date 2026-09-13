@@ -25,7 +25,9 @@ function OAuthCallback({ onOAuthSuccess }) {
     const errorParam = params.get('error');
 
     if (errorParam) {
-      setError(t('oauthFailed'));
+      // oauth_email_unverified means "verify the address at the provider,
+      // then try again" — worth its own message instead of a generic failure.
+      setError(t(errorParam === 'oauth_email_unverified' ? 'oauthEmailUnverified' : 'oauthFailed'));
       // Clean up URL
       window.history.replaceState({}, document.title, '/');
       return undefined;

@@ -6,12 +6,54 @@ const Settings = require('../models/Settings');
 const normalizeEmailAddress = require('../utils/normalizeEmail');
 
 /**
+ * Pick the email entry to trust for this OAuth profile.
+ *
+ * GitHub is configured with `allRawEmails: true`, so profile.emails maps the
+ * full /user/emails response and every entry keeps its `verified`/`primary`
+ * flags; Google mirrors `email_verified` into profile.emails[].verified. We
+ * prefer a verified + primary address, then any verified one, and only fall
+ * back to the unverified entries for brand-new accounts — linking an existing
+ * account additionally requires a verified pick (isEmailVerifiedForLinking).
+ */
+function pickOAuthEmail(profile) {
+  const entries = Array.isArray(profile.emails) ? profile.emails : [];
+  const withValue = entries.filter(entry => entry && typeof entry.value === 'string');
+  const verified = withValue.filter(entry => entry.verified === true);
+  return (
+    verified.find(entry => entry.primary === true)
+    || verified[0]
+    || withValue.find(entry => entry.primary === true)
+    || withValue[0]
+    || null
+  );
+}
+
+/**
+ * Provider-specific proof that the chosen email is verified. Deliberately no
+ * OR across providers: GitHub's /user response has no verification flag, so
+ * accepting a Google-style `profile._json.email_verified` for a GitHub profile
+ * would lower the bar to "any email GitHub merely reports". For Google both
+ * spots carry the same flag (the openid profile mapping copies
+ * `email_verified` into emails[].verified).
+ */
+function isEmailVerifiedForLinking(provider, profile, rawEmail) {
+  const entry = Array.isArray(profile.emails)
+    ? profile.emails.find(candidate => candidate && candidate.value === rawEmail)
+    : null;
+  if (provider === 'github') {
+    return entry?.verified === true;
+  }
+  return entry?.verified === true || profile._json?.email_verified === true;
+}
+
+/**
  * Find or create a user from an OAuth profile.
  * If the email already exists with a local account, link the OAuth provider.
  */
 async function findOrCreateOAuthUser(provider, profile) {
   const providerId = profile.id;
-  const rawEmail = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+  const emailEntry = pickOAuthEmail(profile);
+  const rawEmail = emailEntry ? emailEntry.value : null;
   // Look up and store the same canonical form the register/login validators
   // produce, so an OAuth identity finds the existing local account instead of
   // creating a duplicate.
@@ -34,10 +76,10 @@ async function findOrCreateOAuthUser(provider, profile) {
   if (email) {
     user = await User.findOne({ email }).select('+sessionVersion');
     if (user) {
-      const emailEntry = profile.emails?.find(entry => entry.value === rawEmail);
-      const emailVerified = emailEntry?.verified === true || profile._json?.email_verified === true;
-      if (!emailVerified) {
-        throw new Error('OAuth email must be verified before linking an existing account');
+      if (!isEmailVerifiedForLinking(provider, profile, rawEmail)) {
+        const error = new Error('OAuth email must be verified before linking an existing account');
+        error.code = 'oauth_email_unverified';
+        throw error;
       }
 
       // Link OAuth to existing account
@@ -132,6 +174,10 @@ function configurePassport() {
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
       callbackURL: process.env.GITHUB_CALLBACK_URL || '/api/auth/github/callback',
       scope: ['user:email'],
+      // Without this the strategy collapses GET /user/emails to the primary
+      // address alone and drops the `verified` flag — the linking check below
+      // then rejected every GitHub login of an existing local account.
+      allRawEmails: true,
     }, async (accessToken, refreshToken, profile, done) => {
       try {
         const user = await findOrCreateOAuthUser('github', profile);
