@@ -217,6 +217,12 @@ Vite serves <http://localhost:3000> and proxies `/api` and `/uploads` to
 (cd client && npm test && npm run lint && npm run build)
 (cd ai && python3 -m unittest test_app.py)
 
+# Real MongoDB semantics ($expr, partial/TTL indexes, explain(), unique
+# violations) — the unit suite mocks the models, so this suite runs separately
+# in CI against a mongo:7 service. Without the variable it skips every test.
+export INTEGRATION_MONGODB_URI=mongodb://127.0.0.1:27017/keeplocal_integration
+(cd server && npm run test:integration)
+
 # Known vulnerabilities block CI as well (both trees must stay clean):
 (cd server && npm audit --audit-level=high)
 (cd client && npm audit --audit-level=high)

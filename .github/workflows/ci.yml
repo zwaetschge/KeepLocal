@@ -74,6 +74,44 @@ jobs:
         working-directory: client
         run: npm run build
 
+  # Die Unit-Suite mockt die Modelle; MongoDB-Semantik ($expr/$size, partielle
+  # und TTL-Indizes, Aggregationen, explain(), Unique-Verletzungen) läuft hier
+  # gegen eine echte Datenbank — genau dort saßen der COLLSCAN pro Thumbnail und
+  # die Papierkorb-Zählungen.
+  server-integration:
+    name: Server (Integration, real MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 10s
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Run integration tests
+        working-directory: server
+        env:
+          INTEGRATION_MONGODB_URI: mongodb://127.0.0.1:27017/keeplocal_integration
+        run: npm run test:integration
+
   e2e:
     name: E2E (Chromium, production build)
     runs-on: ubuntu-latest
