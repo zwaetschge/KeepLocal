@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import './App.css';
 import './DoodleTheme.css';
 import NoteForm from './components/NoteForm';
@@ -11,9 +11,6 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
 import Logo from './components/Logo';
-import NoteModal from './components/NoteModal';
-import FriendsModal from './components/FriendsModal';
-import CollaborateModal from './components/CollaborateModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -22,10 +19,14 @@ import { useKeyboardShortcuts, useNotesManager, useOnlineRefresh } from './hooks
 import OfflineBanner from './components/OfflineBanner';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
 
-// Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden
+// Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden. Nr. 26
+// zieht die drei großen Modals nach (NoteModal-CSS: 33 kB im Initial-Chunk).
 const AdminConsole = React.lazy(() => import('./components/AdminConsole.jsx'));
 const Settings = React.lazy(() => import('./components/Settings.jsx'));
 const OAuthCallback = React.lazy(() => import('./components/OAuthCallback.jsx'));
+const NoteModal = React.lazy(() => import('./components/NoteModal.jsx'));
+const FriendsModal = React.lazy(() => import('./components/FriendsModal.jsx'));
+const CollaborateModal = React.lazy(() => import('./components/CollaborateModal.jsx'));
 
 // Inline-Styles (App.css bleibt bei diesem Refactoring unangetastet)
 const REFRESHING_STYLE = { opacity: 0.6, transition: 'opacity 0.2s ease' };
@@ -113,32 +114,57 @@ function AppContent() {
     applyThemeToDocument(theme);
   }, [theme]);
 
-  const openCollaborateModal = (note) => {
+  // Nr. 26: Stabile Identitäten — ohne sie läuft React.memo auf Note/NoteList
+  // ins Leere, weil AppContent bei jedem Zustands-Tick neue Handler-Objekte
+  // erzeugt und die Karten damit trotzdem alle neu rendern.
+  const openCollaborateModal = useCallback((note) => {
     setCollaborateNote(note);
     setShowCollaborateModal(true);
-  };
-  // Ein offener Editor darf nicht von "Neue Notiz" (Button oder Ctrl+N)
-  // übernommen werden: noteModal.note kippt auf null, während das Formular noch
-  // die Werte der geöffneten Notiz zeigt — Speichern würde dann ein Duplikat
-  // anlegen statt die Notiz zu aktualisieren.
-  const openNoteModal = (note = null) => setNoteModal(prev => (prev.isOpen ? prev : { isOpen: true, note }));
-  const closeNoteModal = () => setNoteModal({ isOpen: false, note: null });
-  const handleModalSave = async (noteData) => (
+  }, []);
+  // Ein offener Editor darf nicht von "Neue Notiz" übernommen werden:
+  // noteModal.note kippt auf null, während das Formular noch die Werte der
+  // geöffneten Notiz zeigt — Speichern würde ein Duplikat anlegen.
+  const openNoteModal = useCallback((note = null) => {
+    setNoteModal(prev => (prev.isOpen ? prev : { isOpen: true, note }));
+  }, []);
+  const closeNoteModal = useCallback(() => setNoteModal({ isOpen: false, note: null }), []);
+  const handleModalSave = useCallback(async (noteData) => (
     noteModal.note ? updateNote(noteModal.note._id, noteData) : createNote(noteData)
-  );
-  const handleSearch = (search) => setSearchTerm(search);
+  ), [noteModal.note, updateNote, createNote]);
+  const handleSearch = useCallback((search) => setSearchTerm(search), []);
 
   // Die drei Ansichten (Notizen, Archiv, Papierkorb) schließen sich aus, genau
   // wie ein Tag-Filter den Papierkorb verlässt.
-  const selectView = (view) => {
+  const selectView = useCallback((view) => {
     setShowTrash(view === 'trash');
     setShowArchived(view === 'archived');
     if (view === 'trash') setSelectedTag(null);
-  };
-  const handleTagSelect = (tag) => {
+  }, []);
+  const handleTagSelect = useCallback((tag) => {
     if (tag) setShowTrash(false);
     setSelectedTag(tag);
-  };
+  }, []);
+
+  // Nr. 26: listActions in useMemo — ein neues Objekt-Literal pro Render hätte
+  // die memoisierten Karten bei jedem AppContent-Tick neu gerendert. Muss vor
+  // den Early Returns stehen (Hook-Regeln).
+  const listActions = useMemo(() => (showTrash
+    ? {
+      // Im Papierkorb: kein Bearbeiten/Anheften/Teilen — nur Wiederherstellen
+      // und endgültiges Löschen.
+      onRestoreNote: restoreNote, onPurgeNote: purgeNote,
+      operationLoading, inTrash: true,
+    }
+    : {
+      onDeleteNote: deleteNote, onUpdateNote: updateNote,
+      onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
+      onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
+      onOpenModal: openNoteModal,
+      onDragStart: handleDragStart, onDragEnd: handleDragEnd,
+      onDragOver: handleDragOver, onDrop: handleDrop,
+      highlight: searchTerm,
+      operationLoading,
+    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, searchTerm]);
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
@@ -224,23 +250,6 @@ function AppContent() {
   }
 
   // Main app (authenticated)
-  const listActions = showTrash
-    ? {
-      // Im Papierkorb gibt es kein Bearbeiten, kein Anheften und kein Teilen —
-      // nur Wiederherstellen und endgültiges Löschen.
-      onRestoreNote: restoreNote, onPurgeNote: purgeNote,
-      operationLoading, inTrash: true,
-    }
-    : {
-      onDeleteNote: deleteNote, onUpdateNote: updateNote,
-      onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
-      onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
-      onOpenModal: openNoteModal,
-      onDragStart: handleDragStart, onDragEnd: handleDragEnd,
-      onDragOver: handleDragOver, onDrop: handleDrop,
-      highlight: searchTerm,
-      operationLoading,
-    };
   const emptyStateContent = showTrash
     ? (pinnedNotes.length === 0 && otherNotes.length === 0
       ? { emoji: '🗑️', title: t('trashEmpty'), hint: t('trashEmptyHint') }
@@ -369,23 +378,25 @@ function AppContent() {
         </Suspense>
       )}
       {noteModal.isOpen && (
-        <NoteModal
-          note={noteModal.note}
-          serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
-          onSave={handleModalSave} onClose={closeNoteModal}
-          onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
-          onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
-        />
+        <Suspense fallback={LAZY_FALLBACK}>
+          <NoteModal
+            note={noteModal.note}
+            serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
+            onSave={handleModalSave} onClose={closeNoteModal}
+            onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
+            onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
+          />
+        </Suspense>
       )}
 
       {!user?.isDemo && (
-        <>
+        <Suspense fallback={LAZY_FALLBACK}>
           <FriendsModal isOpen={showFriendsModal} onClose={() => setShowFriendsModal(false)}
             isAdmin={user?.isAdmin}
             onFriendsChanged={() => fetchNotes(searchTerm, pagination.page, { background: true })} />
           <CollaborateModal isOpen={showCollaborateModal} onClose={() => setShowCollaborateModal(false)}
             note={collaborateNote} onNoteUpdate={handleNoteShared} />
-        </>
+        </Suspense>
       )}
 
       {showSettings && !user?.isDemo && (

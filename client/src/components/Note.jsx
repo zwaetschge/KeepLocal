@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isNoteOwner, lastEditorName } from '../utils/noteAccess.mjs';
@@ -21,6 +21,15 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverTag, setDragOverTag] = useState(false);
   const contentRef = useRef(null);
+
+  // Nr. 26: sanitizeAndLinkify macht vier Regex-Durchläufe plus DOMPurify —
+  // pro Karte pro Render. Bei 50 Karten pro Seite und einem 60-s-Poll waren
+  // das 100 Läufe pro Minute im Leerlauf. Der HTML-String ändert sich nur mit
+  // Inhalt oder Such-Highlight, also genau davon abhängig machen.
+  const contentHtml = useMemo(
+    () => sanitizeAndLinkify(note.content, { highlight }),
+    [note.content, highlight]
+  );
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -174,7 +183,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
             <p
               ref={contentRef}
               className="note-content"
-              dangerouslySetInnerHTML={{ __html: sanitizeAndLinkify(note.content, { highlight }) }}
+              dangerouslySetInnerHTML={{ __html: contentHtml }}
               onClick={(e) => {
                 // Allow links to be clicked
                 if (e.target.tagName === 'A') {
@@ -377,4 +386,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   );
 }
 
-export default Note;
+// Nr. 26: Die Karte rendert nur, wenn sich ihre Props ändern — notwenig ist
+// das erst in Kombination mit stabilen Handlern und listActions in App.jsx
+// (useCallback/useMemo), sonst läuft das memo ins Leere.
+export default React.memo(Note);

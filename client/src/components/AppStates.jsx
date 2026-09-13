@@ -35,15 +35,17 @@ export function EmptyState({ emoji, title, hint, kbd }) {
   );
 }
 
-/** A note section (pinned / other) with the shared list props. */
-export function NotesSection({ title, notes, actions }) {
+/** A note section (pinned / other) with the shared list props. Memoized (Nr. 26):
+ *  mit stabilen `actions` aus App.jsx rendert die Sektion nicht neu, wenn der
+ *  60-s-Poll oder ein Tab-Focus dieselben Daten nochmal liefert. */
+export const NotesSection = React.memo(function NotesSection({ title, notes, actions }) {
   return (
     <div className="notes-section">
       {title && <h2 className="section-title">{title}</h2>}
       <NoteList notes={notes} {...actions} />
     </div>
   );
-}
+});
 
 /** Header of the trash view: retention hint plus the "empty trash" action. */
 export function TrashHeader({ count, busy, onEmpty }) {

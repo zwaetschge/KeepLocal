@@ -31,4 +31,6 @@ function NoteList({ notes, onDeleteNote, onUpdateNote, onTogglePin, onToggleArch
   );
 }
 
-export default NoteList;
+// Nr. 26: gleiche Begründung wie Note — mit stabilen `actions` aus App.jsx
+// überspringt die Liste den Re-Render, wenn der 60-s-Poll nichts ändert.
+export default React.memo(NoteList);

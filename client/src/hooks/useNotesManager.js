@@ -21,6 +21,23 @@ export const NOTES_PAGE_LIMIT = 50;
 export const FOCUS_REFRESH_THROTTLE_MS = 15_000;
 export const POLL_INTERVAL_MS = 60_000;
 
+// Nr. 26: Ein Hintergrund-Refresh dimmt die Liste erst, wenn er spürbar dauert.
+// Der Idle-Poll auf einem schnellen Self-Host antwortet in wenigen Millisekunden
+// und ließ die Liste trotzdem zweimal pro Minute auf 60 % pulsieren — der Timer
+// hält schnelle Antworten komplett unterhalb der Schwelle.
+export const REFRESH_DIM_DELAY_MS = 250;
+
+/**
+ * Die Dimm-Regel als reine Funktion (Nr. 26): gedimmt wird nur ein Refresh,
+ * der (a) länger als `delayMs` läuft und (b) tatsächlich etwas geändert hat —
+ * ein Langläufer ohne Ergebnis hat die Liste auch nicht verdunkelt, sobald die
+ * Antwort da ist. Bewusst simpel und exportiert, damit die Semantik in
+ * tests/notesManagerLogic.test.js ausführbar bleibt.
+ */
+export function shouldDimRefresh(elapsedMs, changed, delayMs = REFRESH_DIM_DELAY_MS) {
+  return Boolean(changed) && elapsedMs >= delayMs;
+}
+
 const DEFAULT_PAGINATION = { page: 1, limit: NOTES_PAGE_LIMIT, total: 0, pages: 0 };
 const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 
@@ -171,6 +188,19 @@ export function getEmptyStateReason({ hasNotes, selectedTag, searchTerm } = {}) 
   return 'noNotes';
 }
 
+/**
+ * Entfernt eine beendete Operation aus dem operationLoading-Objekt (Nr. 26).
+ * Rein: identische Referenz, wenn der Schlüssel nicht existiert — ein no-op
+ * setState, das die memoisierten Karten nicht invalidiert. Vorher wurden
+ * Einträge auf false gesetzt und blieben für den Rest der Session liegen.
+ */
+export function withoutOperation(loading, key) {
+  if (!Object.prototype.hasOwnProperty.call(loading, key)) return loading;
+  const next = { ...loading };
+  delete next[key];
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -207,9 +237,13 @@ export function useNotesManager({
   const [operationLoading, setOperationLoading] = useState({});
   const [draggedNoteId, setDraggedNoteId] = useState(null);
 
+
   const fetchSequenceRef = useRef(0);
   const fetchAbortRef = useRef(null);
   const hasLoadedRef = useRef(false);
+  // Verzögertes Dimmen (Nr. 26): der Timer setzt `refreshing` erst, wenn der
+  // Hintergrund-Fetch länger als REFRESH_DIM_DELAY_MS läuft.
+  const dimTimerRef = useRef(null);
 
   // Spiegel des aktuellen Zustands für Handler ohne Stale-Closures
   const stateRef = useRef({});
@@ -218,6 +252,10 @@ export function useNotesManager({
   // Läuft ein Fetch mit älterer Sequenz ein, wird sein Ergebnis verworfen.
   const invalidateInFlightFetches = useCallback(() => {
     fetchSequenceRef.current += 1;
+    // Der Dimm-Timer des abgewürgten Requests stirbt mit ihm — sonst dimmt er
+    // die Liste 250 ms später ohne laufenden Refresh.
+    clearTimeout(dimTimerRef.current);
+    dimTimerRef.current = null;
     // Nicht nur das Ergebnis verwerfen, sondern den Request beenden: Sonst
     // blockieren die Leichen hinter einem HTTP/1.1-Pfad die sechs Verbindungen
     // pro Origin, und die neueste — einzig relevante — Antwort kommt zuletzt.
@@ -281,8 +319,19 @@ export function useNotesManager({
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
-    if (background) setRefreshing(true);
-    else setLoading(true);
+    // Ein neuer Fetch ersetzt den Vorgänger komplett — auch dessen
+    // gegebenenfalls laufenden Dimm-Timer, sonst dimmt ein abgelöster
+    // Hintergrund-Refresh den Vordergrund-Load.
+    clearTimeout(dimTimerRef.current);
+    dimTimerRef.current = null;
+    if (background) {
+      // Nr. 26: nicht sofort dimmen. Schnelle Antworten (Idle-Poll auf dem
+      // eigenen Server) bleiben komplett unterhalb der Schwelle; die Regel
+      // selbst ist shouldDimRefresh.
+      dimTimerRef.current = setTimeout(() => setRefreshing(true), REFRESH_DIM_DELAY_MS);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const trashView = stateRef.current.showTrash;
@@ -313,6 +362,11 @@ export function useNotesManager({
     } finally {
       if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
       if (requestSequence === fetchSequenceRef.current) {
+        // Nur der aktuellste Fetch darf den Timer anfassen: der finally-Lauf
+        // eines supersedeten Requests würde sonst den Timer seines Nachfolgers
+        // wegwerfen.
+        clearTimeout(dimTimerRef.current);
+        dimTimerRef.current = null;
         hasLoadedRef.current = true;
         setLoading(false);
         setRefreshing(false);
@@ -378,7 +432,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorCreatingNote'), 'error');
       return null;
     } finally {
-      setOperationLoading(prev => ({ ...prev, create: false }));
+      setOperationLoading(prev => withoutOperation(prev, 'create'));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -411,7 +465,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
       return null;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -444,7 +498,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
       return false;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, restoreNote, showToast, t]);
 
@@ -463,7 +517,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
       return false;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -484,7 +538,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorDeletingNote'), 'error');
       return false;
     } finally {
-      setOperationLoading(prev => ({ ...prev, trash: false }));
+      setOperationLoading(prev => withoutOperation(prev, 'trash'));
     }
   }, [api, invalidateInFlightFetches, refreshInBackground, showToast, t]);
 
@@ -509,7 +563,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
       return null;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -528,7 +582,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorPinningNote'), 'error');
       return null;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -565,7 +619,7 @@ export function useNotesManager({
       showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
       return null;
     } finally {
-      setOperationLoading(prev => ({ ...prev, [id]: false }));
+      setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
 
@@ -668,6 +722,7 @@ export function useNotesManager({
       window.removeEventListener('focus', onWake);
       document.removeEventListener('visibilitychange', onWake);
       clearInterval(pollInterval);
+      clearTimeout(dimTimerRef.current);
     };
   }, [isLoggedIn, refreshInBackground]);
 
