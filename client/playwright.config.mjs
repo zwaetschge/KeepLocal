@@ -52,6 +52,10 @@ const serverEnv = {
 
 export default defineConfig({
   testDir: './e2e',
+  // image-smoke.spec.mjs läuft gegen ein bereits gebautes Image
+  // (playwright.image.config.mjs, CI: docker-build.yml) — nicht gegen den
+  // Source-Build mit `node server.js`.
+  testIgnore: 'image-smoke.spec.mjs',
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
