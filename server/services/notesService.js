@@ -623,25 +623,49 @@ async function updateNote(noteId, noteData, userId) {
     content: nextContent
   });
 
-  if (title !== undefined) note.title = title;
-  if (color !== undefined) note.color = color;
-  if (isPinned !== undefined) note.isPinned = isPinned;
-  if (tags !== undefined) note.tags = tags;
-  if (linkPreviews !== undefined) note.linkPreviews = linkPreviews;
-  if (isTodoList !== undefined) note.isTodoList = isTodoList;
+  const $set = {};
+  if (title !== undefined) $set.title = title;
+  if (color !== undefined) $set.color = color;
+  if (isPinned !== undefined) $set.isPinned = isPinned;
+  if (tags !== undefined) $set.tags = tags;
+  if (linkPreviews !== undefined) $set.linkPreviews = linkPreviews;
+  if (isTodoList !== undefined) $set.isTodoList = isTodoList;
 
   if (content !== undefined || isTodoList !== undefined) {
-    note.content = nextContent;
+    $set.content = nextContent;
   }
 
   if (todoItems !== undefined || isTodoList !== undefined) {
-    note.todoItems = nextIsTodoList ? nextTodoItems : [];
+    $set.todoItems = nextIsTodoList ? nextTodoItems : [];
   }
 
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
-  note.lastEditedBy = userId;
+  $set.lastEditedBy = userId;
 
-  const updatedNote = await note.save();
+  // Bedingtes Schreiben: Das beim Lesen vorgefundene updatedAt ist der
+  // Version-Token. Hat zwischen Lesen und Schreiben ein zweiter Schreibender
+  // gewonnen, liefert findOneAndUpdate null — dann ist das ein 409 mit dem
+  // frischen Server-Stand, kein stiller Überschreib-Sieg und kein 500er
+  // (VersionError) wie beim früheren unbedingten save().
+  const updatedAtPrecondition = storedUpdatedAt || undefined;
+  const updatedNote = await Note.findOneAndUpdate(
+    {
+      ...noteEditQuery(noteId, userId),
+      ...(updatedAtPrecondition && { updatedAt: updatedAtPrecondition })
+    },
+    { $set },
+    { new: true, runValidators: true }
+  );
+
+  if (!updatedNote) {
+    const fresh = await Note.findOne(noteEditQuery(noteId, userId));
+    if (!fresh) {
+      const error = new Error(errorMessages.NOTES.NOT_FOUND);
+      error.statusCode = 404;
+      throw error;
+    }
+    throwNoteConflict(fresh);
+  }
 
   return updatedNote;
 }
@@ -749,16 +773,25 @@ async function emptyTrash(userId) {
  * @returns {Promise<Object>} Updated note
  */
 async function togglePinNote(noteId, userId) {
-  const note = await Note.findOne(noteEditQuery(noteId, userId));
+  // Atomarer Toggle per Update-Pipeline statt Read-Modify-Write: Zwei schnelle
+  // Klicks oder zwei Tabs konnten vorher einen Toggle still verlieren, weil
+  // beide denselben Stand lasen und der letzte Schreibende gewann.
+  // Pipelines werden von Mongoose nicht gecastet — lastEditedBy deshalb
+  // explizit als ObjectId, nicht als String aus req.user._id.toString().
+  const lastEditedBy = mongoose.isValidObjectId(userId)
+    ? new mongoose.Types.ObjectId(userId)
+    : userId;
+  const note = await Note.findOneAndUpdate(
+    noteEditQuery(noteId, userId),
+    [{ $set: { isPinned: { $not: ['$isPinned'] }, lastEditedBy } }],
+    { new: true }
+  );
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
   }
-
-  note.isPinned = !note.isPinned;
-  await note.save();
 
   return note;
 }
@@ -770,20 +803,26 @@ async function togglePinNote(noteId, userId) {
  * @returns {Promise<Object>} Updated note
  */
 async function toggleArchiveNote(noteId, userId) {
-  const note = await Note.findOne({
-    _id: noteId,
-    userId: userId,
-    deletedAt: null
-  });
+  // Wie togglePinNote: atomarer Pipeline-Toggle, kein Read-Modify-Write.
+  // Archivieren bleibt besitzer-exklusiv (kein noteEditQuery).
+  const lastEditedBy = mongoose.isValidObjectId(userId)
+    ? new mongoose.Types.ObjectId(userId)
+    : userId;
+  const note = await Note.findOneAndUpdate(
+    {
+      _id: noteId,
+      userId: userId,
+      deletedAt: null
+    },
+    [{ $set: { isArchived: { $not: ['$isArchived'] }, lastEditedBy } }],
+    { new: true }
+  );
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
   }
-
-  note.isArchived = !note.isArchived;
-  await note.save();
 
   return note;
 }

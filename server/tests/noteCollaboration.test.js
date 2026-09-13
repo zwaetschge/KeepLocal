@@ -46,21 +46,25 @@ function storedNote(overrides = {}) {
 test('a collaborator can update a shared note', async () => {
   const queries = [];
   const service = loadService({
-    findOne: async (query) => { queries.push(query); return storedNote(); }
+    findOne: async (query) => { queries.push(query); return storedNote(); },
+    findOneAndUpdate: async (query) => { queries.push(query); return storedNote(); }
   });
 
   await service.updateNote(NOTE_ID, { content: 'Von Bob geaendert' }, FRIEND_ID);
 
-  assert.equal(queries.length, 1);
+  // queries[0] = Lesen, queries[1] = bedingtes Schreiben — beide mit dem
+  // kollaborativen Zugriffsfilter.
+  assert.equal(queries.length, 2);
   assert.deepEqual(queries[0]._id, NOTE_ID);
   assert.ok(Array.isArray(queries[0].$or), 'the access filter must allow owner OR sharedWith');
   assert.deepEqual(queries[0].$or, [{ userId: FRIEND_ID }, { sharedWith: FRIEND_ID }]);
+  assert.deepEqual(queries[1].$or, [{ userId: FRIEND_ID }, { sharedWith: FRIEND_ID }]);
 });
 
 test('a collaborator can toggle the pin of a shared note', async () => {
   const queries = [];
   const service = loadService({
-    findOne: async (query) => { queries.push(query); return storedNote(); }
+    findOneAndUpdate: async (query) => { queries.push(query); return storedNote(); }
   });
 
   await service.togglePinNote(NOTE_ID, FRIEND_ID);
@@ -69,22 +73,26 @@ test('a collaborator can toggle the pin of a shared note', async () => {
 });
 
 test('delete and archive stay owner-only and respect the trash', async () => {
-  const deleteQueries = [];
-  const archiveQueries = [];
+  const writes = [];
   const service = loadService({
-    findOne: async (query) => { archiveQueries.push(query); return storedNote(); },
-    findOneAndUpdate: async (query, update) => { deleteQueries.push({ query, update }); return storedNote({ images: [] }); }
+    findOneAndUpdate: async (query, update) => { writes.push({ query, update }); return storedNote({ images: [] }); }
   });
 
   await service.deleteNote(NOTE_ID, OWNER_ID);
   await service.toggleArchiveNote(NOTE_ID, OWNER_ID);
 
   // Soft delete: owner-only, only notes that are not already trashed.
-  assert.deepEqual(deleteQueries[0].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
-  assert.ok(deleteQueries[0].update.$set.deletedAt instanceof Date);
-  assert.deepEqual(archiveQueries[0], { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
-  assert.equal(deleteQueries[0].query.$or, undefined);
-  assert.equal(archiveQueries[0].$or, undefined);
+  assert.deepEqual(writes[0].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
+  assert.ok(writes[0].update.$set.deletedAt instanceof Date);
+  // Archive toggle: ebenfalls owner-only, atomar per Update-Pipeline.
+  assert.deepEqual(writes[1].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: null });
+  assert.ok(Array.isArray(writes[1].update), 'the toggle must be an atomic pipeline update');
+  assert.deepEqual(
+    writes[1].update[0].$set.isArchived,
+    { $not: ['$isArchived'] }
+  );
+  assert.equal(writes[0].query.$or, undefined);
+  assert.equal(writes[1].query.$or, undefined);
 });
 
 test('sharing a note requires an accepted friendship', async () => {
@@ -188,16 +196,16 @@ test('uploads and transcriptions are open to collaborators but not to strangers'
 });
 
 test('an edit records who made it', async () => {
-  let saved = null;
-  const note = storedNote({
-    save: async function () { saved = this; return this; }
+  const writes = [];
+  const service = loadService({
+    findOne: async () => storedNote(),
+    findOneAndUpdate: async (query, update) => { writes.push(update); return storedNote(); }
   });
-  const service = loadService({ findOne: async () => note });
 
   await service.updateNote(NOTE_ID, { content: 'von bob' }, FRIEND_ID);
 
-  assert.equal(String(saved.lastEditedBy), FRIEND_ID);
-  assert.equal(saved.content, 'von bob');
+  assert.equal(String(writes[0].$set.lastEditedBy), FRIEND_ID);
+  assert.equal(writes[0].$set.content, 'von bob');
 });
 
 test('image mutations use the collaborative query', async () => {

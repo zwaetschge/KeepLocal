@@ -159,7 +159,8 @@ test('empty trash is a no-op', async () => {
 test('a trashed note cannot be edited, pinned or archived', async () => {
   const queries = [];
   const service = loadService({
-    findOne: async (query) => { queries.push(query); return null; }
+    findOne: async (query) => { queries.push(query); return null; },
+    findOneAndUpdate: async (query) => { queries.push(query); return null; }
   });
 
   await assert.rejects(service.updateNote(NOTE_ID, { content: 'x' }, OWNER_ID), /nicht gefunden/i);

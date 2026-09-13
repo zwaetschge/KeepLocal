@@ -181,6 +181,35 @@ test('a service 404 becomes an API 404 with the documented shape', async () => {
   assert.equal(purge.body.success, false);
 });
 
+test('a lost write race becomes an API 409 with the fresh note, not a 500 (Top-30 Nr. 12)', async () => {
+  const currentNote = { _id: NOTE_ID, title: 'Gewinner-Stand', content: 'Zweiter Schreiber war schneller' };
+  const { app } = loadApi({
+    serviceOverrides: {
+      updateNote: async () => {
+        const error = new Error('Die Notiz wurde inzwischen geändert');
+        error.statusCode = 409;
+        error.currentNote = currentNote;
+        throw error;
+      }
+    }
+  });
+
+  const result = await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/v1/notes/${NOTE_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'Zu langsam' })
+    });
+    return { status: response.status, body: await response.json() };
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.body.success, false);
+  assert.equal(result.body.error, 'Die Notiz wurde inzwischen geändert');
+  assert.deepEqual(result.body.currentNote, currentNote,
+    'a sync script can retry on top of the returned server state');
+});
+
 test('the whole v1 surface sits behind the API key gate', async () => {
   const { app } = loadApi({ withRealKeyGate: true });
   await withServer(app, async (base) => {

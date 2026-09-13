@@ -25,6 +25,15 @@ function errorHandler(err, req, res, next) {
   } else if (err.code === 11000) {
     statusCode = 409;
     message = 'Ein Eintrag mit diesen Daten existiert bereits';
+  } else if (err.name === 'VersionError') {
+    // Gleichzeitige Schreiber: Das Dokument changed zwischen Lesen und
+    // save() — ein Konflikt (409), kein Serverfehler. Einzige realistische
+    // Quelle ist die Array-Versionierung der Note (siehe Top-30 Nr. 12).
+    statusCode = 409;
+    message = 'Die Notiz wurde inzwischen geändert';
+  } else if (err.name === 'DocumentNotFoundError') {
+    statusCode = 404;
+    message = 'Eintrag nicht gefunden';
   } else if (err.type === 'entity.parse.failed') {
     statusCode = 400;
     message = 'Ungueltiger JSON-Request';
