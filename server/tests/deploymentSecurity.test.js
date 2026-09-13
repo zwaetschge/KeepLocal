@@ -345,3 +345,41 @@ test('Whisper images cache model files without loading CTranslate2 during the bu
     assert.doesNotMatch(preload, /WhisperModel/, `${filename} must not construct a model while cross-building`);
   }
 });
+
+test('the published image is driven by a real browser, not by four curls', () => {
+  // Audit 2026-09-12 (Top-30 Nr. 22): `test-image` war `sleep 45` plus vier
+  // Curls. Die Playwright-Suite lief nur gegen den Source-Build — nginx
+  // (Routing, CSP, Body-Size, /uploads-Proxy), supervisord, der
+  // All-in-One-Start und das gebaute Bundle im Image blieben ungeprüft.
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
+  const testJob = workflow.match(/\n  test-image:\n([\s\S]*)/)?.[1] || '';
+
+  assert.match(testJob, /name: Install Playwright Chromium \(amd64 only\)/);
+  assert.match(testJob, /npx playwright install --with-deps chromium/);
+  assert.match(testJob, /name: Run the smoke suite against the published image/);
+  assert.match(testJob, /run: npm run test:e2e:image/);
+  assert.match(testJob, /IMAGE_BASE_URL: http:\/\/localhost:3000/);
+  assert.match(testJob, /if: matrix\.architecture == 'amd64'/, 'Chromium under qemu arm64 is too slow and flaky');
+  assert.match(testJob, /name: Upload image smoke report/);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'client/package.json'), 'utf8'));
+  assert.equal(pkg.scripts['test:e2e:image'], 'playwright test --config playwright.image.config.mjs');
+
+  const imageConfig = fs.readFileSync(path.join(root, 'client/playwright.image.config.mjs'), 'utf8');
+  assert.match(imageConfig, /testMatch: 'image-smoke\.spec\.mjs'/);
+  assert.doesNotMatch(imageConfig, /webServer/, 'the image under test is already running');
+  assert.match(imageConfig, /video: 'off'/, 'a missing ffmpeg must not mask the real failure');
+
+  // Die normale Suite darf die Image-Spec nicht mitladen (sie erwartet einen
+  // frischen Setup-Wizard und einen laufenden Container).
+  const mainConfig = fs.readFileSync(path.join(root, 'client/playwright.config.mjs'), 'utf8');
+  assert.match(mainConfig, /testIgnore: 'image-smoke\.spec\.mjs'/);
+
+  const spec = fs.readFileSync(path.join(root, 'client/e2e/image-smoke.spec.mjs'), 'utf8');
+  for (const covered of ['api/health/ready', '#confirmPassword', 'note-content', '#image-upload-input',
+    'search-input', 'delete-btn', 'toast-action']) {
+    assert.ok(spec.includes(covered), `the image suite must cover ${covered}`);
+  }
+  assert.match(spec, /expect\(JSON\.stringify\(body\)\)\.not\.toContain\('\/app\/server\/uploads'\)/,
+    'production readiness must stay trimmed inside the image too');
+});
