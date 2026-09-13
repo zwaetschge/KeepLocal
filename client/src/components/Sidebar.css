@@ -279,7 +279,13 @@
     z-index: var(--z-header);
     box-shadow: var(--shadow-2xl);
     transform: translateX(-100%);
-    transition: transform var(--duration-slow) var(--ease-default);
+    /* Nr. 28 (Top-30): der geschlossene Drawer liegt sonst nur visuell
+       daneben — Tab landete in unsichtbaren Sidebar-Buttons. visibility
+       nimmt ihn aus Fokusfluss und Accessibility-Baum; der verzögerte
+       Übergang lässt die Slide-out-Animation vorher zu Ende laufen. */
+    visibility: hidden;
+    transition: transform var(--duration-slow) var(--ease-default),
+                visibility 0s linear var(--duration-slow);
     background: var(--bg-paper);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -301,6 +307,9 @@
 
   .sidebar.mobile-open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--duration-slow) var(--ease-default),
+                visibility 0s;
   }
 
   /* Mobile Controls */

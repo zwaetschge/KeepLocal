@@ -619,17 +619,17 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     };
   }, [newImagePreviewUrls]);
 
-  // Keyboard shortcuts for lightbox
+  // Keyboard navigation for the lightbox (arrows only). Escape runs through
+  // the lightbox's own useModalA11y registration below, so the dialog stack
+  // decides which layer the key belongs to — closing the lightbox must not
+  // also save-and-close the editor underneath.
   useEffect(() => {
+    if (!lightboxImage) return undefined;
     const handleKeyDown = (e) => {
-      if (lightboxImage) {
-        if (e.key === 'Escape') {
-          closeLightbox();
-        } else if (e.key === 'ArrowRight') {
-          nextImage();
-        } else if (e.key === 'ArrowLeft') {
-          prevImage();
-        }
+      if (e.key === 'ArrowRight') {
+        nextImage();
+      } else if (e.key === 'ArrowLeft') {
+        prevImage();
       }
     };
 
@@ -678,6 +678,17 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   // Shared modal a11y (focus trap, initial focus, focus restore). Escape is
   // owned by useModalShortcuts above (save-and-close), so it is disabled here.
   const { containerRef, titleId } = useModalA11y({ onClose, closeOnEscape: false });
+
+  // Nr. 28 (Top-30): die Lightbox ist ein eigener Dialog ÜBER dem Editor —
+  // eigener Anfangsfokus (Schließen-Button), eigener Tab-Rahmen, und Escape
+  // schließt nur sie. Der Dialog-Stack in useModalA11y hält den Editor
+  // darunter bei Escape und Tab still.
+  const lightboxCloseRef = useRef(null);
+  const { containerRef: lightboxContainerRef } = useModalA11y({
+    onClose: closeLightbox,
+    active: Boolean(lightboxImage),
+    initialFocusRef: lightboxCloseRef,
+  });
 
   return (
     <div className="note-modal-overlay" {...backdropClose}>
@@ -858,17 +869,29 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
             <div className="note-modal-images">
               <div className="uploaded-images">
                 {images.map((image, index) => (
-                  <div key={index} className="image-preview" onClick={() => openLightbox(index)}>
-                    <img
-                      src={image.thumbnailUrl || image.url}
-                      alt={image.filename}
-                      loading="lazy"
-                      decoding="async"
-                    />
+                  // Nr. 28 (Top-30): die Kachel öffnet die Lightbox jetzt über
+                  // einen echten Button — das alte div mit onClick war per
+                  // Tastatur nicht erreichbar. Der Lösch-Button bleibt daneben
+                  // statt darin (Button-in-Button wäre invalides HTML), deshalb
+                  // fällt sein stopPropagation weg.
+                  <div key={index} className="image-preview">
+                    <button
+                      type="button"
+                      className="image-open-btn"
+                      onClick={() => openLightbox(index)}
+                      aria-label={t('imageAlt', { index: index + 1 })}
+                    >
+                      <img
+                        src={image.thumbnailUrl || image.url}
+                        alt={t('imageAlt', { index: index + 1 })}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </button>
                     <button
                       type="button"
                       className="image-delete-btn"
-                      onClick={(e) => { e.stopPropagation(); handleImageDelete(image.filename); }}
+                      onClick={() => handleImageDelete(image.filename)}
                       title={t('deleteImage')}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1126,10 +1149,23 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
         </div>
       </div>
 
-      {/* Lightbox for viewing images */}
+      {/* Lightbox for viewing images — Nr. 28 (Top-30): echter Dialog mit
+          Fokus auf dem Schließen-Button, statt nur ein div mit onClick. */}
       {lightboxImage && (
-        <div className="lightbox-overlay" onClick={(e) => { e.stopPropagation(); closeLightbox(); }}>
-          <button className="lightbox-close" onClick={(e) => { e.stopPropagation(); closeLightbox(); }} aria-label={t('close')}>
+        <div
+          className="lightbox-overlay"
+          ref={lightboxContainerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('imageAlt', { index: lightboxImage.index + 1 })}
+          onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
+        >
+          <button
+            ref={lightboxCloseRef}
+            className="lightbox-close"
+            onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
+            aria-label={t('close')}
+          >
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>

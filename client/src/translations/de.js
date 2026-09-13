@@ -383,6 +383,7 @@ export const de = {
   loadingApp: 'Lade...',
   shortcutCtrlN: 'Strg+N',
   openMenu: 'Menü öffnen',
+  skipToContent: 'Zum Inhalt springen',
   toggleTheme: 'Design wechseln',
   createNewNote: 'Neue Notiz erstellen',
   setupInfo: 'Dies ist die erste Anmeldung. Bitte erstellen Sie ein Administrator-Konto, um KeepLocal zu verwenden.',

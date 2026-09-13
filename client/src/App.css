@@ -13,6 +13,30 @@ html, body {
   overflow: hidden;
 }
 
+/* Nr. 28 (Top-30): Skip-Link — der erste Tab-Stop der App. Ruht unsichtbar
+   über dem oberen Rand und rutscht erst beim Fokus ins Bild (auch über dem
+   Header, deshalb z-tooltip statt z-modal). */
+.skip-link {
+  position: fixed;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: var(--z-tooltip);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-button-bg);
+  color: var(--accent-button-text);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-semibold);
+  text-decoration: none;
+  transform: translateY(-300%);
+  transition: transform var(--duration-fast) var(--ease-default);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 body {
   font-family: var(--font-body);
   background: var(--bg-canvas);

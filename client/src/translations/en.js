@@ -383,6 +383,7 @@ export const en = {
   loadingApp: 'Loading...',
   shortcutCtrlN: 'Ctrl+N',
   openMenu: 'Open menu',
+  skipToContent: 'Skip to content',
   toggleTheme: 'Toggle theme',
   createNewNote: 'Create a new note',
   setupInfo: 'This is the first login. Please create an administrator account to start using KeepLocal.',

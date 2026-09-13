@@ -851,7 +851,24 @@
   justify-content: center;
 }
 
-.image-preview:hover .image-delete-btn {
+.image-open-btn {
+  /* Nr. 28 (Top-30): die Bild-Kachel öffnet die Lightbox — als Button braucht
+     sie einen Reset, sonst erbt sie die Default-Button-Optik. */
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  font: inherit;
+}
+
+.image-preview:hover .image-delete-btn,
+.image-preview:focus-within .image-delete-btn,
+.image-delete-btn:focus-visible {
+  /* Nr. 28: der Lösch-Button lag bei opacity:0 bis zum Hover — für Tastatur
+     quasi unsichtbar, obwohl er anreihbar ist. */
   opacity: 1;
 }
 

@@ -206,11 +206,13 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
 
         {note.images && note.images.length > 0 && (
           <div className="note-images">
+            {/* Nr. 28 (Top-30): image.filename ist ein 52-Zeichen-Hex-Name —
+                als alt nutzlos. Die Position in der Notiz sagt mehr. */}
             {note.images.slice(0, 4).map((image, index) => (
               <div key={index} className="note-image-preview">
                 <img
                   src={image.thumbnailUrl || image.url}
-                  alt={image.filename}
+                  alt={t('imageAlt', { index: index + 1 })}
                   loading="lazy"
                 />
               </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ThemeToggle from './ThemeToggle';
 import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,6 +28,72 @@ function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { t } = useLanguage();
 
+  // Nr. 28 (Top-30): der mobile Drawer verhält sich tastaturtechnisch wie ein
+  // Dialog — Fokus hinein beim Öffnen, zurück auf den Menü-Button beim
+  // Schließen (auch per Escape). Alles nur unterhalb der 768px-Grenze, wo
+  // die Sidebar zum off-canvas Drawer wird; am Desktop bleibt sie normal im
+  // Fokusfluss.
+  const drawerRef = useRef(null);
+  const restoreFocusRef = useRef(null);
+  const onMobileCloseRef = useRef(onMobileClose);
+
+  useEffect(() => {
+    onMobileCloseRef.current = onMobileClose;
+  }, [onMobileClose]);
+
+  useEffect(() => {
+    if (!isMobileOpen) return undefined;
+
+    const isMobileLayout = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobileLayout) return undefined;
+
+    restoreFocusRef.current = document.activeElement;
+
+    // Nr. 28: Chromium setzt focus() im gleichen Zug wie den Drawer-Öffner
+    // gelegentlich stumm außer Kraft — der Aufruf läuft, der Fokus sitzt danach
+    // trotzdem noch auf dem Menü-Button (im E2E reproduzierbar, u.a. CI-Flake
+    // auf PR #142). Deshalb pro Frame prüfen, ob der Fokus wirklich sitzt, und
+    // sonst erneut setzen — begrenzt auf ~1 s und nur, solange der Nutzer den
+    // Fokus nicht selbst woandershin bewegt hat.
+    const opener = restoreFocusRef.current;
+    let retryFrame = 0;
+    let attempts = 0;
+    const focusFirstInDrawer = () => {
+      const drawer = drawerRef.current;
+      if (!drawer) return true;
+      const current = document.activeElement;
+      if (drawer.contains(current)) return true;
+      if (current && current !== opener) return true;
+      const target = drawer.querySelector('button, a[href]');
+      target?.focus();
+      return Boolean(target && drawer.contains(document.activeElement));
+    };
+    const tryFocus = () => {
+      if (focusFirstInDrawer() || ++attempts > 60) return;
+      retryFrame = requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      // Ein echter Dialog liegt über dem Drawer (z.B. der Admin-Confirm):
+      // der gehört dem Dialog, nicht dem Drawer.
+      if (document.querySelector('[role="dialog"]')) return;
+      event.stopPropagation();
+      onMobileCloseRef.current();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      cancelAnimationFrame(retryFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      const restore = restoreFocusRef.current;
+      if (restore && typeof restore.focus === 'function' && restore.isConnected) {
+        restore.focus();
+      }
+      restoreFocusRef.current = null;
+    };
+  }, [isMobileOpen]);
+
   return (
     <>
       {/* Mobile overlay */}
@@ -35,7 +101,11 @@ function Sidebar({
         <div className="sidebar-overlay" onClick={onMobileClose} />
       )}
 
-      <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}>
+      <aside
+        id="app-sidebar"
+        ref={drawerRef}
+        className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}
+      >
       <button
         className="sidebar-toggle"
         onClick={() => setIsCollapsed(!isCollapsed)}
