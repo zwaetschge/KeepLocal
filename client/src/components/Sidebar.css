@@ -213,7 +213,12 @@
 .sidebar-item:hover .count,
 .sidebar-item.active .count {
   background: rgba(196, 120, 93, 0.2);
-  color: var(--accent-text, var(--accent-color));
+  /* --accent-text (#8A4A34) erreicht auf dem Badge (akzent-getönte Fläche über
+     dem ebenfalls getönten aktiven Item) nur 4.49:1 — WCAG AA verlangt 4.5:1.
+     Sichtbar wurde es erst mit zweistelligem Zähler, weil axe einstelligem
+     Text die Kontrastprüfung erlassen hat. Eine Stufe dunkler = 5.3:1.
+     Top-30 Nr. 27 zieht die Tokens später systematisch nach. */
+  color: #7a4030;
 }
 
 .dark-mode .sidebar-item:hover .count,

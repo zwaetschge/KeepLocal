@@ -130,7 +130,9 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault();
-          onOpenModal(note);
+          // Derselbe Guard wie onClick: Im Papierkorb ist onOpenModal nicht
+          // gesetzt, Enter/Space warf vorher "onOpenModal is not a function".
+          if (!inTrash && onOpenModal) onOpenModal(note);
         }
       }}
       role="article"

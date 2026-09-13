@@ -562,6 +562,61 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
   });
 
+  test('mobile viewport: card actions are reachable without hover (trash is no dead end)', async () => {
+    const MOBILE_TRASH_TITLE = 'Mobile-Papierkorb-Notiz';
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+
+    // Fixture: eine Notiz, die gleich in den Papierkorb wandert.
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.fill('.note-modal-title', MOBILE_TRASH_TITLE);
+    await page.fill('.note-modal-content', 'mobil wiederherstellen');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+
+    // Löschen ohne vorheriges hover(): Touch kennt kein Hover — die Aktionen
+    // müssen dauerhaft sichtbar sein (Top-30 Nr. 20), sonst ist display:none.
+    const card = page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE });
+    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card.locator('.delete-btn')).toBeVisible();
+    await card.locator('.delete-btn').click();
+    await expect(page.locator('.confirm-dialog')).toBeVisible();
+    await page.locator('.confirm-dialog .btn-confirm').click();
+    await expect(page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
+
+    // Papierkorb über den mobilen Drawer öffnen.
+    await page.click('.mobile-menu-toggle');
+    await page.locator('.sidebar-item[aria-label="Trash"]').click();
+    await expect(page.locator('.trash-header')).toBeVisible();
+
+    const trashCard = page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE });
+    await expect(trashCard).toBeVisible({ timeout: 20000 });
+
+    // Tastatur-Regression: Enter auf der fokussierten Papierkorb-Karte darf
+    // keinen "onOpenModal is not a function"-Crash werfen.
+    await trashCard.focus();
+    await page.keyboard.press('Enter');
+    await expectAppHealthy(page);
+
+    // Wiederherstellen und Endlöschen sind ohne Hover sichtbar und nutzbar.
+    await expect(trashCard.locator('.restore-btn')).toBeVisible();
+    await expect(trashCard.locator('.purge-btn')).toBeVisible();
+    await trashCard.locator('.restore-btn').click();
+    await expect(page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
+
+    await page.click('.mobile-menu-toggle');
+    await page.locator('.sidebar-item[aria-label="All Notes"]').click();
+    await expect(page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE })).toBeVisible({ timeout: 20000 });
+    await expectAppHealthy(page);
+    // Maus vom Sidebar-Item nehmen: Der letzte Click lässt den Zeiger auf dem
+    // Item stehen, .sidebar-item:hover .count färbt das Count-Badge um — und
+    // der axe-Lauf direkt danach meldet dann einen Grenzwert-Kontrast (4.49:1),
+    // der mit diesem Test nichts zu tun hat.
+    await page.mouse.move(720, 450);
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
   test('axe finds no serious accessibility violations on the main screens', async () => {
     const axeSource = fs.readFileSync(path.join(here, '../node_modules/axe-core/axe.min.js'), 'utf8');
 

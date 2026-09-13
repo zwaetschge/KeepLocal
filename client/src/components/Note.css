@@ -965,9 +965,14 @@
     font-size: var(--font-size-xs);
   }
 
-  /* Hide hover actions on mobile to prevent accidental taps */
+  /* Touch kennt kein Hover — die Aktionsleiste muss dauerhaft sichtbar sein,
+     sonst sind Wiederherstellen/Endlöschen im Papierkorb am Handy unerreichbar
+     (Top-30 Nr. 20). Destruktive Aktionen bleiben durch ConfirmDialog
+     abgesichert, versehentliche Taps führen also nicht zu Datenverlust. */
   .note-hover-actions {
-    display: none !important;
+    opacity: 1;
+    transform: none;
+    border-top-color: var(--border-color);
   }
 
   .note:hover {
