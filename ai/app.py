@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
+import av
 import hmac
 import os
 import tempfile
@@ -12,6 +13,49 @@ app.config['MAX_CONTENT_LENGTH'] = 26 * 1024 * 1024
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny, base, small, medium, large
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"  # Quantization for CPU speed
+
+# Audit 2026-09-12 (Top-30 Nr. 18): the request budgets on the Node server count
+# uploads, not audio minutes — one multi-hour "recording" kept the single Whisper
+# worker busy far longer than any legitimate use, and every queued request then
+# died on the 300 s upstream timeout. The per-file duration cap rejects those
+# before the model is loaded. Default 900 s is sized so that even a slow CPU
+# finishes the transcription well within the server's 300 s axios timeout.
+DEFAULT_MAX_AUDIO_SECONDS = 900
+
+
+def max_audio_seconds():
+    """Per-file audio length cap. Read per request so reloads/tests can change it."""
+    try:
+        value = int(os.environ.get("MAX_AUDIO_SECONDS", DEFAULT_MAX_AUDIO_SECONDS))
+    except ValueError:
+        return DEFAULT_MAX_AUDIO_SECONDS
+    return value if value > 0 else DEFAULT_MAX_AUDIO_SECONDS
+
+
+def probe_duration_seconds(path):
+    """Read the audio duration from the container header without decoding.
+
+    Returns None when the container carries no duration. That is a real case,
+    not an attack: Chrome's MediaRecorder writes WebM blobs whose header lacks
+    a duration. Those stay allowed — the request-count budget on the server is
+    their outer bound, and rejecting them would break every live recording.
+    """
+    container = av.open(path)
+    try:
+        best = None
+        for stream in container.streams:
+            if stream.type != 'audio' or stream.duration is None or not stream.time_base:
+                continue
+            seconds = float(stream.duration) * float(stream.time_base)
+            best = seconds if best is None else max(best, seconds)
+        if best is not None:
+            return best
+        if container.duration:
+            # Container duration is in AV_TIME_BASE units (microseconds).
+            return float(container.duration) / 1_000_000.0
+        return None
+    finally:
+        container.close()
 
 
 def service_token():
@@ -75,6 +119,28 @@ def transcribe():
     with tempfile.NamedTemporaryFile(suffix=".tmp", delete=True) as temp:
         audio_file.save(temp.name)
 
+        # Duration check before any decoding: the model would happily chew
+        # through hours of audio, blocking the single worker the whole time.
+        try:
+            duration = probe_duration_seconds(temp.name)
+        except Exception:
+            app.logger.exception(
+                "Duration probe failed request_id=%s — proceeding", request_id
+            )
+            duration = None
+
+        limit = max_audio_seconds()
+        if duration is not None and duration > limit:
+            app.logger.warning(
+                "Rejected long audio request_id=%s duration=%.0fs limit=%ds",
+                request_id, duration, limit
+            )
+            return jsonify({
+                'error': f'Audio is longer than {limit // 60} minutes',
+                'code': 'AUDIO_TOO_LONG',
+                'max_seconds': limit
+            }), 413
+
         try:
             # Beam size 5 is standard for accuracy
             # Pass language as a hint if provided
@@ -90,13 +156,16 @@ def transcribe():
             full_text = " ".join(text_segments).strip()[:10000]
 
             app.logger.info(
-                "Transcribed request_id=%s language=%s chars=%d",
-                request_id, info.language, len(full_text)
+                "Transcribed request_id=%s language=%s chars=%d duration=%s",
+                request_id, info.language, len(full_text),
+                f"{duration:.0f}s" if duration is not None else "unknown"
             )
             return jsonify({
                 'text': full_text,
                 'language': info.language,
-                'probability': info.language_probability
+                'probability': info.language_probability,
+                # The server charges its daily audio-minute budget from this.
+                'duration': round(duration, 1) if duration is not None else None
             })
         except Exception:
             app.logger.exception("Transcription failed request_id=%s", request_id)

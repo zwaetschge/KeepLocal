@@ -518,6 +518,8 @@ export const de = {
   errLinkPreviewRateLimited: 'Zu viele Link-Vorschauen in kurzer Zeit. Bitte einen Moment warten.',
   errTranscriptionRateLimited: 'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.',
   errTranscriptionDailyLimit: 'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.',
+  errTranscriptionMinuteLimit: 'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.',
+  errAudioTooLong: 'Die Aufnahme ist zu lang für die Transkription. Bitte sie kürzen und erneut versuchen.',
   errTranscriptionBusy: 'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.',
   errLinkUnreachable: 'Link ist nicht erreichbar.',
   errNotFound: 'Nicht gefunden.',

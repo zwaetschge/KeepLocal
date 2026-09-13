@@ -198,9 +198,57 @@ test('limits are configurable through the environment', () => {
     'LINK_PREVIEW_LIMIT_PER_MINUTE',
     'TRANSCRIPTION_LIMIT_PER_HOUR',
     'TRANSCRIPTION_LIMIT_PER_DAY',
+    'TRANSCRIPTION_MINUTES_PER_DAY',
     'MAX_CONCURRENT_TRANSCRIPTIONS'
   ]) {
     assert.match(source, new RegExp(`numberFromEnv\\('${variable}'`), `${variable} must be configurable`);
   }
   assert.match(source, /const userKeyGenerator = \(req\) => `user:\$\{req\.user\?/);
+});
+
+// Audit 2026-09-12 (Top-30 Nr. 18): the budgets counted requests, not audio
+// minutes, and an oversized recording surfaced as a generic 500. Now the AI
+// service rejects long audio with a stable 413 (carried through aiService),
+// and the server keeps a daily audio-minute budget fed by the reported duration.
+test('audio beyond the per-file limit is a 413 with a stable code, not a 500', async () => {
+  const router = loadRouter({
+    transcribeAudio: async () => {
+      // Exactly what aiService.transcribeAudio throws after the AI service
+      // answered 413 AUDIO_TOO_LONG.
+      throw Object.assign(new Error('Audio zu lang'), {
+        statusCode: 413, code: 'AUDIO_TOO_LONG', maxSeconds: 900
+      });
+    }
+  });
+
+  await withServer(router, async base => {
+    const response = await fetch(`${base}/${NOTE_ID}/transcribe`, { method: 'POST' });
+    assert.equal(response.status, 413);
+    const body = await response.json();
+    assert.equal(body.code, 'AUDIO_TOO_LONG');
+    assert.match(body.error, /länger als 15 Minuten/);
+  });
+});
+
+test('transcriptions have a daily audio-minute budget per user', async () => {
+  process.env.TRANSCRIPTION_MINUTES_PER_DAY = '1'; // 60 seconds of audio per day
+  const router = loadRouter({
+    transcribeAudio: async () => ({ text: 'hallo', language: 'de', probability: 0.9, duration: 120 })
+  });
+
+  try {
+    await withServer(router, async base => {
+      const url = `${base}/${NOTE_ID}/transcribe`;
+      // The first recording is 2 minutes and busts the 1-minute budget …
+      assert.equal((await fetch(url, { method: 'POST' })).status, 200);
+      // … so the next one is refused before the AI service is called again.
+      const second = await fetch(url, { method: 'POST' });
+      assert.equal(second.status, 429);
+      const body = await second.json();
+      assert.equal(body.code, 'TRANSCRIPTION_MINUTE_LIMIT');
+      assert.ok(Number(second.headers.get('retry-after')) > 0);
+    });
+  } finally {
+    delete process.env.TRANSCRIPTION_MINUTES_PER_DAY;
+  }
 });
