@@ -866,6 +866,50 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('body')).not.toContainText(errorBoundaryText);
   });
 
+  // Audit 2026-09-12 (Top-30 Nr. 16): a reload, a session timeout or the
+  // ErrorBoundary reset (`window.location.reload()`) used to cost everything
+  // typed into the editor — the state lived only in React.
+  test('an editor draft survives a reload and can be restored or discarded', async () => {
+    const DRAFT_TEXT = `Entwurf nach Reload ${Date.now()}`;
+
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await page.locator('.note-modal-content').click();
+    await page.keyboard.type(DRAFT_TEXT);
+
+    // No save: the reload stands in for a crash, a tab close or a 401 logout.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
+
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await expect(page.locator('.note-modal-draft')).toBeVisible({ timeout: 10000 });
+    await page.locator('.btn-draft-restore').click();
+    await expect(page.locator('.note-modal-content')).toHaveValue(DRAFT_TEXT, { timeout: 10000 });
+    await expect(page.locator('.note-modal-draft')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(errorBoundaryText);
+
+    // Discard path: changed content, another reload, then refuse the draft.
+    await page.locator('.note-modal-content').click();
+    await page.keyboard.type(' + weitere Änderung');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal-draft')).toBeVisible({ timeout: 10000 });
+    await page.locator('.btn-draft-discard').click();
+    await expect(page.locator('.note-modal-draft')).toHaveCount(0);
+    await expect(page.locator('.note-modal-content')).toHaveValue('');
+
+    // Nothing may be offered again after discarding.
+    await page.locator('.btn-modal-cancel').click();
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    await page.click('.note-form-button');
+    await expect(page.locator('.note-modal-draft')).toHaveCount(0);
+    await page.locator('.btn-modal-cancel').click();
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    await expectAppHealthy(page);
+  });
+
   // The password tests run last: they change credentials the other tests use.
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';

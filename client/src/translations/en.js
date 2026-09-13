@@ -356,6 +356,10 @@ export const en = {
   conflictDiscardConfirm: 'Discard',
   conflictServerVersionLoaded: 'Server version loaded',
   conflictOverwritten: 'Your version has been saved',
+  draftFoundTitle: 'Unsaved draft found',
+  draftFoundMessage: 'This editor content was rescued before the last interruption — session expired, reload or crash.',
+  draftRestore: 'Restore draft',
+  draftDiscard: 'Discard',
   conflictLoadFailed: 'Could not load the current version',
 
   // Editor & modal messages
