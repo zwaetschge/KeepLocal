@@ -261,6 +261,43 @@ shows corruption; an image rollback and a data rollback are separate decisions.
 Never use `docker compose down -v` for an update or rollback. It deletes named
 volumes.
 
+### Which images can be rolled back to
+
+An image rollback is **not** always safe: indexes are repaired at startup
+(`syncIndexes()`), so a database that has already been upgraded can break an
+older image.
+
+| Target image | Safe? | Why |
+| --- | --- | --- |
+| Image built **after** the index-sync fix (`syncIndexes()` in `server/server.js`) | yes | it recreates whatever index layout it needs |
+| Image built **before** it (up to and including the July 2026 builds) | **no** | its startup calls `model.init()`, which aborts on an index whose name stayed the same while its options changed (`users.provider_1_providerId_1` became unique+partial). The container then restarts forever with `An existing index has the same name as the requested index`, although the data is fine |
+
+Keep an immutable tag or digest of the image you are replacing
+(`docker inspect <container> --format '{{.Config.Image}}'`, plus
+`docker tag <id> keeplocal:rollback-<date>`), and check its
+`org.opencontainers.image.revision` label against the commit that introduced
+`syncIndexes()` before rolling back to it. If you must roll back further, restore
+the data snapshot taken before the upgrade as well — image and data are one
+decision in that case.
+
+### The container keeps restarting
+
+Since the fault-handling fix, a supervised program that cannot start any more
+(reaches supervisord's `FATAL` state after five attempts) stops the whole
+container instead of leaving it at `Up` with a dead service. Docker's restart
+policy brings it back with a growing delay, so `docker ps` shows `Restarting`
+and `docker logs` names the program:
+
+```bash
+docker logs --tail 200 keeplocal-allinone | grep -i fatal
+docker inspect keeplocal-allinone --format '{{.State.Status}} {{.RestartCount}}'
+```
+
+Read the lines above the FATAL message: they contain the real error (a failed
+index migration, an unwritable volume, a missing `JWT_SECRET`). To return to a
+stable state, roll back to the previous image tag — and if the failure was an
+index conflict, see `UPGRADE_FIX_2026-09-12.md` in the repository history.
+
 ## Locked out of the admin console
 
 Password recovery needs an administrator: reset tokens are issued by

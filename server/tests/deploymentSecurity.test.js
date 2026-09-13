@@ -87,9 +87,13 @@ test('every long-running all-in-one log stream is size-capped', () => {
   // Container unbegrenzt (mongod rotiert nur auf Signal).
   assert.doesNotMatch(supervisor, /--logpath/);
 
+  const programs = supervisor.match(/\[program:[a-z-]+\]/g) || [];
+  assert.equal(programs.length, 5, 'mongodb, ai, demo-reset, nodejs, nginx');
   for (const stream of ['stdout_logfile_maxbytes', 'stderr_logfile_maxbytes']) {
     const caps = supervisor.match(new RegExp(`${stream}=\\d+`, 'g')) || [];
-    assert.equal(caps.length, 5, `each of the 5 programs must cap ${stream}`);
+    // 5 Programme + der Eventlistener (stderr → /dev/stderr, maxbytes=0).
+    assert.ok(caps.length >= programs.length, `every program must cap ${stream}`);
+    assert.ok(caps.every(cap => /=\d+$/.test(cap)), `${stream} must stay numeric (=0 means: the log driver rotates)`);
   }
   assert.match(supervisor, /logfile_maxbytes=\d+MB/);
 });

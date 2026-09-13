@@ -122,6 +122,11 @@ RUN rm -f /etc/nginx/sites-enabled/default \
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Eventlistener, der den Container beendet, wenn ein Programm FATAL wird
+# (sonst meldet `docker ps` weiter „Up", während der Dienst tot ist).
+COPY tools/supervisord-fatal-exit.sh /usr/local/bin/keeplocal-fatal-exit.sh
+RUN chmod +x /usr/local/bin/keeplocal-fatal-exit.sh
+
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

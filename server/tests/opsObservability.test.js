@@ -28,7 +28,10 @@ test('all-in-one program logs reach docker logs instead of the container layer',
   assert.equal(programs.length, 5, 'mongodb, ai, demo-reset, nodejs, nginx');
 
   assert.equal((supervisor.match(/stdout_logfile=\/dev\/stdout/g) || []).length, 5);
-  assert.equal((supervisor.match(/stderr_logfile=\/dev\/stderr/g) || []).length, 5);
+  // 5 Programme + der Eventlistener: dessen stdout ist der Protokollkanal zu
+  // supervisord (/dev/null), seine Fehler gehen aber ebenfalls nach docker logs.
+  assert.equal((supervisor.match(/stderr_logfile=\/dev\/stderr/g) || []).length, 6);
+  assert.match(supervisor, /\[eventlistener:fatal-exit\][\s\S]*?stdout_logfile=\/dev\/null/);
   assert.equal((supervisor.match(/stdout_logfile_maxbytes=0/g) || []).length, 5, 'rotation moves to the log driver');
   assert.doesNotMatch(supervisor, /stdout_logfile=\/var\/log\/supervisor/, 'no program may log into the layer');
 
