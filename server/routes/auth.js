@@ -502,7 +502,10 @@ function authenticateOAuthCallback(provider, errorCode) {
     { session: false },
     (error, user) => {
       if (error || !user) {
-        return res.redirect(`${getClientURL(req)}/oauth/callback?error=${errorCode}`);
+        // "Verify your email at the provider" is actionable, a generic
+        // "auth failed" is not — carry the specific code through.
+        const code = error?.code === 'oauth_email_unverified' ? 'oauth_email_unverified' : errorCode;
+        return res.redirect(`${getClientURL(req)}/oauth/callback?error=${code}`);
       }
       req.user = user;
       return handleOAuthCallback(req, res);

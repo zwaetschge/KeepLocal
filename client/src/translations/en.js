@@ -19,6 +19,7 @@ export const en = {
   sessionExpired: 'Your session has expired — please log in again',
   orContinueWith: 'or continue with',
   oauthFailed: 'OAuth login failed. Please try again.',
+  oauthEmailUnverified: 'The provider does not report this email address as verified. Please verify it with the provider and try again — only verified addresses may be linked to an existing account.',
   backToLogin: 'Back to Login',
   publicDemo: 'Public demo',
   demoIntroTitle: 'Try it right away',

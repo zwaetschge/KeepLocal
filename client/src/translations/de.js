@@ -19,6 +19,7 @@ export const de = {
   sessionExpired: 'Session abgelaufen — bitte neu anmelden',
   orContinueWith: 'oder weiter mit',
   oauthFailed: 'OAuth-Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+  oauthEmailUnverified: 'Diese E-Mail-Adresse ist beim Anbieter nicht als verifiziert markiert. Bitte verifizieren Sie sie beim Anbieter und versuchen Sie es erneut — nur verifizierte Adressen dürfen mit einem bestehenden Konto verknüpft werden.',
   backToLogin: 'Zurück zur Anmeldung',
   publicDemo: 'Öffentliche Demo',
   demoIntroTitle: 'Direkt ausprobieren',
