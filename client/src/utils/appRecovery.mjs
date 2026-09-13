@@ -1,5 +1,5 @@
 export const APP_CACHE_PREFIX = 'keeplocal-';
-export const APP_PREFERENCE_KEYS = ['theme', 'keeplocal_settings', 'token'];
+export const APP_PREFERENCE_KEYS = ['theme', 'keeplocal_settings', 'keeplocal_language', 'token'];
 
 async function unregisterServiceWorkers(environment) {
   let serviceWorker;

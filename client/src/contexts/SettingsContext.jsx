@@ -12,8 +12,11 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 import { authAPI } from '../services/api';
 import { readLocalStorage, writeLocalStorage, removeLocalStorage } from '../utils/localStorage.mjs';
+import { toastBus } from '../utils/toastBus.mjs';
+import { createPreferenceSync } from '../utils/preferencesSync.mjs';
 import {
   DEFAULT_SETTINGS,
   THEMES,
@@ -25,7 +28,6 @@ import {
 const SettingsContext = createContext();
 const STORAGE_KEY = 'keeplocal_settings';
 const LEGACY_THEME_KEY = 'theme';
-const PUSH_DEBOUNCE_MS = 600;
 
 /** Cached copy, including the pre-account theme key from older versions. */
 function initialSettings() {
@@ -54,12 +56,24 @@ function initialSettings() {
 
 export function SettingsProvider({ children }) {
   const { user, isLoggedIn } = useAuth();
+  const { t } = useLanguage();
   const [settings, setSettings] = useState(initialSettings);
-
-  // Last state known to be in sync with the server, so an echo of our own write
-  // (or a repeated /me) does not trigger another request.
-  const syncedRef = useRef(JSON.stringify(normalizeSettings(settings)));
   const wasLoggedInRef = useRef(false);
+
+  // Debounced write-back with honest failure handling (Nr. 17): `synced` wird
+  // erst nach bestätigter Antwort gesetzt, ein Fehlschlag hält den Diff offen
+  // (automatischer Retry beim nächsten Effect-Durchlauf) und warnt einmalig,
+  // pagehide flusht einen pending Debounce sofort.
+  const tRef = useRef(t);
+  tRef.current = t;
+  const syncRef = useRef(null);
+  if (!syncRef.current) {
+    syncRef.current = createPreferenceSync({
+      push: (current) => authAPI.updatePreferences(preferencesFromSettings(current)),
+      warn: () => toastBus.warning(tRef.current('errPreferencesNotSaved'))
+    });
+  }
+  useEffect(() => () => syncRef.current?.dispose(), []);
 
   // Save to localStorage whenever settings change (first-paint cache).
   useEffect(() => {
@@ -71,25 +85,15 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return;
     const fromServer = normalizeSettings(serverPreferences);
-    syncedRef.current = JSON.stringify(fromServer);
+    syncRef.current.adopt(JSON.stringify(fromServer));
     setSettings(previous => (settingsEqual(previous, fromServer) ? previous : fromServer));
   }, [isLoggedIn, serverPreferences]);
 
-  // Push local changes (debounced). Runs only while logged in and only when the
-  // state actually differs from what the server has.
+  // Push local changes (debounced). Runs only while logged in; the diff against
+  // the last confirmed state lives in the sync (see preferencesSync.mjs).
   useEffect(() => {
-    if (!isLoggedIn) return undefined;
-    const payload = JSON.stringify(normalizeSettings(settings));
-    if (payload === syncedRef.current) return undefined;
-
-    const timer = setTimeout(() => {
-      syncedRef.current = payload;
-      authAPI.updatePreferences(preferencesFromSettings(settings)).catch((error) => {
-        console.error('Could not store preferences on the account:', error.message);
-      });
-    }, PUSH_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
+    if (!isLoggedIn) return;
+    syncRef.current.schedule(JSON.stringify(normalizeSettings(settings)), settings);
   }, [settings, isLoggedIn]);
 
   // Logout: drop the cached copy so the next person on this browser does not
@@ -103,7 +107,8 @@ export function SettingsProvider({ children }) {
     }
     if (!wasLoggedInRef.current) return;
     wasLoggedInRef.current = false;
-    syncedRef.current = JSON.stringify(normalizeSettings(DEFAULT_SETTINGS));
+    syncRef.current.cancel();
+    syncRef.current.adopt(JSON.stringify(normalizeSettings(DEFAULT_SETTINGS)));
     removeLocalStorage(STORAGE_KEY);
     setSettings(normalizeSettings(DEFAULT_SETTINGS));
   }, [isLoggedIn]);
