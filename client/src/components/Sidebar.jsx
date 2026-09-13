@@ -48,7 +48,31 @@ function Sidebar({
     if (!isMobileLayout) return undefined;
 
     restoreFocusRef.current = document.activeElement;
-    drawerRef.current?.querySelector('button, a[href]')?.focus();
+
+    // Nr. 28: Chromium setzt focus() im gleichen Zug wie den Drawer-Öffner
+    // gelegentlich stumm außer Kraft — der Aufruf läuft, der Fokus sitzt danach
+    // trotzdem noch auf dem Menü-Button (im E2E reproduzierbar, u.a. CI-Flake
+    // auf PR #142). Deshalb pro Frame prüfen, ob der Fokus wirklich sitzt, und
+    // sonst erneut setzen — begrenzt auf ~1 s und nur, solange der Nutzer den
+    // Fokus nicht selbst woandershin bewegt hat.
+    const opener = restoreFocusRef.current;
+    let retryFrame = 0;
+    let attempts = 0;
+    const focusFirstInDrawer = () => {
+      const drawer = drawerRef.current;
+      if (!drawer) return true;
+      const current = document.activeElement;
+      if (drawer.contains(current)) return true;
+      if (current && current !== opener) return true;
+      const target = drawer.querySelector('button, a[href]');
+      target?.focus();
+      return Boolean(target && drawer.contains(document.activeElement));
+    };
+    const tryFocus = () => {
+      if (focusFirstInDrawer() || ++attempts > 60) return;
+      retryFrame = requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
 
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape') return;
@@ -60,6 +84,7 @@ function Sidebar({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      cancelAnimationFrame(retryFrame);
       document.removeEventListener('keydown', handleKeyDown);
       const restore = restoreFocusRef.current;
       if (restore && typeof restore.focus === 'function' && restore.isConnected) {

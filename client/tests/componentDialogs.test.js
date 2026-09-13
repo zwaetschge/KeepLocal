@@ -180,7 +180,15 @@ test('keyboard a11y: skip link, drawer visibility, lightbox dialog, admin confir
 
   const sidebar = componentSource('Sidebar.jsx');
   assert.match(sidebar, /id="app-sidebar"/);
-  assert.match(sidebar, /drawerRef\.current\?\.querySelector\('button, a\[href\]'\)\?\.focus\(\)/);
+  // Fokus-Transfer mit Verifikation + Frame-Wiederholung: Chromium schluckt
+  // focus() gelegentlich im gleichen Zug wie den Drawer-Öffner (CI-Flake auf
+  // PR #142) — deshalb pro Frame prüfen und erneut setzen, bis er sitzt.
+  assert.match(sidebar, /const focusFirstInDrawer = \(\) => \{/);
+  assert.match(sidebar, /drawer\.querySelector\('button, a\[href\]'\)/);
+  assert.match(sidebar, /drawer\.contains\(document\.activeElement\)/);
+  assert.match(sidebar, /\+\+attempts > 60/);
+  assert.match(sidebar, /requestAnimationFrame\(tryFocus\)/);
+  assert.match(sidebar, /cancelAnimationFrame\(retryFrame\)/);
   assert.match(sidebar, /key !== 'Escape'/);
 
   // Bild-Kacheln sind Buttons mit sprechendem Label (kein div mit onClick);
