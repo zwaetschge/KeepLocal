@@ -356,6 +356,10 @@ export const de = {
   conflictDiscardConfirm: 'Verwerfen',
   conflictServerVersionLoaded: 'Server-Version geladen',
   conflictOverwritten: 'Ihre Version wurde gespeichert',
+  draftFoundTitle: 'Ungespeicherter Entwurf gefunden',
+  draftFoundMessage: 'Dieser Editor-Inhalt wurde vor dem letzten Abbruch gerettet — Sitzung abgelaufen, Reload oder Absturz.',
+  draftRestore: 'Entwurf wiederherstellen',
+  draftDiscard: 'Verwerfen',
   conflictLoadFailed: 'Die aktuelle Version konnte nicht geladen werden',
 
   // Editor- und Modal-Meldungen

@@ -14,6 +14,15 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
+import {
+  readDraft,
+  writeDraft,
+  clearDraft,
+  isDraftWorthRestoring
+} from '../utils/noteDraft.mjs';
+
+/** Entwürfe werden entprellt geschrieben, aber beim Verstecken des Tabs sofort. */
+const DRAFT_DEBOUNCE_MS = 400;
 
 /**
  * Detect optimistic-locking conflicts (PUT /api/notes/:id with baseUpdatedAt
@@ -58,6 +67,13 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   // Optimistic locking: server version that beat our edit (null = no conflict).
   const [conflict, setConflict] = useState(null);
   const [showConflictDiscardConfirm, setShowConflictDiscardConfirm] = useState(false);
+  // Gefundener Entwurf (null = nichts anzubieten). Solange die Entscheidung
+  // aussteht, wird kein neuer Entwurf geschrieben — sonst überschreibt der
+  // Server-Stand den geretteten Inhalt.
+  const [draftOffer, setDraftOffer] = useState(null);
+  const draftTimerRef = useRef(null);
+  const draftFirstRunRef = useRef(true);
+  const draftUserId = user?._id || user?.id || null;
   // note.updatedAt at the time the modal was opened (or the server version was
   // loaded) — sent as baseUpdatedAt on every non-forced PUT.
   const baseUpdatedAtRef = useRef(note?.updatedAt || null);
@@ -96,6 +112,86 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     handleItemKeyDown: handleTodoItemKeyDown,
     getCleanedItems,
   } = useTodoList(note?.todoItems || []);
+
+  // Beim Öffnen: gibt es einen neueren, ungespeicherten Entwurf?
+  useEffect(() => {
+    const draft = readDraft(note?._id || null, draftUserId);
+    if (isDraftWorthRestoring(draft, note)) {
+      setDraftOffer(draft);
+    }
+    // Absichtlich nur beim Mount: Der Editor wird pro Öffnen neu gemountet, und
+    // ein späteres note-Update (Konflikt-Banner) darf nichts erneut anbieten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const persistDraft = useCallback((immediate = false) => {
+    if (draftOffer) return;
+    const draft = {
+      title,
+      content,
+      tags,
+      todoItems: isTodoList ? todoItems : [],
+      isTodoList,
+      color,
+      noteUpdatedAt: note?.updatedAt || null
+    };
+    if (immediate) {
+      writeDraft(note?._id || null, draftUserId, draft);
+      return;
+    }
+    clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(
+      () => writeDraft(note?._id || null, draftUserId, draft),
+      DRAFT_DEBOUNCE_MS
+    );
+  }, [title, content, tags, todoItems, isTodoList, color, note?._id, note?.updatedAt, draftUserId, draftOffer]);
+
+  // Nach jeder Änderung (entprellt). Der erste Lauf schreibt nichts: Ein
+  // unveränderter Editor soll keinen Entwurf anlegen.
+  useEffect(() => {
+    if (draftFirstRunRef.current) {
+      draftFirstRunRef.current = false;
+      return undefined;
+    }
+    persistDraft();
+    return () => clearTimeout(draftTimerRef.current);
+  }, [persistDraft]);
+
+  // Reload, Tab-Close und der ErrorBoundary-Reset (`window.location.reload()`)
+  // kündigen sich nicht an — beim Verstecken des Tabs sofort flushen.
+  useEffect(() => {
+    const flush = () => persistDraft(true);
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') flush();
+    };
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', flush);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearTimeout(draftTimerRef.current);
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', flush);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [persistDraft]);
+
+  const restoreDraft = useCallback(() => {
+    if (!draftOffer) return;
+    if (draftOffer.title !== undefined) setTitle(draftOffer.title);
+    if (draftOffer.content !== undefined) setContent(draftOffer.content);
+    if (Array.isArray(draftOffer.tags)) setTags(draftOffer.tags);
+    if (draftOffer.color !== undefined) setColor(draftOffer.color);
+    if (draftOffer.isTodoList !== undefined) setIsTodoList(Boolean(draftOffer.isTodoList));
+    if (Array.isArray(draftOffer.todoItems)) setTodoItems(draftOffer.todoItems);
+    // baseUpdatedAtRef bleibt auf dem Server-Stand: Die 409-Mechanik muss auch
+    // nach dem Wiederherstellen greifen, sonst überschreibt der Entwurf still
+    // die Änderung eines anderen Geräts.
+    setDraftOffer(null);
+  }, [draftOffer, setTodoItems]);
+
+  const discardDraft = useCallback(() => {
+    clearDraft(note?._id || null, draftUserId);
+    setDraftOffer(null);
+  }, [note?._id, draftUserId]);
+
 
   // Reset the form to a note object. Used when the note prop changes (modal
   // re-opened) and when the server version is loaded after a conflict.
@@ -244,6 +340,9 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
         if (forceOverwrite) {
           toastBus.success(t('conflictOverwritten'));
         }
+        // Gespeichert — der Entwurf ist sonst beim nächsten Öffnen „neuer" als
+        // die Notiz und wird fälschlich angeboten.
+        clearDraft(note?._id || null, draftUserId);
         onClose();
         return;
       }
@@ -607,6 +706,32 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
         </button>
 
         <div className="note-modal-body">
+          {draftOffer && !conflict && (
+            <div className="note-modal-conflict note-modal-draft" role="alert">
+              <div className="note-modal-conflict-body">
+                <strong>{t('draftFoundTitle')}</strong>
+                <span>{t('draftFoundMessage')}</span>
+                <div className="note-modal-conflict-actions">
+                  <button
+                    type="button"
+                    className="btn-conflict-load btn-draft-restore"
+                    onClick={restoreDraft}
+                    disabled={isSaving}
+                  >
+                    {t('draftRestore')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-conflict-keep btn-draft-discard"
+                    onClick={discardDraft}
+                    disabled={isSaving}
+                  >
+                    {t('draftDiscard')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {conflict && (
             <div className="note-modal-conflict" role="alert">
               <svg className="note-modal-conflict-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

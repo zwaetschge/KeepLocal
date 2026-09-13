@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { authAPI, initializeCSRF } from '../services/api';
 import { UNAUTHORIZED_EVENT } from '../services/api/apiUtils';
 import { removeLocalStorage } from '../utils/localStorage.mjs';
+import { clearDraftsForUser } from '../utils/noteDraft.mjs';
 
 const AuthContext = createContext();
 
@@ -105,6 +106,10 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await authAPI.logout();
+    // Editor-Entwürfe sind Konto-Daten: Am gemeinsamen Rechner darf der nächste
+    // Nutzer keine fremden Entwürfe angeboten bekommen (dieselbe Begründung wie
+    // bei den konto-gebundenen Einstellungen).
+    clearDraftsForUser(user?._id || user?.id || null);
     setSessionExpired(false);
     setUser(null);
     setIsLoggedIn(false);
