@@ -239,6 +239,13 @@ test('all-in-one runtime image carries no build toolchain (Top-30 Nr. 29)', () =
   assert.match(runtimeCommands, /COPY --from=ai-builder \/install \/usr\/local/);
   assert.doesNotMatch(runtimeCommands, /pip3 install -r/);
 
+  // pip-Scheme-Falle: das im Builder frisch aktualisierte (ungepatchte) pip
+  // legt --prefix-Layouts unter site-packages ab, Debians python3 durchsucht
+  // nur dist-packages. Der Builder normalisiert den Baum, damit der COPY in
+  // einen durchsuchten Pfad zeigt; der Whisper-Preload direkt danach verifiziert
+  // den Import im selben Build.
+  assert.match(commands(aiBuilder), /mv "\$\{libdir\}\/site-packages" "\$\{libdir\}\/dist-packages"/);
+
   // Cache-Ordnung: Abhängigkeiten vor dem Quellcode, sonst baut jede
   // ai-Änderung 469 MB Python-Deps bzw. jede Server-Änderung npm ci neu.
   assert.ok(

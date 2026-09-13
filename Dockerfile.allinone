@@ -53,8 +53,23 @@ WORKDIR /install
 # requirements.txt alone, so an ai/ source change no longer rebuilds the
 # 469-MB pip layer (worst case under QEMU for two architectures).
 COPY ai/requirements.txt ./
+# pip layout trap: the freshly upgraded (unpatched) pip puts --prefix installs
+# into lib/python3.10/site-packages, while Debian's python3 only searches
+# dist-packages. Normalize the tree so the runtime COPY below lands in a
+# searched path — the Whisper preload right after the COPY verifies the import
+# in this same build instead of on a device.
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip3 install --no-cache-dir --prefix=/install -r requirements.txt
+    && pip3 install --no-cache-dir --prefix=/install -r requirements.txt \
+    && libdir=/install/lib/python3.10 \
+    && if [ -d "${libdir}/site-packages" ]; then \
+         if [ -d "${libdir}/dist-packages" ]; then \
+           cp -a "${libdir}/site-packages/." "${libdir}/dist-packages/" \
+             && rm -rf "${libdir}/site-packages"; \
+         else \
+           mv "${libdir}/site-packages" "${libdir}/dist-packages"; \
+         fi; \
+       fi \
+    && test -d "${libdir}/dist-packages"
 
 # Stage 3: Final All-in-One Image
 FROM ubuntu:22.04
