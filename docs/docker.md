@@ -96,6 +96,10 @@ codes are identical either way, so healthchecks and load balancers keep working.
 The uploads write probe and the AI probe are cached for `HEALTH_PROBE_TTL_MS`
 (default 30000) so a healthcheck storm cannot be turned into I/O amplification.
 
+Retention (trash), transcription budgets, and the other day-to-day behavior an
+operator should expect from the current builds are described separately in
+[operations.md](operations.md).
+
 ## Logs
 
 Every program in the all-in-one image logs to the container output: supervisord

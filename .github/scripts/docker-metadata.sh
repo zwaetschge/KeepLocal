@@ -136,7 +136,7 @@ source_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
   echo 'labels<<__DOCKER_LABELS__'
   echo "org.opencontainers.image.created=${created}"
   echo 'org.opencontainers.image.description=Vibecoded Google Keep Clone'
-  echo 'org.opencontainers.image.licenses='
+  echo 'org.opencontainers.image.licenses=MIT'
   echo "org.opencontainers.image.revision=${GITHUB_SHA}"
   echo "org.opencontainers.image.source=${source_url}"
   echo 'org.opencontainers.image.title=KeepLocal'
