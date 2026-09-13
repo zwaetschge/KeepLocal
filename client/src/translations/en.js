@@ -40,6 +40,9 @@ export const en = {
   // Notes
   notes: 'Notes',
   notesInTrash: 'Notes in trash',
+  offlineBanner: 'No connection — changes are not being saved right now.',
+  offlineRetry: 'Try again',
+  backOnline: 'Back online — notes refreshed.',
   newNote: 'New Note',
   title: 'Title',
   content: 'Content',

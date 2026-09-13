@@ -3,8 +3,12 @@
 //
 // Plain module (no React) so `node --test` can exercise the resolution logic.
 
+import { isNetworkErrorMessage } from './onlineStatus.mjs';
+
 /** code -> translation key in client/src/translations/{de,en}.js */
 export const API_ERROR_KEYS = {
+  // Netzwerk: entsteht clientseitig (fetch bricht ab), nie als Server-Antwort.
+  NETWORK_ERROR: 'errOffline',
   // Transport (entsteht nur clientseitig: Service Worker, AbortController)
   OFFLINE: 'errOffline',
   REQUEST_TIMEOUT: 'errRequestTimeout',
@@ -132,7 +136,23 @@ export function resolveApiErrorMessage(error, t, fallbackKey = 'errGeneric') {
   }
 
   const message = typeof error?.message === 'string' ? error.message.trim() : '';
-  if (message && message !== 'Failed to fetch') return message;
+
+  // „Failed to fetch" (Chrome/Node), „NetworkError when attempting to fetch
+  // resource." (Firefox) und „Load failed" (Safari) sind keine Server-Aussagen,
+  // sondern Verbindungsabbrüche. Früher wurden sie ausdrücklich weggeworfen,
+  // sodass ein offline fehlgeschlagenes Speichern nur „Error updating note"
+  // zeigte — ohne Hinweis, dass die Änderung nicht gespeichert wurde.
+  if (isNetworkErrorMessage(message)) {
+    const offlineKey = API_ERROR_KEYS.NETWORK_ERROR;
+    if (typeof t === 'function') {
+      const translated = t(offlineKey);
+      if (translated && translated !== offlineKey) return translated;
+    }
+    // Keine Übersetzung vorhanden: die rohe Browser-Signatur hilft niemandem,
+    // also wie früher verwerfen und auf den Fallback-Key des Aufrufers fallen.
+  } else if (message) {
+    return message;
+  }
 
   if (typeof t === 'function') {
     const fallback = t(fallbackKey);

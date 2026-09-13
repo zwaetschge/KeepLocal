@@ -910,6 +910,39 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expectAppHealthy(page);
   });
 
+  // Audit 2026-09-12 (Top-30 Nr. 14): offline war der stillste Zustand der App —
+  // der Poll lief mit silent:true weiter, Speichern zeigte nur „Error updating
+  // note", und nichts sagte, dass die Änderung nicht gespeichert wurde.
+  test('going offline shows a banner and reconnecting refreshes the list', async () => {
+    const context = page.context();
+    try {
+      await context.setOffline(true);
+      await expect(page.locator('.offline-banner')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.offline-banner')).toContainText(/Keine Verbindung|No connection/i);
+      await expect(page.locator('.offline-banner')).toHaveAttribute('role', 'status');
+
+      // Saving while offline must say "connection", not "error updating note".
+      await page.click('.note-form-button');
+      await expect(page.locator('.note-modal')).toBeVisible();
+      await page.fill('.note-modal-title', 'Offline-Notiz');
+      await page.fill('.note-modal-content', 'darf nicht still verschwinden');
+      await page.click('.btn-modal-save');
+      await expect(page.locator('.toast')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.toast').first()).toContainText(/Keine Verbindung|No connection|offline/i);
+      await page.locator('.btn-modal-cancel').click();
+      await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 15000 });
+
+      await context.setOffline(false);
+      await expect(page.locator('.offline-banner')).toHaveCount(0, { timeout: 15000 });
+      await expect(page.locator('.toast').first()).toContainText(/Wieder verbunden|Back online/i, { timeout: 15000 });
+      await expect(page.locator('.App')).toBeVisible();
+      await expect(page.locator('body')).not.toContainText(errorBoundaryText);
+    } finally {
+      await context.setOffline(false);
+    }
+
+  });
+
   // The password tests run last: they change credentials the other tests use.
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';

@@ -134,14 +134,16 @@ const STATUS_TO_CODE = {
 
 /**
  * Transport-Codes, die ausschließlich clientseitig entstehen: der Service
- * Worker antwortet `OFFLINE` ohne Netzwerk, `REQUEST_TIMEOUT` kommt vom
+ * Worker antwortet `OFFLINE` ohne Netzwerk, `NETWORK_ERROR` steht für die
+ * fetch-Abbruch-Signaturen der Browser („Failed to fetch", „Load failed",
+ * „NetworkError when attempting to fetch resource."), `REQUEST_TIMEOUT` kommt vom
  * AbortController-Timeout in apiUtils, `ABORTED` wenn die App einen Request
  * bewusst ersetzt (Filterwechsel) oder abbricht.
  *
  * Sie stehen im selben Katalog, damit es genau EIN Fehler-Vokabular gibt und der
  * Übersetzungs-Contract (client/tests/apiErrors.test.js) sie erzwingt.
  */
-const TRANSPORT_CODES = ['OFFLINE', 'REQUEST_TIMEOUT', 'ABORTED'];
+const TRANSPORT_CODES = ['OFFLINE', 'NETWORK_ERROR', 'REQUEST_TIMEOUT', 'ABORTED'];
 
 /**
  * Resolve the stable code for an error response.
