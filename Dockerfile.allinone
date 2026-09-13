@@ -78,7 +78,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # gnupg is needed for `gpg --dearmor` of the MongoDB key inside this RUN and
 # is purged again at the end of the same layer. ffmpeg keeps the libav runtime
 # libraries in the image in case a Python dependency had to be compiled from
-# source in the builder instead of arriving as a wheel.
+# source in the builder instead of arriving as a wheel. Only mongodb-org-server
+# ships: mongosh (287 MB) and mongos (130 MB) from the mongodb-org metapackage
+# are never invoked in this single-node container (supervisord runs mongod,
+# the entrypoint only stats/chowns, backups run in-process via mongoose).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
@@ -92,7 +95,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
        > /etc/apt/sources.list.d/mongodb-org-7.0.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends mongodb-org \
+    && apt-get install -y --no-install-recommends mongodb-org-server \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get purge -y gnupg \

@@ -230,9 +230,13 @@ test('all-in-one runtime image carries no build toolchain (Top-30 Nr. 29)', () =
   }
 
   // Laufzeit-Pakete bleiben: python3 + ffmpeg (libav-Runtimes für notgedrungen
-  // kompilierte Wheels). gnupg wird im selben RUN wieder entfernt, damit der
+  // kompilierte Wheels) und mongodb-org-server — mongosh (287 MB) und mongos
+  // (130 MB) aus dem mongodb-org-Metapaket werden im Single-Node-Container
+  // nie aufgerufen. gnupg wird im selben RUN wieder entfernt, damit der
   // Key-Import kein eigenes Layer-Duplikat hinterlässt.
-  assert.match(runtimeCommands, /apt-get update[\s\S]*\bpython3\b[\s\S]*\bffmpeg\b[\s\S]*\bmongodb-org\b[\s\S]*\bnodejs\b/);
+  assert.match(runtimeCommands, /apt-get install -y --no-install-recommends mongodb-org-server/);
+  assert.doesNotMatch(runtimeCommands, /install -y --no-install-recommends mongodb-org\s*\\/);
+  assert.match(runtimeCommands, /apt-get update[\s\S]*\bpython3\b[\s\S]*\bffmpeg\b[\s\S]*\bmongodb-org-server\b[\s\S]*\bnodejs\b/);
   assert.match(runtimeCommands, /\bnodejs\b[\s\S]*apt-get purge -y gnupg[\s\S]*apt-get autoremove[\s\S]*rm -rf \/var\/lib\/apt\/lists\/\*/);
 
   // Wheels kommen aus dem Builder — das Final-Image installiert kein pip-Paket.
