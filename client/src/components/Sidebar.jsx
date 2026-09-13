@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ThemeToggle from './ThemeToggle';
 import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,6 +28,47 @@ function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { t } = useLanguage();
 
+  // Nr. 28 (Top-30): der mobile Drawer verhält sich tastaturtechnisch wie ein
+  // Dialog — Fokus hinein beim Öffnen, zurück auf den Menü-Button beim
+  // Schließen (auch per Escape). Alles nur unterhalb der 768px-Grenze, wo
+  // die Sidebar zum off-canvas Drawer wird; am Desktop bleibt sie normal im
+  // Fokusfluss.
+  const drawerRef = useRef(null);
+  const restoreFocusRef = useRef(null);
+  const onMobileCloseRef = useRef(onMobileClose);
+
+  useEffect(() => {
+    onMobileCloseRef.current = onMobileClose;
+  }, [onMobileClose]);
+
+  useEffect(() => {
+    if (!isMobileOpen) return undefined;
+
+    const isMobileLayout = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobileLayout) return undefined;
+
+    restoreFocusRef.current = document.activeElement;
+    drawerRef.current?.querySelector('button, a[href]')?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      // Ein echter Dialog liegt über dem Drawer (z.B. der Admin-Confirm):
+      // der gehört dem Dialog, nicht dem Drawer.
+      if (document.querySelector('[role="dialog"]')) return;
+      event.stopPropagation();
+      onMobileCloseRef.current();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const restore = restoreFocusRef.current;
+      if (restore && typeof restore.focus === 'function' && restore.isConnected) {
+        restore.focus();
+      }
+      restoreFocusRef.current = null;
+    };
+  }, [isMobileOpen]);
+
   return (
     <>
       {/* Mobile overlay */}
@@ -35,7 +76,11 @@ function Sidebar({
         <div className="sidebar-overlay" onClick={onMobileClose} />
       )}
 
-      <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}>
+      <aside
+        id="app-sidebar"
+        ref={drawerRef}
+        className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}
+      >
       <button
         className="sidebar-toggle"
         onClick={() => setIsCollapsed(!isCollapsed)}

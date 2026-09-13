@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
-import { computeTrapFocus, getFocusableElements } from '../utils/modalA11y.mjs';
+import {
+  computeTrapFocus,
+  getFocusableElements,
+  isTopDialog,
+  pushDialog,
+  removeDialog,
+} from '../utils/modalA11y.mjs';
 
 /**
  * Shared modal accessibility behaviour, extracted from ConfirmDialog so every
@@ -11,7 +17,10 @@ import { computeTrapFocus, getFocusableElements } from '../utils/modalA11y.mjs';
  *  - Tab / Shift+Tab are trapped inside the dialog container,
  *  - focus is restored to the invoking element when the dialog closes,
  *  - optional Escape-to-close (callers that own their own Escape handling,
- *    e.g. NoteModal via useModalShortcuts, pass `closeOnEscape: false`).
+ *    e.g. NoteModal via useModalShortcuts, pass `closeOnEscape: false`),
+ *  - Nr. 28: nested dialogs are stacked — only the top-most one reacts to
+ *    Escape and traps Tab, so a ConfirmDialog or lightbox above an editor
+ *    never closes the dialog underneath with the same keypress.
  *
  * Usage:
  *   const { containerRef, titleId } = useModalA11y({ onClose });
@@ -51,6 +60,16 @@ export function useModalA11y({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // Nr. 28: same treatment for closeOnEscape. It MUST NOT be a dependency of
+  // the main effect: when e.g. the admin console flips it to false because a
+  // ConfirmDialog opened, a re-run would remove and re-push the console's
+  // stack entry — landing it ABOVE the just-mounted confirm, which then never
+  // sees Escape. The flag is read at event time instead.
+  const closeOnEscapeRef = useRef(closeOnEscape);
+  useEffect(() => {
+    closeOnEscapeRef.current = closeOnEscape;
+  }, [closeOnEscape]);
+
   const initialFocusTargetRef = useRef(initialFocusRef);
   initialFocusTargetRef.current = initialFocusRef;
 
@@ -58,6 +77,7 @@ export function useModalA11y({
     if (!active) return undefined;
 
     const container = containerRef.current;
+    const entry = pushDialog();
 
     // Capture the invoking element BEFORE initial focus moves, so closing the
     // dialog restores focus to the caller (keyboard users otherwise land on
@@ -79,7 +99,17 @@ export function useModalA11y({
     }
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && closeOnEscape) {
+      // Nr. 28: only the top-most dialog owns the keyboard. A dialog with a
+      // nested overlay above it (confirm inside admin console, lightbox
+      // inside the editor) must stay silent on Escape and Tab.
+      if (!isTopDialog(entry)) return;
+
+      if (event.key === 'Escape' && closeOnEscapeRef.current) {
+        // Keep the keypress from bubbling on to window-level listeners, so
+        // legacy handlers there cannot ALSO act on the same Escape. (Same-node
+        // document listeners still see it — callers that own their own Escape
+        // logic must guard themselves, like NoteModal's lightbox check.)
+        event.stopPropagation();
         onCloseRef.current();
         return;
       }
@@ -99,6 +129,7 @@ export function useModalA11y({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      removeDialog(entry);
       document.removeEventListener('keydown', handleKeyDown);
       if (
         previouslyFocused &&
@@ -108,7 +139,9 @@ export function useModalA11y({
         previouslyFocused.focus();
       }
     };
-  }, [active, closeOnEscape]);
+    // closeOnEscape deliberately absent: see the ref above — a flip must not
+    // re-push this dialog above overlays that mounted in between.
+  }, [active]);
 
   return { containerRef, titleId: resolvedTitleId };
 }

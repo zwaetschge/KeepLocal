@@ -262,9 +262,18 @@ function AppContent() {
 
   return (
     <div className="App">
+      {/* Nr. 28 (Top-30): erster Tab-Stop der App — überspringt Header und
+          Sidebar und springt direkt zur Notizliste. */}
+      <a className="skip-link" href="#main-content">{t('skipToContent')}</a>
       <header className="App-header">
         <div className="header-content">
-          <button className="mobile-menu-toggle" onClick={() => setIsMobileMenuOpen(true)} aria-label={t('openMenu')}>
+          <button
+            className="mobile-menu-toggle"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label={t('openMenu')}
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="app-sidebar"
+          >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 12h18M3 6h18M3 18h18"/>
             </svg>
@@ -321,7 +330,8 @@ function AppContent() {
           onOpenFriends={user?.isDemo ? undefined : () => setShowFriendsModal(true)}
         />
 
-        <main className="App-main" role="main" aria-busy={refreshing}
+        {/* tabIndex=-1 (Skip-Link-Standard): Fragment-Ziel sonst ohne echten Fokus. */}
+        <main id="main-content" tabIndex={-1} className="App-main" role="main" aria-busy={refreshing}
           style={refreshing ? REFRESHING_STYLE : undefined}>
           {!isOnline && (
             <OfflineBanner onRetry={() => fetchNotes(searchTerm, pagination.page, { background: true })} />

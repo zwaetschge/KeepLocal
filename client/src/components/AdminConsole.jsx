@@ -156,8 +156,10 @@ function AdminConsole({ onClose }) {
 
   // Same dialog semantics as the other overlays: focus trap, initial focus,
   // focus restore and Escape-to-close. The console only mounts while open, so
-  // `active` stays true.
-  const { containerRef, titleId } = useModalA11y({ onClose });
+  // `active` stays true. While a delete confirm is open, the ConfirmDialog on
+  // top owns Escape (FriendsModal pattern) — one Escape cancels the confirm,
+  // the second closes the console.
+  const { containerRef, titleId } = useModalA11y({ onClose, closeOnEscape: !deleteConfirm });
 
   return (
     <div className="admin-console-overlay" {...backdropClose}>

@@ -1154,4 +1154,85 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(friend.locator('.App')).toBeVisible({ timeout: 20000 });
     await context.close();
   });
+
+  // Nr. 28 (Top-30): die Tastatur-Runde — Skip-Link, mobiler Drawer mit
+  // Fokus-Management, Lightbox als eigener Dialog, Escape-Hierarchie im
+  // Admin-Confirm. Der vorherige Test lässt die Settings offen; die muss hier
+  // erst weg, sonst zeigt der erste Tab in das Overlay statt auf den Skip-Link.
+  test('keyboard round: skip link, drawer focus, lightbox dialog, nested Escape', async () => {
+    const activeElement = (selector) =>
+      page.evaluate(
+        (sel) => Boolean(document.activeElement?.closest(sel)),
+        selector
+      );
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-modal')).toHaveCount(0);
+
+    // --- Skip-Link: erster Tab-Stop, Enter springt zum Inhalt. Frischer
+    // Load, damit der Fokus auf <body> liegt — Chromium setzt die
+    // Tab-Navigation sonst beim zuletzt fokussierten Element fort (hier wäre
+    // das der Logout-Button, nicht der Anfang der Seite).
+    await page.reload();
+    await expectAppHealthy(page);
+    await page.keyboard.press('Tab');
+    await expect.poll(() => activeElement('.skip-link')).toBe(true);
+    await page.keyboard.press('Enter');
+    await expect.poll(() =>
+      page.evaluate(() => document.activeElement?.id)
+    ).toBe('main-content');
+
+    // --- Mobiler Drawer: Fokus hinein, aria-expanded, Escape schließt und
+    // gibt den Fokus an den Menü-Button zurück.
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.click('.mobile-menu-toggle');
+    await expect(page.locator('.sidebar.mobile-open')).toBeVisible();
+    await expect(page.locator('.mobile-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => activeElement('.sidebar')).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sidebar.mobile-open')).toHaveCount(0);
+    await expect(page.locator('.mobile-menu-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await expect.poll(() => activeElement('.mobile-menu-toggle')).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // --- Lightbox: die Bild-Kachel ist per Tastatur erreichbar, Enter öffnet
+    // die Lightbox, der Fokus liegt auf dem Schließen-Button — und Escape
+    // schließt NUR die Lightbox, der Editor bleibt offen und bekommt den
+    // Fokus zurück auf die Kachel.
+    const imageCard = page.locator('[role="article"]', {
+      has: page.locator('.note-image-preview'),
+    }).first();
+    await imageCard.click();
+    await expect(page.locator('.note-modal')).toBeVisible();
+    const imageTile = page.locator('.image-open-btn').first();
+    await imageTile.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.lightbox-overlay')).toBeVisible();
+    await expect.poll(() => activeElement('.lightbox-close')).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.lightbox-overlay')).toHaveCount(0);
+    await expect(page.locator('.note-modal')).toBeVisible();
+    await expect.poll(() => activeElement('.image-open-btn')).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    await expectAppHealthy(page);
+
+    // --- Admin-Confirm: der erste Escape bricht nur den Confirm ab, die
+    // Konsole bleibt; der zweite schließt die Konsole.
+    await page.click('.user-name.clickable');
+    await expect(page.locator('.settings-modal')).toBeVisible();
+    await page.locator('.settings-modal button', { hasText: /Open admin console|Admin-Konsole öffnen/ }).click();
+    await expect(page.locator('.admin-console-overlay')).toBeVisible();
+    await page.locator('.admin-tab', { hasText: /Users|Benutzer/ }).click();
+    const friendRow = page.locator('.admin-table tbody tr', { hasText: FRIEND.username }).first();
+    await friendRow.locator('.btn-user-delete').click();
+    await expect(page.locator('.confirm-dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.confirm-dialog')).toHaveCount(0);
+    await expect(page.locator('.admin-console')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.admin-console-overlay')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-modal')).toHaveCount(0);
+  });
 });

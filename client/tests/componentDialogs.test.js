@@ -147,3 +147,58 @@ test('FriendsModal keeps separate loading flags for list, requests and search', 
   assert.match(source, /searching/);
   assert.doesNotMatch(source, /const \[loading, setLoading\]/);
 });
+
+// Nr. 28 (Top-30): Tastatur-Runde. Skip-Link, mobiler Drawer (Fokus +
+// visibility), Bild-Kacheln als Buttons, Lightbox als eigener Dialog,
+// Admin-Confirm besitzt Escape.
+test('keyboard a11y: skip link, drawer visibility, lightbox dialog, admin confirm', () => {
+  const readClientFile = (file) =>
+    fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+
+  // Skip-Link ist der erste Tab-Stop der App und springt auf #main-content;
+  // der Menü-Button spiegelt den Drawer-Zustand.
+  const app = readClientFile('src/App.jsx');
+  assert.match(app, /className="skip-link" href="#main-content"/);
+  assert.match(app, /id="main-content" tabIndex=\{-1\}/);
+  assert.match(app, /aria-expanded=\{isMobileMenuOpen\}/);
+  assert.match(app, /aria-controls="app-sidebar"/);
+
+  const appCss = readClientFile('src/App.css');
+  assert.match(appCss, /\.skip-link\s*\{/);
+  assert.match(appCss, /\.skip-link:focus\s*\{/);
+
+  // Der geschlossene Drawer liegt sonst nur visuell daneben — Tab landete in
+  // unsichtbaren Sidebar-Buttons. visibility nimmt ihn aus dem Fokusfluss,
+  // der verzögerte Übergang erhält die Slide-out-Animation.
+  const sidebarCss = readClientFile('src/components/Sidebar.css');
+  assert.match(
+    sidebarCss,
+    /\.sidebar\.mobile-open \{\s*transform: translateX\(0\);\s*visibility: visible;/
+  );
+  assert.match(sidebarCss, /visibility: hidden;/);
+  assert.match(sidebarCss, /visibility 0s linear var\(--duration-slow\)/);
+
+  const sidebar = componentSource('Sidebar.jsx');
+  assert.match(sidebar, /id="app-sidebar"/);
+  assert.match(sidebar, /drawerRef\.current\?\.querySelector\('button, a\[href\]'\)\?\.focus\(\)/);
+  assert.match(sidebar, /key !== 'Escape'/);
+
+  // Bild-Kacheln sind Buttons mit sprechendem Label (kein div mit onClick);
+  // die Lightbox ist ein eigener Dialog mit Fokus auf dem Schließen-Button.
+  const noteModal = componentSource('NoteModal.jsx');
+  assert.match(noteModal, /className="image-open-btn"/);
+  assert.match(noteModal, /aria-label=\{t\('imageAlt', \{ index: index \+ 1 \}\)\}/);
+  assert.match(noteModal, /active: Boolean\(lightboxImage\)/);
+  assert.match(noteModal, /initialFocusRef: lightboxCloseRef/);
+  assert.match(noteModal, /ref=\{lightboxContainerRef\}/);
+
+  // Karten-Thumbnails nennen die Bildposition statt des Hex-Dateinamens.
+  assert.match(
+    componentSource('Note.jsx'),
+    /alt=\{t\('imageAlt', \{ index: index \+ 1 \}\)\}/
+  );
+
+  // Admin-Console: gehört Escape dem offenen Confirm, schließt der erste
+  // Escape nur den Confirm (FriendsModal-Muster), erst der zweite die Console.
+  assert.match(componentSource('AdminConsole.jsx'), /closeOnEscape: !deleteConfirm/);
+});

@@ -64,3 +64,27 @@ export function computeTrapFocus(activeElement, focusableElements, shiftKey) {
   }
   return activeElement === last ? first : null;
 }
+
+/**
+ * Nr. 28 (Top-30): registry of the currently open dialogs. Only the TOP-MOST
+ * entry may react to Escape and run the Tab trap — otherwise a nested overlay
+ * (lightbox over the note editor, ConfirmDialog over the admin console) also
+ * triggers the dialog underneath and both close at once. Registration order
+ * equals hook-effect order equals mount order, so overlays mounted later win.
+ */
+const dialogStack = [];
+
+export function pushDialog() {
+  const entry = {};
+  dialogStack.push(entry);
+  return entry;
+}
+
+export function removeDialog(entry) {
+  const index = dialogStack.indexOf(entry);
+  if (index !== -1) dialogStack.splice(index, 1);
+}
+
+export function isTopDialog(entry) {
+  return dialogStack.length > 0 && dialogStack[dialogStack.length - 1] === entry;
+}

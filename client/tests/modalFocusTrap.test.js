@@ -87,3 +87,29 @@ test('getFocusableElements filters by selector, disabled state and visibility', 
   assert.deepEqual(getFocusableElements(null), []);
   assert.deepEqual(getFocusableElements({}), []);
 });
+
+// Nr. 28 (Top-30): verschachtelte Dialoge sind gestapelt — nur der oberste
+// besitzt Escape und die Tab-Falle. Sonst schließt ein Bestätigungs-Dialog
+// über der Admin-Konsole (oder die Lightbox über dem Editor) mit demselben
+// Tastendruck auch den Dialog darunter.
+test('dialog stack: only the top-most dialog owns the keyboard', async () => {
+  const { pushDialog, removeDialog, isTopDialog } = await import(moduleUrl);
+
+  const editor = pushDialog();
+  assert.ok(isTopDialog(editor), 'ein einzelner Dialog ist der oberste');
+
+  const confirm = pushDialog();
+  assert.ok(!isTopDialog(editor), 'der Dialog darunter muss still bleiben');
+  assert.ok(isTopDialog(confirm), 'der zuletzt gemountete Dialog gewinnt');
+
+  removeDialog(confirm);
+  assert.ok(
+    isTopDialog(editor),
+    'nach dem Schließen des Overlays übernimmt der darunterliegende Dialog wieder'
+  );
+
+  removeDialog(editor);
+  const fresh = pushDialog();
+  assert.ok(isTopDialog(fresh), 'der Stack erholt sich, nachdem alle Dialoge zu waren');
+  removeDialog(fresh);
+});
