@@ -114,9 +114,22 @@
 }
 
 .admin-tab.active {
-  color: #667eea;
+  /* Nr. 27 (Top-30): #667eea erreichte auf der aktiven Tab-Fläche (10%
+     Indigo-Tint über Panel) nur 3.2:1 — der Tab-Text ist 15px, also kleiner
+     Text, AA verlangt 4.5:1. Dunkleres Indigo für den Text, der Unterstrich
+     bleibt als Zustands-Indikator bei #667eea (3:1 nach WCAG 1.4.11 reichen
+     dort und sind erreicht). */
+  color: #4a5fd0;
   border-bottom-color: #667eea;
   background: rgba(102, 126, 234, 0.1);
+}
+
+.dark-mode .admin-tab.active,
+.oled-mode .admin-tab.active {
+  /* Dieselbe Regel braucht im Dunkeln das GEGENTEIL: hellere Indigo-Tinte
+     (#8b9cf5 ≈ 6:1 auf dem dunklen Panel), sonst wäre der dunkle Text erst
+     recht unlesbar. */
+  color: #8b9cf5;
 }
 
 .admin-content {
