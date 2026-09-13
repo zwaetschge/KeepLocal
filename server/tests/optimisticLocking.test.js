@@ -35,12 +35,34 @@ function buildStoredNote(overrides = {}) {
     todoItems: [],
     linkPreviews: [],
     updatedAt: new Date(STORED_AT),
-    saveCalls: 0,
-    save: async function () {
-      this.saveCalls += 1;
-      return this;
-    },
     ...overrides
+  };
+}
+
+/**
+ * Note-Modell-Mock für den bedingten Schreibpfad: updateNote liest zuerst per
+ * findOne, schreibt dann per findOneAndUpdate mit updatedAt-Precondition. Geht
+ * der Schreib-Lauf ins Leere (writeResult null), liest der Service ein zweites
+ * Mal — mockReadable steuert, was dieser Re-Read sieht.
+ */
+function noteModelMock({
+  stored = buildStoredNote(),
+  writeResult,
+  onReread = 'stored',
+  writes = []
+} = {}) {
+  let reads = 0;
+  return {
+    writes,
+    findOne: async (query) => {
+      reads += 1;
+      return reads === 1 ? stored : (onReread === 'stored' ? stored : onReread);
+    },
+    findOneAndUpdate: async (query, update, options) => {
+      writes.push({ query, update, options });
+      // Default: der Schreib-Lauf trifft und gibt den aktualisierten Stand zurück.
+      return writeResult === undefined ? { ...stored, ...update.$set } : writeResult;
+    }
   };
 }
 
@@ -48,33 +70,39 @@ function buildStoredNote(overrides = {}) {
 // Service-level tests (mocked Note model, same pattern as notesService.test.js)
 // ---------------------------------------------------------------------------
 
-test('update without baseUpdatedAt keeps the legacy last-write-wins behavior', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+test('update without baseUpdatedAt skips the staleness pre-check (legacy clients keep working)', async () => {
+  const model = noteModelMock();
+  const service = loadService(model);
 
-  await service.updateNote(NOTE_ID, { content: 'Client-Version' }, 'user-id');
+  const result = await service.updateNote(NOTE_ID, { content: 'Client-Version' }, 'user-id');
 
-  assert.equal(note.content, 'Client-Version');
-  assert.equal(note.saveCalls, 1);
+  assert.equal(result.content, 'Client-Version');
+  assert.equal(model.writes.length, 1);
+  // Auch ohne Client-Precondition schützt der Server das Rennen: geschrieben
+  // wird nur, wenn zwischen Lesen und Schreiben niemand anders gewonnen hat.
+  assert.equal(
+    new Date(model.writes[0].query.updatedAt).toISOString(),
+    STORED_AT
+  );
 });
 
 test('update succeeds when baseUpdatedAt matches the stored updatedAt', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock();
+  const service = loadService(model);
 
-  await service.updateNote(
+  const result = await service.updateNote(
     NOTE_ID,
     { content: 'Client-Version', baseUpdatedAt: STORED_AT },
     'user-id'
   );
 
-  assert.equal(note.content, 'Client-Version');
-  assert.equal(note.saveCalls, 1);
+  assert.equal(result.content, 'Client-Version');
+  assert.equal(model.writes.length, 1);
 });
 
 test('the full 1s tolerance window counts as current', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock();
+  const service = loadService(model);
 
   // Exactly 1000ms stale must NOT conflict (only differences > 1s do).
   await service.updateNote(
@@ -83,12 +111,37 @@ test('the full 1s tolerance window counts as current', async () => {
     'user-id'
   );
 
-  assert.equal(note.saveCalls, 1);
+  assert.equal(model.writes.length, 1);
 });
 
-test('a stale baseUpdatedAt fails with 409, the stored note, and no save', async () => {
+test('the conditional write carries the version token, access filter and lastEditedBy', async () => {
+  const model = noteModelMock();
+  const service = loadService(model);
+
+  await service.updateNote(
+    NOTE_ID,
+    { content: 'Client-Version', baseUpdatedAt: STORED_AT },
+    'user-id'
+  );
+
+  const { query, update, options } = model.writes[0];
+  assert.equal(
+    new Date(query.updatedAt).toISOString(),
+    STORED_AT,
+    'the updatedAt read from the document is the write precondition'
+  );
+  assert.equal(query._id, NOTE_ID);
+  assert.equal(query.deletedAt, null);
+  assert.deepEqual(query.$or, [{ userId: 'user-id' }, { sharedWith: 'user-id' }]);
+  assert.equal(options.new, true);
+  assert.equal(update.$set.content, 'Client-Version');
+  assert.equal(update.$set.lastEditedBy, 'user-id');
+});
+
+test('a stale baseUpdatedAt fails with 409, the stored note, and no write', async () => {
   const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock({ stored: note });
+  const service = loadService(model);
 
   await assert.rejects(
     service.updateNote(
@@ -111,13 +164,12 @@ test('a stale baseUpdatedAt fails with 409, the stored note, and no save', async
     }
   );
 
-  assert.equal(note.content, 'Neuerer Inhalt');
-  assert.equal(note.saveCalls, 0);
+  assert.equal(model.writes.length, 0);
 });
 
 test('the conflict boundary is exclusive: more than 1000ms difference is rejected', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock();
+  const service = loadService(model);
 
   await assert.rejects(
     service.updateNote(
@@ -127,24 +179,24 @@ test('the conflict boundary is exclusive: more than 1000ms difference is rejecte
     ),
     error => error.statusCode === 409
   );
-  assert.equal(note.saveCalls, 0);
+  assert.equal(model.writes.length, 0);
 });
 
 test('invalid baseUpdatedAt values are ignored like a missing value', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock();
+  const service = loadService(model);
 
   for (const baseUpdatedAt of ['not-a-date', '', '   ', 12345, { iso: STORED_AT }, null]) {
     await service.updateNote(NOTE_ID, { content: 'Client-Version', baseUpdatedAt }, 'user-id');
   }
 
-  assert.equal(note.content, 'Client-Version');
-  assert.equal(note.saveCalls, 6);
+  assert.equal(model.writes.length, 6);
+  assert.equal(model.writes[5].update.$set.content, 'Client-Version');
 });
 
 test('baseUpdatedAt is never written onto the persisted note document', async () => {
-  const note = buildStoredNote();
-  const service = loadService({ findOne: async () => note });
+  const model = noteModelMock();
+  const service = loadService(model);
 
   await service.updateNote(
     NOTE_ID,
@@ -157,10 +209,104 @@ test('baseUpdatedAt is never written onto the persisted note document', async ()
     'user-id'
   );
 
-  assert.equal('baseUpdatedAt' in note, false);
-  assert.equal('rogueField' in note, false);
-  assert.equal(note.title, 'Neuer Titel');
-  assert.equal(note.content, 'Neuer Inhalt');
+  assert.equal('baseUpdatedAt' in model.writes[0].update.$set, false);
+  assert.equal('rogueField' in model.writes[0].update.$set, false);
+  assert.equal(model.writes[0].update.$set.title, 'Neuer Titel');
+  assert.equal(model.writes[0].update.$set.content, 'Neuer Inhalt');
+});
+
+test('a lost write race becomes 409 with the fresh server note, not a 500', async () => {
+  // Zwischen Lesen und Schreiben gewinnt ein zweiter Schreibender: Der
+  // bedingte Update verfehlt (null), der Re-Read liefert den Sieger-Stand.
+  const winner = buildStoredNote({
+    title: 'Gewinner-Stand',
+    content: 'Zweiter Schreiber war schneller',
+    updatedAt: new Date('2026-09-06T10:00:02.000Z')
+  });
+  const model = noteModelMock({ writeResult: null, onReread: winner });
+  const service = loadService(model);
+
+  await assert.rejects(
+    service.updateNote(NOTE_ID, { content: 'Zu langsam' }, 'user-id'),
+    error => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.currentNote, winner);
+      assert.equal(error.currentNote.title, 'Gewinner-Stand');
+      return true;
+    }
+  );
+});
+
+test('a lost write race where the note vanished becomes 404', async () => {
+  const model = noteModelMock({ writeResult: null, onReread: null });
+  const service = loadService(model);
+
+  await assert.rejects(
+    service.updateNote(NOTE_ID, { content: 'Zu langsam' }, 'user-id'),
+    error => {
+      assert.equal(error.statusCode, 404);
+      return true;
+    }
+  );
+});
+
+test('pin toggle is one atomic pipeline update — no read-modify-write, no save', async () => {
+  const writes = [];
+  const reads = [];
+  const service = loadService({
+    findOne: async (query) => { reads.push(query); return buildStoredNote(); },
+    findOneAndUpdate: async (query, update, options) => {
+      writes.push({ query, update, options });
+      return buildStoredNote({ isPinned: true });
+    }
+  });
+
+  const note = await service.togglePinNote(NOTE_ID, 'user-id');
+
+  assert.equal(reads.length, 0, 'the toggle must not read first');
+  assert.equal(writes.length, 1);
+  assert.ok(Array.isArray(writes[0].update), 'the toggle must be a pipeline update');
+  assert.deepEqual(
+    writes[0].update[0].$set.isPinned,
+    { $not: ['$isPinned'] },
+    'the flip happens inside the database, atomically'
+  );
+  assert.equal(writes[0].options.new, true);
+  assert.equal(note.isPinned, true);
+});
+
+test('pin toggle of a missing note stays 404', async () => {
+  const service = loadService({
+    findOneAndUpdate: async () => null
+  });
+
+  await assert.rejects(
+    service.togglePinNote(NOTE_ID, 'user-id'),
+    error => error.statusCode === 404
+  );
+});
+
+test('archive toggle flips atomically and stays owner-only', async () => {
+  const writes = [];
+  const service = loadService({
+    findOneAndUpdate: async (query, update, options) => {
+      writes.push({ query, update, options });
+      return buildStoredNote({ isArchived: true });
+    }
+  });
+
+  const note = await service.toggleArchiveNote(NOTE_ID, 'user-id');
+
+  assert.equal(writes.length, 1);
+  assert.deepEqual(
+    writes[0].query,
+    { _id: NOTE_ID, userId: 'user-id', deletedAt: null }
+  );
+  assert.deepEqual(
+    writes[0].update[0].$set.isArchived,
+    { $not: ['$isArchived'] }
+  );
+  assert.equal(note.isArchived, true);
 });
 
 test('the conflict currentNote serializes like a regular PUT response with ISO dates', async () => {

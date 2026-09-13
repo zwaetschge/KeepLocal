@@ -367,6 +367,15 @@ router.put('/:id', async (req, res, next) => {
         error: error.message
       });
     }
+    if (error.statusCode === httpStatus.CONFLICT) {
+      // Optimistic Locking: Ein Sync-Skript kann auf 409 mit Retry reagieren,
+      // statt einen Serverfehler zu sehen. Der frische Server-Stand reist mit.
+      return res.status(httpStatus.CONFLICT).json({
+        success: false,
+        error: error.message,
+        currentNote: error.currentNote
+      });
+    }
     next(error);
   }
 });

@@ -249,6 +249,90 @@ test('the storage janitor deletes expired trash including its files', { skip }, 
   await resetDatabase();
 });
 
+test('optimistic locking: a stale writer gets 409 with the fresh note, the winner survives (Top-30 Nr. 12)', { skip }, async () => {
+  const notesService = require('../services/notesService');
+  const { Note } = models();
+  const owner = await seedUser();
+  const note = await seedNote(owner._id, { title: 'Ausgang', content: 'v0' });
+  const noteId = note._id.toString();
+
+  // Der Browser-Kollisionsfall: Der zweite Editor basiert seinen Stand auf
+  // einer Version, die älter als das Toleranzfenster ist.
+  const staleBase = new Date(Date.now() - 5000).toISOString();
+  const winner = await notesService.updateNote(noteId, { content: 'Schreiber A' }, owner._id.toString());
+  assert.equal(winner.content, 'Schreiber A');
+
+  await assert.rejects(
+    notesService.updateNote(noteId, {
+      content: 'Schreiber B',
+      baseUpdatedAt: staleBase
+    }, owner._id.toString()),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.currentNote.content, 'Schreiber A');
+      assert.equal(error.currentNote._id.toString(), noteId);
+      return true;
+    }
+  );
+
+  const stored = await Note.findById(note._id).lean();
+  assert.equal(stored.content, 'Schreiber A', "B's stale write leaves nothing behind");
+
+  // Ein Nachziehen mit dem frischen Token geht wieder durch.
+  const retry = await notesService.updateNote(noteId, {
+    content: 'Schreiber B (Retry)',
+    baseUpdatedAt: new Date(stored.updatedAt).toISOString()
+  }, owner._id.toString());
+  assert.equal(retry.content, 'Schreiber B (Retry)');
+
+  // Die Mechanik dahinter gegen die echte Datenbank: Ein bedingtes Update mit
+  // dem Token des Verlierers trifft nicht mehr — MongoDB liefert null, und
+  // genau das wird im Service zum 409 mit frischem currentNote. Früher schrieb
+  // save() in dieser Lage bedingungslos drüber (last write wins bzw. 500).
+  const staleToken = (await Note.findById(note._id)).updatedAt;
+  await notesService.updateNote(noteId, { content: 'Dazwischen' }, owner._id.toString());
+  const missed = await Note.findOneAndUpdate(
+    { _id: note._id, deletedAt: null, updatedAt: staleToken },
+    { $set: { content: 'Verlorener Schreibversuch' } },
+    { new: true }
+  );
+  assert.equal(missed, null, 'a stale version token must not match');
+  assert.equal((await Note.findById(note._id).lean()).content, 'Dazwischen');
+
+  await resetDatabase();
+});
+
+test('pin and archive toggles are atomic pipeline updates on a real database (Top-30 Nr. 12)', { skip }, async () => {
+  const notesService = require('../services/notesService');
+  const { Note } = models();
+  const owner = await seedUser();
+  const note = await seedNote(owner._id, { title: 'Toggle' });
+  const noteId = note._id.toString();
+
+  assert.equal(note.isPinned, false);
+  const pinned = await notesService.togglePinNote(noteId, owner._id.toString());
+  assert.equal(pinned.isPinned, true);
+  const unpinned = await notesService.togglePinNote(noteId, owner._id.toString());
+  assert.equal(unpinned.isPinned, false);
+
+  // isPinned fehlt im Dokument (alter Datenstand): Der Flip liefert true,
+  // genau wie !undefined im früheren JS-Pfad.
+  await Note.collection.updateOne({ _id: note._id }, { $unset: { isPinned: '' } });
+  const resurrected = await notesService.togglePinNote(noteId, owner._id.toString());
+  assert.equal(resurrected.isPinned, true);
+
+  const archived = await notesService.toggleArchiveNote(noteId, owner._id.toString());
+  assert.equal(archived.isArchived, true);
+
+  // lastEditedBy ist als echter ObjectId gespeichert, nicht als String —
+  // Pipelines werden nicht gecastet, der Service muss selbst konvertieren.
+  const stored = await Note.findById(note._id).lean();
+  assert.ok(stored.lastEditedBy instanceof require('mongoose').Types.ObjectId);
+  assert.equal(stored.lastEditedBy.toString(), owner._id.toString());
+
+  await resetDatabase();
+});
+
 test('teardown', { skip }, async () => {
   await disconnect();
 });

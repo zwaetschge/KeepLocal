@@ -95,6 +95,41 @@ test('errors thrown into the central handler are coded too', async () => {
   );
 });
 
+test('a mongoose VersionError is a 409 conflict, not a server error (Top-30 Nr. 12)', async () => {
+  await withApp(
+    app => {
+      app.get('/race', () => {
+        const error = new Error('No matching document found for id "507f…" version 3');
+        error.name = 'VersionError';
+        throw error;
+      });
+      app.use(errorHandler);
+    },
+    async base => {
+      const response = await fetch(`${base}/race`);
+      const body = await response.json();
+      assert.equal(response.status, 409);
+      assert.equal(body.error, 'Die Notiz wurde inzwischen geändert');
+      assert.equal(body.code, 'NOTE_CONFLICT');
+    }
+  );
+
+  await withApp(
+    app => {
+      app.get('/gone', () => {
+        const error = new Error('Got doc null instead');
+        error.name = 'DocumentNotFoundError';
+        throw error;
+      });
+      app.use(errorHandler);
+    },
+    async base => {
+      const response = await fetch(`${base}/gone`);
+      assert.equal(response.status, 404);
+    }
+  );
+});
+
 test('the catalog is consistent', () => {
   assert.equal(new Set(ALL_CODES).size, ALL_CODES.length, 'ALL_CODES must be unique');
   for (const code of ALL_CODES) {
