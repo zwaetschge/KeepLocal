@@ -465,3 +465,14 @@ Create a focused branch, include tests for behavior changes, run the relevant
 verification commands above, and open a pull request against `main`. Do not add
 generated builds, local environment files, screenshots containing private
 notes, or runtime uploads.
+
+## License
+
+KeepLocal is released under the [MIT License](LICENSE) — use it, modify it,
+ship it in your own projects, commercially or not. The only condition is that
+the copyright and permission notice travel with the code.
+
+Transcription runs locally through [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+(a CTranslate2 reimplementation of [OpenAI Whisper](https://github.com/openai/whisper));
+their licenses apply to those components. The interface is inspired by Google
+Keep without using its assets or code.

@@ -61,6 +61,11 @@ docker start KeepLocal
 Unraid's appdata backup tooling is also suitable when it captures both paths
 while the container is stopped. Periodically test that backups are readable.
 
+Note that trashed notes keep their uploaded files until the 30-day retention
+purges them, which affects both disk usage and backup size — see
+[operations.md](operations.md) for retention, transcription budgets, health
+endpoints, and the other day-to-day behavior.
+
 ## Update and rollback
 
 Before **Force Update**, record the current image ID/digest and create a backup.

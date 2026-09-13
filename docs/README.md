@@ -5,6 +5,7 @@ reports and one-time refactoring notes belong in Git history, not in the active
 documentation set.
 
 - [Docker builds, releases, backup, and rollback](docker.md)
+- [Day-to-day behavior: trash retention, transcription budgets, health endpoints](operations.md)
 - [Nginx Proxy Manager](nginx-proxy-manager.md)
 - [Unraid](unraid.md)
 - [CachyOS development and testing](cachyos.md)

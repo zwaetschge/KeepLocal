@@ -485,3 +485,42 @@ test('the published image is driven by a real browser, not by four curls', () =>
   assert.match(spec, /expect\(JSON\.stringify\(body\)\)\.not\.toContain\('\/app\/server\/uploads'\)/,
     'production readiness must stay trimmed inside the image too');
 });
+
+test('the project is a usable open-source release: MIT license, labeled image, operator docs', () => {
+  // Audit 2026-09-12 (Top-30 Nr. 30): Ohne LICENSE, License-Felder und
+  // OCI-Label war der Stand "quasi open source" — jeder darf es nutzen, aber
+  // niemand darf es weitergeben, weil die Erlaubnis fehlt. Der Betreiber hat
+  // sich fuer MIT entschieden; die Operator-Doku war das zweite fehlende Stueck.
+  const license = fs.readFileSync(path.join(root, 'LICENSE'), 'utf8');
+  assert.match(license, /^MIT License/, 'LICENSE must be the MIT text');
+  assert.match(license, /Permission is hereby granted, free of charge/);
+  assert.match(license, /THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND/);
+
+  for (const manifest of ['server/package.json', 'client/package.json']) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, manifest), 'utf8'));
+    assert.equal(pkg.license, 'MIT', `${manifest} must declare MIT`);
+  }
+
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.match(readme, /^## License$/m, 'the README needs a License section');
+  assert.match(readme, /\[MIT License\]\(LICENSE\)/);
+  assert.match(readme, /faster-whisper/, 'the transcription dependency deserves credit');
+
+  // Das Image-Label war leer — auf Docker Hub stand "no license".
+  const metadata = runDockerMetadata({ GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main' });
+  assert.equal(metadata.status, 0);
+  assert.match(metadata.output, /org\.opencontainers\.image\.licenses=MIT/);
+
+  // Betriebsverhalten (Retention, Transkriptions-Budgets, Health) muss an
+  // einer Stelle stehen, die alle Deployment-Guides verlinken.
+  const operations = fs.readFileSync(path.join(root, 'docs/operations.md'), 'utf8');
+  for (const covered of ['TRASH_RETENTION_DAYS', 'TRANSCRIPTION_LIMIT_PER_HOUR',
+    'TRANSCRIPTION_MINUTES_PER_DAY', 'MAX_AUDIO_SECONDS', '/api/health/ready',
+    'HEALTH_DETAILS', 'PUT /api/auth/preferences']) {
+    assert.ok(operations.includes(covered), `operations.md must cover ${covered}`);
+  }
+  for (const guide of ['docs/README.md', 'docs/docker.md', 'docs/unraid.md']) {
+    const page = fs.readFileSync(path.join(root, guide), 'utf8');
+    assert.ok(page.includes('operations.md'), `${guide} must link operations.md`);
+  }
+});
