@@ -109,13 +109,19 @@ elif [[ "${GITHUB_REF_TYPE}" == 'tag' ]]; then
   add_semver_tags "${GITHUB_REF_NAME}"
 elif [[ "${GITHUB_REF_TYPE}" == 'branch' ]]; then
   if [[ "${GITHUB_REF_NAME}" != 'main' ]]; then
-    echo "Refusing to publish an unconfigured branch: ${GITHUB_REF_NAME}" >&2
-    exit 1
+    # Verifikations-Build auf einem Feature-Branch (Top-30 Nr. 29): Nur ein
+    # manueller Dispatch darf ueberhaupt publishen, und auch dann NUR den
+    # immutablen Tag. Die Rollback-Kanaele (main/latest) bleiben unberuehrt -
+    # ein unreviewed Branch kann `latest` der Self-Hoster nie ersetzen.
+    if [[ "${GITHUB_EVENT_NAME}" != 'workflow_dispatch' ]]; then
+      echo "Refusing to publish an unconfigured branch: ${GITHUB_REF_NAME}" >&2
+      exit 1
+    fi
+  else
+    version='main'
+    add_tag "${image}:main"
+    add_tag "${image}:latest"
   fi
-
-  version='main'
-  add_tag "${image}:main"
-  add_tag "${image}:latest"
 else
   echo "Unsupported Git ref type: ${GITHUB_REF_TYPE}" >&2
   exit 1

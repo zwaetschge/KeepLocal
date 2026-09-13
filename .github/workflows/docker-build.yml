@@ -7,7 +7,11 @@ name: Docker Build and Push
 #     nur bei conclusion=success, siehe `if` am Job).
 #   - push tags: Release-Tags werden aus einem gruenen main geschnitten; fuer
 #     Tags laeuft keine CI, deshalb bleibt der direkte Weg.
-#   - workflow_dispatch: manueller Release, ebenfalls ohne CI-Gate.
+#   - workflow_dispatch auf main: manueller Release, ebenfalls ohne CI-Gate.
+#   - workflow_dispatch auf einem Branch (Top-30 Nr. 29): Verifikations-Build —
+#     docker-metadata.sh publisht dann NUR den immutablen Tag (nie main/latest),
+#     damit Dockerfile-Änderungen vor dem Merge echt multi-arch gebaut und
+#     getestet werden koennen.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -96,6 +100,9 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update Docker Hub description
+        # Branch-Verifikations-Builds (Nr. 29) aktualisieren die oeffentliche
+        # Beschreibung nicht — die folgt erst dem gemergten main.
+        if: github.event_name != 'workflow_dispatch' || github.ref_name == 'main'
         uses: peter-evans/dockerhub-description@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}

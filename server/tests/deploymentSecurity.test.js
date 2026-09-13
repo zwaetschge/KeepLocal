@@ -181,7 +181,9 @@ test('all-in-one image declares the Whisper model argument in its consuming stag
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
   const stages = dockerfile.split(/^FROM /m);
   const clientStage = stages.find((stage) => stage.startsWith('node:22-alpine AS client-builder'));
-  const runtimeStage = stages.find((stage) => stage.startsWith('ubuntu:22.04'));
+  // Nr. 29: Mit dem ai-builder gibt es zwei ubuntu:22.04-Stages — der Laufzeit-
+  // Stage ist der letzte.
+  const runtimeStage = stages.filter((stage) => stage.startsWith('ubuntu:22.04')).pop();
 
   assert.ok(clientStage, 'client-builder stage should exist');
   assert.ok(runtimeStage, 'Ubuntu runtime stage should exist');
@@ -193,6 +195,79 @@ test('all-in-one image declares the Whisper model argument in its consuming stag
       < runtimeStage.indexOf('ENV WHISPER_MODEL=${WHISPER_MODEL}'),
     'WHISPER_MODEL must be declared before it is expanded in the runtime stage',
   );
+});
+
+test('all-in-one runtime image carries no build toolchain (Top-30 Nr. 29)', () => {
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
+  const stages = dockerfile.split(/^FROM /m);
+  // Kommentare ignorieren: die Stage-Dokumentation nennt die Pakete, die dort
+  // gerade NICHT mehr installiert werden.
+  const commands = (stage) => stage
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n');
+  const aiBuilder = stages.find((stage) => stage.startsWith('ubuntu:22.04 AS ai-builder'));
+  const runtimeStage = stages.filter((stage) => stage.startsWith('ubuntu:22.04')).pop();
+  const runtimeCommands = commands(runtimeStage);
+
+  assert.ok(aiBuilder, 'ai-builder stage should exist');
+  assert.ok(runtimeStage, 'Ubuntu runtime stage should exist');
+
+  // Compile-Toolchain und -Header nur im Builder-Stage.
+  for (const buildDependency of [
+    'build-essential',
+    'python3-dev',
+    'pkg-config',
+    'libavcodec-dev',
+    'libavformat-dev',
+    'libavutil-dev',
+    'libswscale-dev',
+    'libswresample-dev',
+    'libavdevice-dev',
+  ]) {
+    assert.match(commands(aiBuilder), new RegExp(`\\b${buildDependency}\\b`), `ai-builder must install ${buildDependency}`);
+    assert.doesNotMatch(runtimeCommands, new RegExp(`\\b${buildDependency}\\b`), `${buildDependency} must stay in the ai-builder stage`);
+  }
+
+  // Laufzeit-Pakete bleiben: python3 + ffmpeg (libav-Runtimes für notgedrungen
+  // kompilierte Wheels) und mongodb-org-server — mongosh (287 MB) und mongos
+  // (130 MB) aus dem mongodb-org-Metapaket werden im Single-Node-Container
+  // nie aufgerufen. gnupg wird im selben RUN wieder entfernt, damit der
+  // Key-Import kein eigenes Layer-Duplikat hinterlässt.
+  assert.match(runtimeCommands, /apt-get install -y --no-install-recommends mongodb-org-server/);
+  assert.doesNotMatch(runtimeCommands, /install -y --no-install-recommends mongodb-org\s*\\/);
+  assert.match(runtimeCommands, /apt-get update[\s\S]*\bpython3\b[\s\S]*\bffmpeg\b[\s\S]*\bmongodb-org-server\b[\s\S]*\bnodejs\b/);
+  assert.match(runtimeCommands, /\bnodejs\b[\s\S]*apt-get purge -y gnupg[\s\S]*apt-get autoremove[\s\S]*rm -rf \/var\/lib\/apt\/lists\/\*/);
+
+  // Wheels kommen aus dem Builder — das Final-Image installiert kein pip-Paket.
+  // Debian/Ubuntu pip benutzt das posix_local-Schema: --prefix=/install legt
+  // den Payload unter /install/local ab (Replik des /usr/local-Baums). Der
+  // Builder testet die Lage, der Whisper-Preload direkt nach dem COPY
+  // verifiziert den Import im selben Build.
+  assert.match(runtimeCommands, /COPY --from=ai-builder \/install\/local \/usr\/local/);
+  assert.doesNotMatch(runtimeCommands, /pip3 install -r/);
+  assert.match(commands(aiBuilder), /test -d \/install\/local\/lib\/python3\.10\/dist-packages/);
+  assert.match(commands(aiBuilder), /test -x \/install\/local\/bin\/gunicorn/);
+
+  // Cache-Ordnung: Abhängigkeiten vor dem Quellcode, sonst baut jede
+  // ai-Änderung 469 MB Python-Deps bzw. jede Server-Änderung npm ci neu.
+  assert.ok(
+    aiBuilder.indexOf('COPY ai/requirements.txt') < aiBuilder.indexOf('-r requirements.txt'),
+    'ai/requirements.txt must be copied before pip installs it',
+  );
+  assert.ok(
+    runtimeCommands.indexOf('server/package*.json') < runtimeCommands.indexOf('npm ci'),
+    'server/package*.json must be copied before npm ci',
+  );
+
+  // npm ci und pip-Install laufen als unprivilegierter Nutzer bzw. im Builder;
+  // node_modules/ai-Quellen brauchen dadurch kein eigenes chown-Layer (77,5 MB
+  // Duplikat im alten Image).
+  assert.match(runtimeCommands, /su -s \/bin\/sh node -c "npm ci --omit=dev/);
+  assert.match(runtimeCommands, /COPY --chown=node:node server\/ \.\//);
+  assert.match(runtimeCommands, /COPY --from=client-builder --chown=node:node/);
+  assert.doesNotMatch(runtimeCommands, /chown -R node:node \/app\/server(?!\/uploads)/);
+  assert.doesNotMatch(runtimeCommands, /chown -R node:node \/app\/ai\b/);
 });
 
 test('published all-in-one image is smoke-tested on every built architecture', () => {
@@ -334,6 +409,33 @@ test('Docker metadata rejects invalid manually supplied release tags', () => {
   assert.notEqual(nonMainRelease.status, 0);
   assert.match(nonMainRelease.stderr, /must be dispatched from the main branch/);
   assert.equal(nonMainRelease.output, '');
+});
+
+test('Docker metadata allows dispatched branch verification builds without touching main or latest', () => {
+  // Top-30 Nr. 29: Dockerfile-Änderungen brauchen vor dem Merge einen echten
+  // Multi-Arch-Build auf dem Branch. Der darf publishen — aber nur den
+  // immutablen Tag, niemals die Rollback-Kanäle der Self-Hoster.
+  const branchVerification = runDockerMetadata({
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF_NAME: 'fix/29-image-size',
+  });
+
+  assert.equal(branchVerification.status, 0, branchVerification.stderr);
+  assert.match(branchVerification.output, /example\/keeplocal:\d{4}-\d{2}-\d{2}-0123456/);
+  assert.match(branchVerification.output, /test-tag=\d{4}-\d{2}-\d{2}-0123456/);
+  assert.match(branchVerification.output, new RegExp(`org\\.opencontainers\\.image\\.revision=${branchVerification.sha}`));
+  assert.doesNotMatch(branchVerification.output, /example\/keeplocal:main/);
+  assert.doesNotMatch(branchVerification.output, /example\/keeplocal:latest/);
+
+  // Alle anderen Events auf einem Branch bleiben verboten — nur der manuelle
+  // Dispatch ist der Verifikationsweg.
+  const branchPush = runDockerMetadata({
+    GITHUB_REF_NAME: 'fix/29-image-size',
+  });
+
+  assert.notEqual(branchPush.status, 0);
+  assert.match(branchPush.stderr, /Refusing to publish an unconfigured branch/);
+  assert.equal(branchPush.output, '');
 });
 
 test('Whisper images cache model files without loading CTranslate2 during the build', () => {
