@@ -95,8 +95,14 @@ test('both multipart calls and the 401 path use the shared error builder', () =>
   assert.doesNotMatch(apiUtils, /const error = new Error\(ERROR_MESSAGES\.UNAUTHORIZED\);/, 'the hardcoded 401 must be gone');
 
   assert.match(notesAPI, /import \{[^}]*toHttpError[^}]*\} from '\.\/apiUtils';/);
-  assert.match(notesAPI, /throw await toHttpError\(response, 'Bild-Upload fehlgeschlagen'\);/);
-  assert.match(notesAPI, /throw await toHttpError\(response, 'Transkription fehlgeschlagen'\);/);
+  // Beide Multipart-Pfade laufen über denselben Helper: toHttpError (code,
+  // status, retryAfter) plus Abort/Timeout mit dem langen Limit.
+  assert.match(notesAPI, /async function fetchMultipart\(url, formData, fallbackMessage\)/);
+  assert.match(notesAPI, /throw await toHttpError\(response, fallbackMessage\);/);
+  assert.match(notesAPI, /LONG_REQUEST_TIMEOUT_MS/);
+  assert.equal(notesAPI.match(/return fetchMultipart\(/g)?.length, 2, 'upload and transcription both use it');
+  assert.match(notesAPI, /'Bild-Upload fehlgeschlagen'/);
+  assert.match(notesAPI, /'Transkription fehlgeschlagen'/);
   assert.doesNotMatch(notesAPI, /throw new Error\(errorData\.error \|\|/, 'no multipart path may drop the code');
 });
 

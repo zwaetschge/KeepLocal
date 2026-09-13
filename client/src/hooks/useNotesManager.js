@@ -129,7 +129,10 @@ export function mergeIfChanged(current, incoming) {
   if (
     notesListsEqual(safeCurrent.notes, safeIncoming.notes)
     && plainObjectsEqual(safeCurrent.pagination, safeIncoming.pagination, ['page', 'limit', 'total', 'pages'])
-    && plainObjectsEqual(safeCurrent.counts, safeIncoming.counts, ['active', 'archived'])
+    // `trash` gehört dazu: Ändert sich nur der Papierkorb (anderes Gerät löscht,
+    // TTL räumt auf), verwarf der Vergleich die komplette Antwort und das
+    // Sidebar-Badge blieb falsch.
+    && plainObjectsEqual(safeCurrent.counts, safeIncoming.counts, ['active', 'archived', 'trash'])
     && tagsEqual(safeCurrent.tags, safeIncoming.tags)
   ) {
     return safeCurrent;
@@ -205,6 +208,7 @@ export function useNotesManager({
   const [draggedNoteId, setDraggedNoteId] = useState(null);
 
   const fetchSequenceRef = useRef(0);
+  const fetchAbortRef = useRef(null);
   const hasLoadedRef = useRef(false);
 
   // Spiegel des aktuellen Zustands für Handler ohne Stale-Closures
@@ -214,6 +218,13 @@ export function useNotesManager({
   // Läuft ein Fetch mit älterer Sequenz ein, wird sein Ergebnis verworfen.
   const invalidateInFlightFetches = useCallback(() => {
     fetchSequenceRef.current += 1;
+    // Nicht nur das Ergebnis verwerfen, sondern den Request beenden: Sonst
+    // blockieren die Leichen hinter einem HTTP/1.1-Pfad die sechs Verbindungen
+    // pro Origin, und die neueste — einzig relevante — Antwort kommt zuletzt.
+    if (fetchAbortRef.current) {
+      fetchAbortRef.current.abort('ABORTED');
+      fetchAbortRef.current = null;
+    }
   }, []);
 
   /**
@@ -265,6 +276,10 @@ export function useNotesManager({
   const fetchNotes = useCallback(async (search = '', page = 1, { background = false, silent = false } = {}) => {
     if (!isLoggedIn) return;
     const requestSequence = ++fetchSequenceRef.current;
+    // Der vorherige Request wird ersetzt, nicht nur ignoriert.
+    if (fetchAbortRef.current) fetchAbortRef.current.abort('ABORTED');
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
 
     if (background) setRefreshing(true);
     else setLoading(true);
@@ -282,16 +297,21 @@ export function useNotesManager({
       // Tag-Counts), die Suche bleibt verfügbar.
       if (!trashView && stateRef.current.selectedTag) params.tag = stateRef.current.selectedTag;
 
-      const response = await api.getAll(params);
+      const response = await api.getAll(params, { signal: controller.signal });
       if (requestSequence !== fetchSequenceRef.current) return;
       applyServerState(normalizeNotesPayload(response), { merge: background });
     } catch (error) {
       if (requestSequence !== fetchSequenceRef.current) return;
+      // Bewusst ersetzter Request (Filterwechsel, Mutation, Unmount): kein
+      // Fehler. Ein Timeout dagegen ist einer — ohne diese Unterscheidung bliebe
+      // die Liste still im `refreshing`-Zustand stehen.
+      if (error?.code === 'ABORTED') return;
       console.error('Fehler beim Laden der Notizen:', error);
       if (!silent) {
         showToast(resolveApiErrorMessage(error, t, 'errorLoadingNotes'), 'error');
       }
     } finally {
+      if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
       if (requestSequence === fetchSequenceRef.current) {
         hasLoadedRef.current = true;
         setLoading(false);
@@ -604,6 +624,10 @@ export function useNotesManager({
       .map(item => item._id);
 
     try {
+      // Vor dem Server-Call entwerten: Landet in diesem Fenster die Antwort eines
+      // vorher gestarteten Polls, überschreibt sie die frische Ordnung und die
+      // Notiz springt sichtbar zurück (bekannt aus BUG_REPORT_2026-09-10 Nr. 16).
+      invalidateInFlightFetches();
       await api.reorder(orderedIds);
       // Der Refetch bestätigt die persistierte Ordnung; silent, weil der Drop selbst
       // schon Rückmeldung gibt.

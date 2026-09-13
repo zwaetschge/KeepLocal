@@ -133,6 +133,17 @@ const STATUS_TO_CODE = {
 };
 
 /**
+ * Transport-Codes, die ausschließlich clientseitig entstehen: der Service
+ * Worker antwortet `OFFLINE` ohne Netzwerk, `REQUEST_TIMEOUT` kommt vom
+ * AbortController-Timeout in apiUtils, `ABORTED` wenn die App einen Request
+ * bewusst ersetzt (Filterwechsel) oder abbricht.
+ *
+ * Sie stehen im selben Katalog, damit es genau EIN Fehler-Vokabular gibt und der
+ * Übersetzungs-Contract (client/tests/apiErrors.test.js) sie erzwingt.
+ */
+const TRANSPORT_CODES = ['OFFLINE', 'REQUEST_TIMEOUT', 'ABORTED'];
+
+/**
  * Resolve the stable code for an error response.
  * @param {string} message - The `error` text of the response body
  * @param {number} status - HTTP status code of the response
@@ -148,6 +159,12 @@ function codeForMessage(message, status) {
 module.exports = {
   MESSAGE_TO_CODE,
   STATUS_TO_CODE,
+  TRANSPORT_CODES,
   codeForMessage,
-  ALL_CODES: Array.from(new Set([...Object.values(MESSAGE_TO_CODE), ...Object.values(STATUS_TO_CODE), 'ERROR']))
+  ALL_CODES: Array.from(new Set([
+    ...Object.values(MESSAGE_TO_CODE),
+    ...Object.values(STATUS_TO_CODE),
+    ...TRANSPORT_CODES,
+    'ERROR'
+  ]))
 };

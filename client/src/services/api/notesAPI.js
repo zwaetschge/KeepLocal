@@ -1,5 +1,49 @@
 import { API_ENDPOINTS } from '../../constants/api';
 import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, toHttpError, API_BASE_URL } from './apiUtils';
+import { createRequestSignal, isAbortError, LONG_REQUEST_TIMEOUT_MS } from '../../utils/requestSignals.mjs';
+
+/**
+ * Multipart-Calls (Bild-Upload, Transkription) nutzen fetch() direkt. Sie
+ * bekommen dasselbe Abort-/Timeout-Verhalten wie fetchWithAuth, nur mit einem
+ * langen Limit: nginx bricht bei `proxy_read_timeout 300s` ab, der Server ruft
+ * den AI-Dienst mit 300 s Timeout — ein kürzeres Client-Timeout würde einen
+ * Abbruch melden, während der Server noch arbeitet.
+ */
+async function fetchMultipart(url, formData, fallbackMessage) {
+  const { signal, cleanup, timedOut } = createRequestSignal({ timeoutMs: LONG_REQUEST_TIMEOUT_MS });
+  const headers = {};
+  const csrfToken = getCsrfToken();
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+      signal,
+    });
+
+    if (!response.ok) {
+      // code/status/retryAfter mitnehmen: ohne sie toastet die UI den deutschen
+      // Server-Satz (z. B. „Maximal 25 Bilder pro Notiz erlaubt") statt der
+      // vorhandenen Übersetzung, und ein 429 verliert sein Retry-After.
+      throw await toHttpError(response, fallbackMessage);
+    }
+
+    return parseResponse(response);
+  } catch (error) {
+    if (isAbortError(error)) {
+      const abortError = new Error(timedOut() ? 'Upload timed out' : 'Upload aborted');
+      abortError.code = timedOut() ? 'REQUEST_TIMEOUT' : 'ABORTED';
+      abortError.name = error.name || 'AbortError';
+      throw abortError;
+    }
+    throw error;
+  } finally {
+    cleanup();
+  }
+}
 
 /**
  * Notes API module
@@ -9,19 +53,23 @@ const notesAPI = {
   /**
    * Get all notes with optional filtering
    * @param {Object} params - Query parameters (archived, tags, search, etc.)
+   * @param {Object} [options] - `{ signal }` bricht einen laufenden Request ab,
+   *   wenn ein neuer Filterwechsel ihn überholt (sonst blockieren die Leichen
+   *   die sechs HTTP/1.1-Verbindungen pro Origin).
    * @returns {Promise<Array>} Array of notes
    */
-  getAll: (params = {}) => {
+  getAll: (params = {}, options = {}) => {
     const query = buildQueryString(params);
-    return fetchWithAuth(`${API_ENDPOINTS.NOTES.BASE}${query ? `?${query}` : ''}`);
+    return fetchWithAuth(`${API_ENDPOINTS.NOTES.BASE}${query ? `?${query}` : ''}`, { signal: options.signal });
   },
 
   /**
    * Get a single note by ID
    * @param {string} id - Note ID
+   * @param {Object} [options] - `{ signal }`
    * @returns {Promise<Object>} Note data
    */
-  getById: (id) => fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id)),
+  getById: (id, options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id), { signal: options.signal }),
 
   /**
    * Create a new note
@@ -160,27 +208,13 @@ const notesAPI = {
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('images', file));
 
-    // Manual fetch for multipart/form-data (don't set Content-Type, browser will set it with boundary)
-    const csrfToken = getCsrfToken();
-
-    const headers = {};
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/images`, {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      // code/status/retryAfter mitnehmen: ohne sie toastet die UI den deutschen
-      // Server-Satz (z. B. „Maximal 25 Bilder pro Notiz erlaubt") statt der
-      // vorhandenen Übersetzung errImageLimitReached.
-      throw await toHttpError(response, 'Bild-Upload fehlgeschlagen');
-    }
-
-    return parseResponse(response);
+    // Manual fetch for multipart/form-data (don't set Content-Type, browser will
+    // set it with boundary) — inkl. Abort/Timeout und code/status/retryAfter.
+    return fetchMultipart(
+      `${API_ENDPOINTS.NOTES.BY_ID(id)}/images`,
+      formData,
+      'Bild-Upload fehlgeschlagen'
+    );
   },
 
   /**
@@ -210,26 +244,13 @@ const notesAPI = {
       formData.append('language', options.language);
     }
 
-    // Manual fetch for multipart/form-data
-    const csrfToken = getCsrfToken();
-
-    const headers = {};
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.BY_ID(id)}/transcribe`, {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      // 429 TRANSCRIPTION_BUSY kommt mit Retry-After: NoteModal behält die
-      // Aufnahme und bietet „Erneut versuchen" an, statt sie wegzuwerfen.
-      throw await toHttpError(response, 'Transkription fehlgeschlagen');
-    }
-
-    return parseResponse(response);
+    // 429 TRANSCRIPTION_BUSY kommt mit Retry-After: NoteModal behält die
+    // Aufnahme und bietet „Erneut versuchen" an, statt sie wegzuwerfen.
+    return fetchMultipart(
+      `${API_ENDPOINTS.NOTES.BY_ID(id)}/transcribe`,
+      formData,
+      'Transkription fehlgeschlagen'
+    );
   },
 };
 

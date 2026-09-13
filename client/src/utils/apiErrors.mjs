@@ -5,6 +5,11 @@
 
 /** code -> translation key in client/src/translations/{de,en}.js */
 export const API_ERROR_KEYS = {
+  // Transport (entsteht nur clientseitig: Service Worker, AbortController)
+  OFFLINE: 'errOffline',
+  REQUEST_TIMEOUT: 'errRequestTimeout',
+  ABORTED: 'errRequestAborted',
+
   // Notes and files
   NOTE_NOT_FOUND: 'errNoteNotFound',
   NOTE_OR_USER_NOT_FOUND: 'errNoteNotFound',

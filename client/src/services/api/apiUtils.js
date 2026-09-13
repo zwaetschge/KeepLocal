@@ -1,5 +1,6 @@
 import { API_BASE_URL, API_ENDPOINTS, CSRF_METHODS, ERROR_MESSAGES } from '../../constants/api';
 import { buildHttpError, unauthorizedError } from '../../utils/httpErrors.mjs';
+import { createRequestSignal, isAbortError } from '../../utils/requestSignals.mjs';
 
 // Re-export API_BASE_URL for use in other API modules
 export { API_BASE_URL };
@@ -81,57 +82,81 @@ export function setCsrfToken(token) {
  * @throws {Error} If the request fails
  */
 export async function fetchWithAuth(url, options = {}) {
+  // `signal` (vom Aufrufer, z. B. „Filter gewechselt") und `timeoutMs` werden
+  // verbunden; ohne Timeout bleibt die UI bei einer halboffenen Verbindung
+  // dauerhaft im `refreshing`-Zustand, weil nur das `finally` des neuesten
+  // Requests `loading`/`refreshing` räumt.
+  const { signal: externalSignal, timeoutMs, ...fetchOptions } = options;
+  const { signal, cleanup, timedOut } = createRequestSignal({ timeoutMs, signal: externalSignal });
+
   const doFetch = async () => {
     const csrf = getCsrfToken();
 
     const headers = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...fetchOptions.headers,
     };
 
     // Add CSRF token for state-changing operations
-    if (csrf && CSRF_METHODS.includes(options.method)) {
+    if (csrf && CSRF_METHODS.includes(fetchOptions.method)) {
       headers['X-CSRF-Token'] = csrf;
     }
 
     return fetch(`${API_BASE_URL}${url}`, {
-      ...options,
+      ...fetchOptions,
       headers,
       credentials: 'include',
+      signal,
     });
   };
 
-  let response = await doFetch();
+  try {
+    let response = await doFetch();
 
-  // A 403 with a CSRF mismatch means the in-memory token no longer matches
-  // the cookie (e.g. the cookie expired after 8h while the session lives on,
-  // or a previous logout cleared the cookie but not our token). Fetch a fresh
-  // token once and retry instead of failing every mutation until a reload.
-  if (response.status === 403 && CSRF_METHODS.includes(options.method)) {
-    setCsrfToken(null);
-    await initializeCSRF();
-    if (getCsrfToken()) {
-      response = await doFetch();
+    // A 403 with a CSRF mismatch means the in-memory token no longer matches
+    // the cookie (e.g. the cookie expired after 8h while the session lives on,
+    // or a previous logout cleared the cookie but not our token). Fetch a fresh
+    // token once and retry instead of failing every mutation until a reload.
+    if (response.status === 403 && CSRF_METHODS.includes(fetchOptions.method)) {
+      setCsrfToken(null);
+      await initializeCSRF();
+      if (getCsrfToken()) {
+        response = await doFetch();
+      }
     }
-  }
 
-  // Handle 401 Unauthorized - token expired or invalid.
-  // Event (gedrosselt) feuern, damit der AuthContext die Session beenden kann.
-  if (response.status === 401) {
-    notifyUnauthorizedOncePerWindow(url);
-    // Code mitgeben, sonst toastet die englische UI den hartkodierten deutschen
-    // Satz „Nicht autorisiert" neben dem korrekt übersetzten Session-Banner.
-    const payload = await parseResponse(response);
-    throw unauthorizedError({ payload, headers: response.headers, fallbackMessage: ERROR_MESSAGES.UNAUTHORIZED });
-  }
+    // Handle 401 Unauthorized - token expired or invalid.
+    // Event (gedrosselt) feuern, damit der AuthContext die Session beenden kann.
+    if (response.status === 401) {
+      notifyUnauthorizedOncePerWindow(url);
+      // Code mitgeben, sonst toastet die englische UI den hartkodierten deutschen
+      // Satz „Nicht autorisiert" neben dem korrekt übersetzten Session-Banner.
+      const payload = await parseResponse(response);
+      throw unauthorizedError({ payload, headers: response.headers, fallbackMessage: ERROR_MESSAGES.UNAUTHORIZED });
+    }
 
-  // Handle other errors (inkl. 409-Konflikt: Status/Body durchreichen)
-  if (!response.ok) {
-    const payload = await parseResponse(response);
-    throw createHttpError(payload, response.status);
-  }
+    // Handle other errors (inkl. 409-Konflikt: Status/Body durchreichen)
+    if (!response.ok) {
+      const payload = await parseResponse(response);
+      throw createHttpError(payload, response.status);
+    }
 
-  return parseResponse(response);
+    return await parseResponse(response);
+  } catch (error) {
+    if (isAbortError(error)) {
+      // Timeout und bewusster Abbruch sind unterschiedliche Fälle: Ein
+      // ersetzter Request darf keinen Fehler-Toast auslösen, ein Timeout schon.
+      const code = timedOut() ? 'REQUEST_TIMEOUT' : 'ABORTED';
+      const abortError = new Error(code === 'REQUEST_TIMEOUT' ? 'Request timed out' : 'Request aborted');
+      abortError.code = code;
+      abortError.name = error.name || 'AbortError';
+      abortError.status = 0;
+      throw abortError;
+    }
+    throw error;
+  } finally {
+    cleanup();
+  }
 }
 
 export async function parseResponse(response) {
