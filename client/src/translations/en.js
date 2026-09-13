@@ -518,6 +518,7 @@ export const en = {
   errLinkPreviewRateLimited: 'Too many link previews in a short time. Please wait a moment.',
   errTranscriptionRateLimited: 'Hourly transcription limit reached. Please try again later.',
   errTranscriptionDailyLimit: 'Daily transcription limit reached. Please try again tomorrow.',
+  errPreferencesNotSaved: 'Preferences could not be saved to your account — they apply to this device only until they sync successfully.',
   errTranscriptionBusy: 'The transcription service is busy. Please try again in half a minute.',
   errLinkUnreachable: 'The link is not reachable.',
   errNotFound: 'Not found.',

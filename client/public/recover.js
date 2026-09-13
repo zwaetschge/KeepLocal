@@ -2,7 +2,7 @@
   'use strict';
 
   const APP_CACHE_PREFIX = 'keeplocal-';
-  const APP_PREFERENCE_KEYS = ['theme', 'keeplocal_settings', 'token'];
+  const APP_PREFERENCE_KEYS = ['theme', 'keeplocal_settings', 'keeplocal_language', 'token'];
   const AUTO_REPAIR_FLAG = 'keeplocal-recover-autorepaired';
 
   const status = document.querySelector('.recovery-status');

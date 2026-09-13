@@ -42,13 +42,14 @@ test('app recovery unregisters workers and resets only KeepLocal browser state',
   assert.deepEqual(result, {
     unregisteredWorkers: 1,
     removedCaches: 2,
-    removedPreferences: 3
+    removedPreferences: 4
   });
   assert.deepEqual(
     calls.sort(),
     [
       'keeplocal-v4',
       'keeplocal-v5',
+      'preference:keeplocal_language',
       'preference:keeplocal_settings',
       'preference:theme',
       'preference:token',

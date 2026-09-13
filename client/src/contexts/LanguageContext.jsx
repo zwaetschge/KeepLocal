@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { translations, defaultLanguage } from '../translations';
 import { getBrowserLanguage } from '../utils/browserLanguage.mjs';
 import { subscribeToWindowEvent } from '../utils/browserEnvironment.mjs';
-import { readLocalStorage, writeLocalStorage } from '../utils/localStorage.mjs';
+import { readLocalStorage, writeLocalStorage, removeLocalStorage } from '../utils/localStorage.mjs';
 import { interpolate } from '../utils/i18n.mjs';
+import { toastBus } from '../utils/toastBus.mjs';
 import { useAuth } from './AuthContext';
 import { authAPI } from '../services/api';
 
@@ -53,15 +54,42 @@ export function LanguageProvider({ children }) {
     writeLocalStorage(LANGUAGE_STORAGE_KEY, accountLanguage);
   }, [isLoggedIn, accountLanguage]);
 
+  // Logout clears the explicit choice (Nr. 17): the key used to survive logout
+  // and account switches, so on a shared machine the next user inherited the
+  // previous one's language — exactly what the account-bound preferences were
+  // meant to prevent. Only on the logged-in -> logged-out transition, never on
+  // first render (that would strip a visitor's own choice on every page load).
+  const wasLoggedInRef = useRef(false);
+  const clearLanguagePreference = useCallback(() => {
+    removeLocalStorage(LANGUAGE_STORAGE_KEY);
+    setLanguage(resolveLanguage());
+  }, []);
+  useEffect(() => {
+    if (isLoggedIn) {
+      wasLoggedInRef.current = true;
+      return;
+    }
+    if (!wasLoggedInRef.current) return;
+    wasLoggedInRef.current = false;
+    clearLanguagePreference();
+  }, [isLoggedIn, clearLanguagePreference]);
+
   const changeLanguage = useCallback((langCode) => {
     if (!translations[langCode]) {
       return;
     }
     writeLocalStorage(LANGUAGE_STORAGE_KEY, langCode);
     setLanguage(langCode);
-    // Persist on the account as well; localStorage alone is per device.
+    // Persist on the account as well; localStorage alone is per device. Same
+    // honesty as the settings push (Nr. 17): a failed PUT gets a warning, not
+    // just a console line — otherwise the choice silently reverts on the next
+    // login and the user blames the app.
     authAPI.updatePreferences({ language: langCode }).catch((error) => {
       console.error('Could not store the language on the account:', error.message);
+      toastBus.warning(
+        translations[langCode]?.errPreferencesNotSaved
+        || translations[defaultLanguage].errPreferencesNotSaved
+      );
     });
   }, []);
 
@@ -77,7 +105,7 @@ export function LanguageProvider({ children }) {
   }, [language]);
 
   return (
-    <LanguageContext.Provider value={{ language, changeLanguage, t }}>
+    <LanguageContext.Provider value={{ language, changeLanguage, clearLanguagePreference, t }}>
       {children}
     </LanguageContext.Provider>
   );

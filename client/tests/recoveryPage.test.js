@@ -22,7 +22,7 @@ test('standalone recovery remains usable without the React bundle', () => {
 
 test('standalone recovery removes only KeepLocal browser state before redirecting', () => {
   assert.match(script, /APP_CACHE_PREFIX = 'keeplocal-'/);
-  assert.match(script, /\['theme', 'keeplocal_settings', 'token'\]/);
+  assert.match(script, /\['theme', 'keeplocal_settings', 'keeplocal_language', 'token'\]/);
   assert.match(script, /getRegistrations\(\)/);
   assert.match(script, /cacheName\.startsWith\(APP_CACHE_PREFIX\)/);
   assert.match(script, /Promise\.race/);
