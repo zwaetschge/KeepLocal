@@ -19,6 +19,37 @@ class FakeWhisperModel:
 
 RECORDED_OPTIONS = []
 
+# Audit 2026-09-12 (Top-30 Nr. 18): the duration probe reads the container
+# header via PyAV (a direct dependency of faster-whisper). The fake below makes
+# the probed duration configurable per test without any real media file.
+PROBE_STATE = {"duration": None, "error": None}
+
+
+class FakeStream:
+    def __init__(self, duration):
+        self.type = "audio"
+        self.duration = duration  # in time_base units
+        self.time_base = 1 / 1000.0  # milliseconds
+
+
+class FakeContainer:
+    def __init__(self, duration):
+        self.streams = [FakeStream(duration)]
+        self.duration = None  # container duration in microseconds
+
+    def close(self):
+        pass
+
+
+def fake_av_open(_path):
+    if PROBE_STATE["error"]:
+        raise PROBE_STATE["error"]
+    return FakeContainer(PROBE_STATE["duration"] * 1000 if PROBE_STATE["duration"] is not None else None)
+
+
+fake_av = types.ModuleType("av")
+fake_av.open = fake_av_open
+sys.modules["av"] = fake_av
 
 fake_whisper = types.ModuleType("faster_whisper")
 fake_whisper.WhisperModel = FakeWhisperModel
@@ -69,6 +100,75 @@ class TranscriptionApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("language", RECORDED_OPTIONS[-1])
         self.assertEqual(RECORDED_OPTIONS[-1]["beam_size"], 5)
+
+
+class AudioDurationLimitTest(unittest.TestCase):
+    """Audit 2026-09-12 (Top-30 Nr. 18): budgets counted requests, not minutes.
+
+    One multi-hour recording blocked the single Whisper worker far beyond any
+    legitimate use. The service now probes the duration from the container
+    header and refuses oversized audio with a stable 413 before decoding.
+    """
+
+    def setUp(self):
+        self.client = app.test_client()
+        PROBE_STATE["duration"] = None
+        PROBE_STATE["error"] = None
+        RECORDED_OPTIONS.clear()
+
+    def post(self):
+        return self.client.post(
+            "/transcribe",
+            data={"audio": (io.BytesIO(b"audio"), "sample.webm")},
+            content_type="multipart/form-data"
+        )
+
+    def test_audio_within_the_limit_is_transcribed_and_reports_duration(self):
+        PROBE_STATE["duration"] = 120.0  # 2 minutes — well under the 900 s default
+        response = self.post()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["duration"], 120.0)
+        self.assertEqual(len(RECORDED_OPTIONS), 1, "the model must have run")
+
+    def test_audio_over_the_limit_is_rejected_before_the_model_runs(self):
+        PROBE_STATE["duration"] = 5400.0  # 90 minutes
+        response = self.post()
+        self.assertEqual(response.status_code, 413)
+        body = response.get_json()
+        self.assertEqual(body["code"], "AUDIO_TOO_LONG")
+        self.assertEqual(body["max_seconds"], 900)
+        self.assertEqual(len(RECORDED_OPTIONS), 0, "no decoding for oversized audio")
+
+    def test_the_limit_is_configurable_and_reports_minutes(self):
+        with mock.patch.dict(os.environ, {"MAX_AUDIO_SECONDS": "60"}):
+            PROBE_STATE["duration"] = 100.0
+            response = self.post()
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.get_json()["max_seconds"], 60)
+        self.assertEqual(response.get_json()["error"], "Audio is longer than 1 minutes")
+        self.assertEqual(len(RECORDED_OPTIONS), 0)
+
+    def test_invalid_limit_values_fall_back_to_the_default(self):
+        from app import max_audio_seconds
+        with mock.patch.dict(os.environ, {"MAX_AUDIO_SECONDS": "not-a-number"}):
+            self.assertEqual(max_audio_seconds(), 900)
+        with mock.patch.dict(os.environ, {"MAX_AUDIO_SECONDS": "-5"}):
+            self.assertEqual(max_audio_seconds(), 900)
+
+    def test_unknown_duration_is_allowed(self):
+        # Chrome's MediaRecorder writes WebM without a header duration. Those
+        # are legitimate recordings — they must not be rejected, only noted.
+        PROBE_STATE["duration"] = None
+        response = self.post()
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.get_json()["duration"])
+        self.assertEqual(len(RECORDED_OPTIONS), 1)
+
+    def test_a_failing_probe_does_not_block_transcription(self):
+        PROBE_STATE["error"] = RuntimeError("no decodable header")
+        response = self.post()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(RECORDED_OPTIONS), 1)
 
 
 class ServiceTokenTest(unittest.TestCase):

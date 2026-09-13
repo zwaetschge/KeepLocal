@@ -36,6 +36,7 @@ const MESSAGE_TO_CODE = {
   'Zu viele Link-Vorschauen in kurzer Zeit. Bitte einen Moment warten.': 'LINK_PREVIEW_RATE_LIMITED',
   'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.': 'TRANSCRIPTION_RATE_LIMITED',
   'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.': 'TRANSCRIPTION_DAILY_LIMIT',
+  'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.': 'TRANSCRIPTION_MINUTE_LIMIT',
   'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.': 'TRANSCRIPTION_BUSY',
   'Notizen koennen nur mit Freunden geteilt werden': 'SHARE_REQUIRES_FRIEND',
 
@@ -146,6 +147,14 @@ const STATUS_TO_CODE = {
 const TRANSPORT_CODES = ['OFFLINE', 'NETWORK_ERROR', 'REQUEST_TIMEOUT', 'ABORTED'];
 
 /**
+ * Codes, die Routen explizit an die Response schreiben, obwohl die Nachricht
+ * dynamisch ist (Audio ist länger als N Minuten — N steht erst zur Laufzeit
+ * fest). Sie stehen trotzdem im Katalog, damit der Übersetzungs-Contract
+ * (client/tests/apiErrors.test.js) ihre Client-Übersetzung erzwingt.
+ */
+const ROUTE_CODES = ['AUDIO_TOO_LONG'];
+
+/**
  * Resolve the stable code for an error response.
  * @param {string} message - The `error` text of the response body
  * @param {number} status - HTTP status code of the response
@@ -162,11 +171,13 @@ module.exports = {
   MESSAGE_TO_CODE,
   STATUS_TO_CODE,
   TRANSPORT_CODES,
+  ROUTE_CODES,
   codeForMessage,
   ALL_CODES: Array.from(new Set([
     ...Object.values(MESSAGE_TO_CODE),
     ...Object.values(STATUS_TO_CODE),
     ...TRANSPORT_CODES,
+    ...ROUTE_CODES,
     'ERROR'
   ]))
 };

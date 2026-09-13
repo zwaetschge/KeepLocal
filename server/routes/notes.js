@@ -49,6 +49,11 @@ const tooManyRequests = (code, message, retryAfterSeconds) => (req, res) => {
 const LINK_PREVIEW_LIMIT_PER_MINUTE = numberFromEnv('LINK_PREVIEW_LIMIT_PER_MINUTE', 30);
 const TRANSCRIPTION_LIMIT_PER_HOUR = numberFromEnv('TRANSCRIPTION_LIMIT_PER_HOUR', 10);
 const TRANSCRIPTION_LIMIT_PER_DAY = numberFromEnv('TRANSCRIPTION_LIMIT_PER_DAY', 60);
+// Audit 2026-09-12 (Top-30 Nr. 18): Anfrage-Zähler sind kein Audio-Budget — 60
+//× 25 MB am Tag können Stunden Material sein. Die AI-Service begrenzt die
+// Einzellänge (MAX_AUDIO_SECONDS → 413), hier läuft das Tagesbudget in
+// Audio-Minuten zusammen. In-Memory wie die Limiter oben: pro Server-Prozess.
+const TRANSCRIPTION_MINUTES_PER_DAY = numberFromEnv('TRANSCRIPTION_MINUTES_PER_DAY', 120);
 // Gunicorn laeuft mit `--workers 1` (ai/Dockerfile, supervisord.conf): Der
 // AI-Dienst kann genau eine Transkription gleichzeitig bedienen. Ein Gate ueber
 // 1 wuerde den zweiten Request also nicht abweisen, sondern bis zum
@@ -56,6 +61,42 @@ const TRANSCRIPTION_LIMIT_PER_DAY = numberFromEnv('TRANSCRIPTION_LIMIT_PER_DAY',
 // Spinner statt eines ehrlichen 429. Wer `--workers N` konfiguriert (RAM!),
 // setzt MAX_CONCURRENT_TRANSCRIPTIONS=N dazu.
 const MAX_CONCURRENT_TRANSCRIPTIONS = numberFromEnv('MAX_CONCURRENT_TRANSCRIPTIONS', 1);
+
+// Tagesbudget in Audio-Minuten, geladen aus der `duration`-Angabe, die die
+// AI-Service mit jeder erfolgreichen Transkription zurueckmeldet. Abgerechnet
+// wird nach Erfolg; der Vorab-Check verweigert erst, wenn das Budget erschoepft
+// ist (ein Ueberschreiten um eine Aufnahme ist moeglich und ok — die Einzellänge
+// deckelt die AI-Service per 413).
+const audioMinuteBudgets = new Map(); // userId -> { resetAt, usedSeconds }
+
+function audioBudgetRetryAfterSeconds(entry) {
+  return Math.min(3600, Math.max(1, Math.ceil((entry.resetAt - Date.now()) / 1000)));
+}
+
+function audioMinutesExhausted(userId) {
+  const entry = audioMinuteBudgets.get(String(userId));
+  if (!entry) return 0;
+  if (Date.now() >= entry.resetAt) {
+    audioMinuteBudgets.delete(String(userId));
+    return 0;
+  }
+  return entry.usedSeconds >= TRANSCRIPTION_MINUTES_PER_DAY * 60
+    ? audioBudgetRetryAfterSeconds(entry)
+    : 0;
+}
+
+function chargeAudioMinutes(userId, seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return;
+  const key = String(userId);
+  const now = Date.now();
+  let entry = audioMinuteBudgets.get(key);
+  if (!entry || now >= entry.resetAt) {
+    // Rolling 24-h window from the first transcription of the day.
+    entry = { resetAt: now + 24 * 60 * 60 * 1000, usedSeconds: 0 };
+    audioMinuteBudgets.set(key, entry);
+  }
+  entry.usedSeconds += seconds;
+}
 
 const linkPreviewLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -619,6 +660,18 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungueltige Audio-Datei' });
     }
 
+    // Tagesbudget in Audio-Minuten (Nr. 18): vor dem Gate pruefen, sonst
+    // wuerde ein abgelehnter Request trotzdem den Worker-Slot blockieren.
+    const retryAfterExhausted = audioMinutesExhausted(req.user._id);
+    if (retryAfterExhausted) {
+      await fs.promises.rm(req.file.path, { force: true });
+      res.setHeader('Retry-After', String(retryAfterExhausted));
+      return res.status(httpStatus.TOO_MANY_REQUESTS).json({
+        code: 'TRANSCRIPTION_MINUTE_LIMIT',
+        error: 'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.'
+      });
+    }
+
     // 1. Call AI Service for transcription — behind a concurrency gate, because
     // the Whisper container runs a single worker: queueing more requests than it
     // can serve only turns them into 300s timeouts.
@@ -646,6 +699,11 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
     await fs.promises.rm(req.file.path, { force: true });
     const transcription = result.text.trim().slice(0, 10000);
 
+    // Erfolgreiche Transkription: Ist-Minuten ins Tagesbudget buchen (Nr. 18).
+    if (Number.isFinite(result.duration)) {
+      chargeAudioMinutes(req.user._id, result.duration);
+    }
+
     // 3. Return transcription result (frontend will handle appending to note)
     res.json({
       message: 'Transkription erfolgreich',
@@ -665,6 +723,16 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
     // 503 if AI service is down
     if (error.message?.includes('nicht erreichbar')) {
       return res.status(httpStatus.SERVICE_UNAVAILABLE).json({ error: error.message });
+    }
+
+    // 413: Audio laenger als das Einzellimit (AI-Service, MAX_AUDIO_SECONDS).
+    // Der Nutzer kann das beheben (Aufnahme kuerzen) — kein Grund fuer einen 500.
+    if (error.statusCode === 413) {
+      const minutes = Math.max(1, Math.round((error.maxSeconds || 0) / 60));
+      return res.status(httpStatus.PAYLOAD_TOO_LARGE).json({
+        code: error.code || 'AUDIO_TOO_LONG',
+        error: `Audio ist länger als ${minutes} Minuten. Bitte die Aufnahme kürzen und erneut versuchen.`
+      });
     }
 
     if (error.kind === 'ObjectId') {

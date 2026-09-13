@@ -36,6 +36,8 @@ export const API_ERROR_KEYS = {
   LINK_PREVIEW_RATE_LIMITED: 'errLinkPreviewRateLimited',
   TRANSCRIPTION_RATE_LIMITED: 'errTranscriptionRateLimited',
   TRANSCRIPTION_DAILY_LIMIT: 'errTranscriptionDailyLimit',
+  TRANSCRIPTION_MINUTE_LIMIT: 'errTranscriptionMinuteLimit',
+  AUDIO_TOO_LONG: 'errAudioTooLong',
   TRANSCRIPTION_BUSY: 'errTranscriptionBusy',
   SHARE_REQUIRES_FRIEND: 'errShareRequiresFriend',
   FILE_NOT_FOUND: 'errFileNotFound',

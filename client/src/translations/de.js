@@ -519,6 +519,8 @@ export const de = {
   errTranscriptionRateLimited: 'Stundenlimit für Transkriptionen erreicht. Bitte später erneut versuchen.',
   errTranscriptionDailyLimit: 'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.',
   errPreferencesNotSaved: 'Einstellungen konnten nicht auf dem Konto gespeichert werden — sie gelten nur auf diesem Gerät, bis sie erfolgreich synchronisiert werden.',
+  errTranscriptionMinuteLimit: 'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.',
+  errAudioTooLong: 'Die Aufnahme ist zu lang für die Transkription. Bitte sie kürzen und erneut versuchen.',
   errTranscriptionBusy: 'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.',
   errLinkUnreachable: 'Link ist nicht erreichbar.',
   errNotFound: 'Nicht gefunden.',

@@ -37,6 +37,9 @@ services:
         max-file: "3"
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-base}  # tiny, base, small, medium, large
+      # Maximale Audiolänge pro Datei in Sekunden (Nr. 18); längere Aufnahmen
+      # lehnt der Dienst mit 413 AUDIO_TOO_LONG ab, bevor das Modell lädt.
+      - MAX_AUDIO_SECONDS=${MAX_AUDIO_SECONDS:-900}
       # Shared secret mit dem Server: ohne Token nimmt /transcribe Anfragen von
       # jedem im backend-Netz an. In .env setzen (openssl rand -hex 32).
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}
@@ -85,6 +88,7 @@ services:
       - LINK_PREVIEW_LIMIT_PER_MINUTE=${LINK_PREVIEW_LIMIT_PER_MINUTE:-}
       - TRANSCRIPTION_LIMIT_PER_HOUR=${TRANSCRIPTION_LIMIT_PER_HOUR:-}
       - TRANSCRIPTION_LIMIT_PER_DAY=${TRANSCRIPTION_LIMIT_PER_DAY:-}
+      - TRANSCRIPTION_MINUTES_PER_DAY=${TRANSCRIPTION_MINUTES_PER_DAY:-}
       - MAX_CONCURRENT_TRANSCRIPTIONS=${MAX_CONCURRENT_TRANSCRIPTIONS:-}
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-}
       - STORAGE_JANITOR_INTERVAL_HOURS=${STORAGE_JANITOR_INTERVAL_HOURS:-}
