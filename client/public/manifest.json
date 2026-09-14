@@ -24,7 +24,7 @@
   ],
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#49B6E5",
+  "theme_color": "#B56B55",
   "background_color": "#ffffff",
   "categories": ["productivity", "utilities"],
   "scope": "/",
