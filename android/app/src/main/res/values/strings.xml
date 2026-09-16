@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KeepLocal</string>
+
+    <!-- Navigation -->
+    <string name="nav_notes">Notes</string>
+    <string name="nav_archive">Archive</string>
+    <string name="nav_friends">Friends</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_admin">Admin</string>
+    <string name="nav_tags">Tags</string>
+
+    <!-- Auth -->
+    <string name="auth_title">Sign In</string>
+    <string name="auth_username">Username</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_login">Log In</string>
+    <string name="auth_logout">Log Out</string>
+    <string name="auth_register">Register</string>
+    <string name="auth_authenticating">Authenticating…</string>
+    <string name="auth_authelia_title">Authentication Required</string>
+    <string name="auth_login_failed">Login failed. Please check your credentials.</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Welcome to KeepLocal</string>
+    <string name="setup_server_url">Server URL</string>
+    <string name="setup_server_url_hint">https://notes.example.com</string>
+    <string name="setup_test_connection">Test Connection</string>
+    <string name="setup_testing">Testing connection…</string>
+    <string name="setup_connected">Connected</string>
+    <string name="setup_connection_failed">Connection failed</string>
+    <string name="setup_authelia_detected">Authelia detected</string>
+    <string name="setup_no_authelia">Direct connection</string>
+    <string name="setup_continue">Continue</string>
+    <string name="setup_admin_setup">Admin Setup</string>
+    <string name="setup_admin_setup_description">Create the first admin account for your KeepLocal instance.</string>
+
+    <!-- Notes -->
+    <string name="notes_title">Notes</string>
+    <string name="notes_search">Search notes…</string>
+    <string name="notes_empty_title">No notes yet</string>
+    <string name="notes_empty_subtitle">Tap + to create your first note</string>
+    <string name="recent_searches">Recent searches</string>
+    <string name="clear">Clear</string>
+    <string name="search_no_results_title">No results</string>
+    <string name="search_no_results_subtitle">Nothing matches "%1$s".</string>
+    <string name="search_reset">Clear search</string>
+    <string name="tag_empty_title">Nothing with this tag</string>
+    <string name="tag_empty_subtitle">No note is tagged %1$s.</string>
+    <string name="tag_empty_reset">Show all notes</string>
+    <string name="archive_empty_title">Archive is empty</string>
+    <string name="archive_empty_subtitle">Swiped notes land here before deletion</string>
+    <string name="trash_empty_state_title">Trash is empty</string>
+    <string name="trash_empty_state_subtitle">Deleted notes stay here for 30 days</string>
+    <string name="editor_draft_saved">Draft saved</string>
+    <string name="editor_color_picker_title">Note color</string>
+    <string name="notes_pinned">Pinned</string>
+    <string name="notes_others">Others</string>
+    <string name="notes_archived">Archived</string>
+    <string name="notes_delete_confirm">Delete this note?</string>
+    <string name="notes_deleted">Note deleted</string>
+    <string name="notes_archived_toast">Note archived</string>
+    <string name="notes_unarchived_toast">Note unarchived</string>
+    <string name="notes_offline_indicator">Offline</string>
+
+    <!-- Note Editor -->
+    <string name="editor_title_hint">Title</string>
+    <string name="editor_content_hint">Note</string>
+    <string name="editor_save">Save</string>
+    <string name="editor_new_note">New Note</string>
+    <string name="editor_edit_note">Edit Note</string>
+    <string name="editor_add_tag">Add tag</string>
+    <string name="editor_color">Color</string>
+    <string name="editor_todo_mode">Todo list</string>
+    <string name="editor_share">Share</string>
+    <string name="editor_add_todo_item">Add item</string>
+
+    <!-- Colors -->
+    <string name="color_default">Default</string>
+    <string name="color_red">Red</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_yellow">Yellow</string>
+    <string name="color_green">Green</string>
+    <string name="color_teal">Teal</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_dark_blue">Dark Blue</string>
+    <string name="color_purple">Purple</string>
+    <string name="color_pink">Pink</string>
+    <string name="color_brown">Brown</string>
+    <string name="color_gray">Gray</string>
+
+    <!-- Friends -->
+    <string name="friends_title">Friends</string>
+    <string name="friends_empty">No friends yet</string>
+    <string name="friends_search">Search users…</string>
+    <string name="friends_pending">Pending Requests</string>
+    <string name="friends_incoming">Incoming</string>
+    <string name="friends_outgoing">Outgoing</string>
+    <string name="friends_accept">Accept</string>
+    <string name="friends_reject">Reject</string>
+    <string name="friends_remove">Remove</string>
+    <string name="friends_send_request">Send Request</string>
+    <string name="friends_request_sent">Friend request sent</string>
+    <string name="friends_removed">Friend removed</string>
+
+    <!-- Share -->
+    <string name="share_title">Share Note</string>
+    <string name="share_with_friends">Share with friends</string>
+    <string name="share_no_friends">Add friends to share notes</string>
+
+    <!-- Admin -->
+    <string name="admin_title">Admin Console</string>
+    <string name="admin_stats">Statistics</string>
+    <string name="admin_users">Users</string>
+    <string name="admin_user_count">Total Users</string>
+    <string name="admin_note_count">Total Notes</string>
+    <string name="admin_create_user">Create User</string>
+    <string name="admin_delete_user">Delete User</string>
+    <string name="admin_toggle_admin">Toggle Admin</string>
+    <string name="admin_registration">Registration</string>
+    <string name="admin_registration_enabled">Registration Enabled</string>
+    <string name="admin_settings">System Settings</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_server_url">Server URL</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_oled">OLED</string>
+    <string name="settings_theme_eink">E-Ink</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_de">Deutsch</string>
+    <string name="settings_remember_credentials">Remember credentials</string>
+    <string name="settings_authelia_enabled">Authelia enabled</string>
+    <string name="settings_biometric_lock">Biometric lock</string>
+    <string name="settings_clear_cache">Clear local cache</string>
+    <string name="settings_cache_cleared">Cache cleared</string>
+    <string name="settings_cache_cleared_kept">Cache cleared — %1$d offline notes kept</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_connection_status">Connection Status</string>
+    <string name="settings_connected">Connected</string>
+    <string name="settings_disconnected">Disconnected</string>
+
+    <!-- Security & biometrics -->
+    <string name="settings_security">Security</string>
+    <string name="settings_biometric_unavailable">Biometric unlock is not available on this device</string>
+    <string name="biometric_prompt_title">Unlock KeepLocal</string>
+    <string name="biometric_prompt_subtitle">Confirm your identity to continue</string>
+
+    <!-- SSL opt-in for self-signed certificates -->
+    <string name="ssl_error_title">Invalid SSL certificate</string>
+    <string name="ssl_error_message">The SSL certificate of this server could not be verified. Continue anyway? (not recommended)</string>
+    <string name="ssl_error_continue">(Unsafe) Continue</string>
+
+    <!-- API keys -->
+    <string name="settings_api_keys">API keys</string>
+    <string name="api_keys_empty">No API keys yet</string>
+    <string name="api_key_create">Create API key</string>
+    <string name="api_key_name">Name</string>
+    <string name="api_key_name_required">Please enter a name</string>
+    <string name="api_key_expiry">Expires after</string>
+    <string name="api_key_expiry_30">30 days</string>
+    <string name="api_key_expiry_90">90 days</string>
+    <string name="api_key_expiry_365">1 year</string>
+    <string name="api_key_expiry_never">Never</string>
+    <string name="api_key_details">Prefix %1$s · created %2$s</string>
+    <string name="api_key_expires">Expires: %1$s</string>
+    <string name="api_key_never_expires">never</string>
+    <string name="api_key_created_title">API key created</string>
+    <string name="api_key_created_hint">This key is shown only once — copy it now.</string>
+    <string name="api_key_copy">Copy</string>
+    <string name="api_key_revoke">Revoke</string>
+    <string name="api_key_revoke_title">Revoke API key?</string>
+    <string name="api_key_revoke_message">&quot;%1$s&quot; stops working immediately and cannot be restored.</string>
+    <string name="api_key_revoked">API key revoked</string>
+
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="delete">Delete</string>
+    <string name="save">Save</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="error_network">Network error. Please check your connection.</string>
+    <string name="error_server">Server error. Please try again later.</string>
+    <string name="error_unauthorized">Session expired. Please log in again.</string>
+    <string name="undo">Undo</string>
+    <string name="loading">Loading…</string>
+
+    <!-- Authelia -->
+    <string name="authelia_login">Authelia Login</string>
+    <string name="back">Back</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_add_note">Add note</string>
+    <string name="cd_back">Go back</string>
+    <string name="cd_menu">Menu</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_pin_note">Pin note</string>
+    <string name="cd_unpin_note">Unpin note</string>
+    <string name="cd_archive_note">Archive note</string>
+    <string name="cd_delete_note">Delete note</string>
+    <string name="cd_color_picker">Pick color</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_more_options">More options</string>
+    <!-- Quick Create -->
+    <string name="notes_quick_create">Type a note…</string>
+
+    <!-- Registration -->
+    <string name="auth_register_title">Create Account</string>
+    <string name="auth_confirm_password">Confirm password</string>
+    <string name="auth_passwords_no_match">Passwords do not match</string>
+    <string name="auth_password_too_short">Password must be at least 8 characters</string>
+    <string name="auth_register_failed">Registration failed</string>
+    <string name="auth_register_failed_detail">Registration failed: %1$s</string>
+    <string name="auth_login_failed_detail">Login failed: %1$s</string>
+    <string name="auth_session_expired">Authelia session expired. Please re-authenticate.</string>
+    <string name="setup_enter_url">Please enter a server URL</string>
+    <string name="setup_invalid_url">Invalid URL format</string>
+    <string name="error_with_reason">Error: %1$s</string>
+
+    <!-- Adaptive layout / view modes -->
+    <string name="settings_theme_doodle">Doodle</string>
+    <string name="settings_view_mode">Note layout</string>
+    <string name="settings_material_you">Material You colors</string>
+    <string name="settings_material_you_hint">Tint the light and dark theme with your wallpaper. E-ink and doodle keep their own palettes, OLED stays black.</string>
+    <string name="settings_view_mode_grid">Grid</string>
+    <string name="settings_view_mode_list">List</string>
+    <string name="cd_view_grid">Switch to grid view</string>
+    <string name="cd_view_list">Switch to list view</string>
+    <string name="detail_empty_title">No note selected</string>
+    <string name="detail_empty_subtitle">Pick a note on the left, or create a new one.</string>
+
+    <string name="cd_expand_sidebar">Show labels</string>
+    <string name="cd_collapse_sidebar">Hide labels</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_email_hint">you@example.com</string>
+    <string name="auth_username_hint">3-50 characters, letters, digits, - and _</string>
+    <string name="auth_password_hint">At least 8 characters, upper, lower and a digit</string>
+    <string name="auth_enter_email_password">Please enter email and password</string>
+    <string name="auth_enter_all_fields">Please fill in username, email and password</string>
+    <string name="auth_invalid_email">Please enter a valid email address</string>
+    <string name="sync_banner_syncing">Syncing %1$d pending changes…</string>
+    <string name="sync_banner_failed">%1$d changes could not be synced</string>
+    <string name="sync_banner_retry">Try again</string>
+    <string name="sync_conflict_snackbar">Conflict on \'%1$s\' — local version saved as a copy</string>
+    <string name="editor_add_image">Add image</string>
+    <string name="editor_remove_image">Remove image</string>
+    <string name="editor_start_recording">Dictate</string>
+    <string name="editor_stop_recording">Stop recording</string>
+    <string name="editor_transcribing">Transcribing…</string>
+    <string name="viewer_previous_image">Previous image</string>
+    <string name="viewer_next_image">Next image</string>
+    <string name="media_save_note_first">Save the note first</string>
+    <string name="media_image_limit_reached">At most 25 images per note</string>
+    <string name="media_images_dropped">%1$d more image(s) discarded — 25 per note at most</string>
+    <string name="media_upload_offline">Images can only be uploaded while online</string>
+    <string name="media_upload_failed">Image upload failed</string>
+    <string name="media_delete_failed">Could not delete the image</string>
+    <string name="media_recording_permission_denied">Microphone access is required for dictation</string>
+    <string name="media_recording_failed">Could not start the recording</string>
+    <string name="media_transcribe_failed">Transcription failed</string>
+    <string name="transcribe_service_unavailable">Transcription service unavailable. Please try again later.</string>
+    <!-- Trash (account-wide, 30-day server retention) -->
+    <string name="nav_trash">Trash</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="transcribe_retry">Send again</string>
+    <string name="transcribe_recording_kept">Recording kept — you can send it again</string>
+    <string name="trash_title">Trash</string>
+    <string name="trash_empty">Trash is empty</string>
+    <string name="trash_retention_hint">Deleted notes stay here for 30 days, then the server removes them for good.</string>
+    <string name="trash_empty_action">Empty trash</string>
+    <string name="trash_restore">Restore note</string>
+    <string name="trash_delete_forever_title">Delete permanently?</string>
+    <string name="trash_delete_forever_text">"%1$s" will be deleted permanently, including its images. This cannot be undone.</string>
+    <string name="trash_delete_forever_confirm">Delete permanently</string>
+    <string name="trash_empty_title">Empty the trash?</string>
+    <string name="trash_empty_text">All notes in the trash will be deleted permanently, including their images. This cannot be undone.</string>
+    <string name="trash_empty_confirm">Empty trash</string>
+    <string name="trash_load_failed">Trash could not be loaded</string>
+    <string name="trash_retry_load">Try again</string>
+    <string name="trash_untitled">(untitled note)</string>
+    <string name="trash_deleted_at">Deleted %1$s</string>
+    <!-- v1.5.0: undo delete, multi-select tagging, conflict dialog -->
+    <string name="note_deleted_snackbar">Note deleted</string>
+    <string name="cd_tag_selection">Tag selection</string>
+    <string name="tag_selection_title">Add tag</string>
+    <string name="tag_selection_label">Tag</string>
+    <string name="tag_selection_add">Add</string>
+    <string name="sync_conflict_title">Sync conflict resolved</string>
+    <string name="sync_conflict_dialog_text">These notes were changed on another device in the meantime. Your edits were kept as copies marked \"(lokale Version)\": %1$s</string>
+
+    <!-- v1.5.0: OAuth login -->
+    <string name="auth_oauth_google">Continue with Google</string>
+    <string name="auth_oauth_github">Continue with GitHub</string>
+    <string name="auth_oauth_failed">Provider login failed. Please try again.</string>
+    <string name="auth_oauth_title">Sign in</string>
+
+    <!-- v1.5.0: widget + quick settings tile -->
+    <string name="widget_pinned_name">Pinned notes</string>
+    <string name="widget_pinned_description">Your pinned notes at a glance</string>
+    <string name="tile_new_note">New note</string>
+
+    <!-- v1.5.0: settings — background sync + change password -->
+    <string name="settings_background_sync">Background sync</string>
+    <string name="settings_background_sync_hint">Syncs notes every 15 minutes when online</string>
+    <string name="settings_change_password">Change password</string>
+    <string name="settings_password_current">Current password</string>
+    <string name="settings_password_new">New password</string>
+    <string name="settings_password_changed">Password changed. Other devices were signed out.</string>
+    <string name="settings_password_change_failed">Password change failed: %1$s</string>
+    <string name="settings_password_signs_out_others">Changing the password signs out your other devices.</string>
+
+    <!-- v1.6.0 -->
+    <string name="settings_voice_transcription">Dictation (voice-to-text)</string>
+    <string name="settings_voice_transcription_hint">Account-wide AI feature. When off, the editor hides the microphone.</string>
+    <string name="settings_data">Data</string>
+    <string name="settings_queue">Offline queue</string>
+    <string name="settings_queue_hint">Changes still waiting to reach the server</string>
+    <string name="settings_queue_dialog_hint">These changes were made offline and will sync automatically. Discard only entries you are sure about — the change will not reach the server.</string>
+    <string name="settings_queue_empty">The queue is empty — everything is synced.</string>
+    <string name="settings_queue_discard">Discard queued change</string>
+    <string name="settings_queue_type_create">Create</string>
+    <string name="settings_queue_type_update">Edit</string>
+    <string name="settings_queue_type_delete">Delete</string>
+    <string name="settings_queue_type_pin">Pin</string>
+    <string name="settings_queue_type_archive">Archive</string>
+    <string name="settings_queue_type_reorder">Reorder</string>
+    <string name="settings_export_json">Export as JSON</string>
+    <string name="settings_export_json_hint">Full backup incl. todos, tags and images</string>
+    <string name="settings_export_markdown">Export as Markdown</string>
+    <string name="settings_export_markdown_hint">Readable archive of all notes</string>
+    <string name="settings_exporting">Rendering export…</string>
+    <string name="settings_export_written">Export written (%1$d characters)</string>
+    <string name="settings_export_failed">Export failed</string>
+    <string name="settings_share_log">Share diagnostic log</string>
+    <string name="settings_log_empty">The diagnostic log is empty</string>
+    <plurals name="trash_days_remaining">
+        <item quantity="one">%1$d day left</item>
+        <item quantity="other">%1$d days left</item>
+    </plurals>
+    <string name="shortcut_new_note">New note</string>
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_trash">Trash</string>
+    <string name="note_owner_badge">by %1$s</string>
+    <string name="note_shared_badge">shared</string>
+</resources>

@@ -1,0 +1,180 @@
+package com.keeplocal.android.data.api
+
+import com.keeplocal.android.data.api.dto.*
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.Response
+import retrofit2.http.*
+
+interface KeepLocalApi {
+    // Auth
+    // There is no POST /api/auth/setup: like the WebUI, initial setup goes
+    // through register — the server flags the first account as admin.
+    @POST("api/auth/register")
+    suspend fun register(@Body request: RegisterRequestDto): Response<AuthResponseDto>
+
+    @POST("api/auth/login")
+    suspend fun login(@Body request: LoginRequestDto): Response<AuthResponseDto>
+
+    @POST("api/auth/logout")
+    suspend fun logout(): Response<Unit>
+
+    @GET("api/auth/me")
+    suspend fun getCurrentUser(): Response<UserDto>
+
+    @GET("api/csrf-token")
+    suspend fun getCsrfToken(): Response<CsrfTokenDto>
+
+    // Account-wide preferences (theme, language, transcription language)
+    @PUT("api/auth/preferences")
+    suspend fun updatePreferences(@Body preferences: UpdatePreferencesDto): Response<Unit>
+
+    // Which OAuth providers the deployment has configured (empty client
+    // IDs disable both — the app only shows buttons that can work).
+    @GET("api/auth/providers")
+    suspend fun getOAuthProviders(): Response<OAuthProvidersResponseDto>
+
+    // Raises sessionVersion: all other sessions are invalidated, this one
+    // immediately gets a fresh cookie.
+    @POST("api/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordDto): Response<Unit>
+
+    // Notes
+    @GET("api/notes")
+    suspend fun getNotes(
+        @Query("search") search: String? = null,
+        @Query("tag") tag: String? = null,
+        @Query("archived") archived: Boolean? = null,
+        @Query("deleted") deleted: Boolean? = null,
+        @Query("page") page: Int? = null,
+        @Query("limit") limit: Int? = null
+    ): Response<NotesResponseDto>
+
+    @GET("api/notes/{id}")
+    suspend fun getNote(@Path("id") id: String): Response<NoteDto>
+
+    @POST("api/notes")
+    suspend fun createNote(@Body note: CreateNoteDto): Response<NoteDto>
+
+    @PUT("api/notes/{id}")
+    suspend fun updateNote(@Path("id") id: String, @Body note: UpdateNoteDto): Response<NoteDto>
+
+    @DELETE("api/notes/{id}")
+    suspend fun deleteNote(
+        @Path("id") id: String,
+        @Query("permanent") permanent: Boolean? = null
+    ): Response<Unit>
+
+    // Trash (30-day retention; janitor purges expired files first)
+    @GET("api/notes")
+    suspend fun getTrashedNotes(
+        @Query("deleted") deleted: Boolean = true,
+        @Query("limit") limit: Int? = null
+    ): Response<NotesResponseDto>
+
+    @POST("api/notes/{id}/restore")
+    suspend fun restoreNote(@Path("id") id: String): Response<NoteDto>
+
+    @DELETE("api/notes/trash")
+    suspend fun emptyTrash(): Response<EmptyTrashResponseDto>
+
+    @POST("api/notes/{id}/pin")
+    suspend fun togglePin(@Path("id") id: String): Response<NoteDto>
+
+    @POST("api/notes/{id}/archive")
+    suspend fun toggleArchive(@Path("id") id: String): Response<NoteDto>
+
+    // Manual ordering (drag & drop). The server validates orderedIds as an
+    // array of MongoIds (max 200) — offline ids must be filtered out and the
+    // list chunked before sending.
+    @PATCH("api/notes/reorder")
+    suspend fun reorderNotes(@Body request: ReorderNotesDto): Response<Unit>
+
+    @POST("api/notes/{id}/share")
+    suspend fun shareNote(@Path("id") id: String, @Body request: ShareNoteDto): Response<Unit>
+
+    @DELETE("api/notes/{id}/share/{userId}")
+    suspend fun unshareNote(@Path("id") id: String, @Path("userId") userId: String): Response<Unit>
+
+    // Images (multipart field name "images", max 5 per request / 25 per note,
+    // responses return the updated note)
+    @Multipart
+    @POST("api/notes/{id}/images")
+    suspend fun uploadImages(
+        @Path("id") id: String,
+        @Part images: List<MultipartBody.Part>
+    ): Response<NoteDto>
+
+    @DELETE("api/notes/{id}/images/{filename}")
+    suspend fun deleteImage(
+        @Path("id") id: String,
+        @Path("filename") filename: String
+    ): Response<NoteDto>
+
+    // Audio transcription (multipart field "audio", optional "language")
+    @Multipart
+    @POST("api/notes/{id}/transcribe")
+    suspend fun transcribeAudio(
+        @Path("id") id: String,
+        @Part audio: MultipartBody.Part,
+        @Part("language") language: RequestBody
+    ): Response<TranscriptionResultDto>
+
+    // Friends
+    @GET("api/friends")
+    suspend fun getFriends(): Response<List<FriendDto>>
+
+    @GET("api/friends/requests")
+    suspend fun getFriendRequests(): Response<List<FriendRequestDto>>
+
+    @POST("api/friends/request")
+    suspend fun sendFriendRequest(@Body request: FriendRequestBody): Response<Unit>
+
+    @POST("api/friends/accept/{id}")
+    suspend fun acceptFriendRequest(@Path("id") id: String): Response<Unit>
+
+    @POST("api/friends/reject/{id}")
+    suspend fun rejectFriendRequest(@Path("id") id: String): Response<Unit>
+
+    @DELETE("api/friends/{id}")
+    suspend fun removeFriend(@Path("id") id: String): Response<Unit>
+
+    @GET("api/friends/search")
+    suspend fun searchUsers(@Query("q") query: String): Response<List<FriendDto>>
+
+    // Admin
+    @GET("api/admin/stats")
+    suspend fun getAdminStats(): Response<AdminStatsDto>
+
+    @GET("api/admin/users")
+    suspend fun getAdminUsers(): Response<List<UserDto>>
+
+    @POST("api/admin/users")
+    suspend fun createUser(@Body request: LoginRequestDto): Response<UserDto>
+
+    @DELETE("api/admin/users/{id}")
+    suspend fun deleteUser(@Path("id") id: String): Response<Unit>
+
+    @POST("api/admin/users/{id}/toggle-admin")
+    suspend fun toggleAdmin(@Path("id") id: String): Response<Unit>
+
+    @GET("api/admin/settings")
+    suspend fun getAdminSettings(): Response<AdminSettingsDto>
+
+    @PUT("api/admin/settings")
+    suspend fun updateAdminSettings(@Body settings: AdminSettingsDto): Response<Unit>
+
+    // Link Preview
+    @GET("api/link-preview")
+    suspend fun getLinkPreview(@Query("url") url: String): Response<LinkPreviewDto>
+
+    // API Keys
+    @GET("api/keys")
+    suspend fun getApiKeys(): Response<ApiKeysResponseDto>
+
+    @POST("api/keys")
+    suspend fun createApiKey(@Body request: CreateApiKeyRequestDto): Response<ApiKeyDto>
+
+    @DELETE("api/keys/{id}")
+    suspend fun revokeApiKey(@Path("id") id: String): Response<Unit>
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only override. KeepLocal is normally self-hosted on a LAN address that
+  serves plain HTTP (http://192.168.x.x:3000), which the release config rejects.
+  Release builds keep using app/src/main/res/xml/network_security_config.xml,
+  where cleartext stays disabled.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

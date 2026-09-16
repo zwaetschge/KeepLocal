@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Night splash (v1.7.0 Nr. 10): the same paper tone as the dark theme
+     background instead of a blinding light sheet at launch. Both the
+     splash-screen background and the pre-compose windowBackground resolve
+     this. -->
+<resources>
+    <color name="splash_background">#121212</color>
+</resources>
