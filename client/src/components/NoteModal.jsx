@@ -18,7 +18,8 @@ import {
   readDraft,
   writeDraft,
   clearDraft,
-  isDraftWorthRestoring
+  isDraftWorthRestoring,
+  draftHasSubstance
 } from '../utils/noteDraft.mjs';
 
 /** Entwürfe werden entprellt geschrieben, aber beim Verstecken des Tabs sofort. */
@@ -135,6 +136,15 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       color,
       noteUpdatedAt: note?.updatedAt || null
     };
+    // Substanzlose Entwürfe nie schreiben (leerer Editor nach dem Verwerfen,
+    // nur angefasste Farbe): draftDiffers hält sie gegen eine neue Notiz für
+    // „abweichend", sodass sie beim nächsten Öffnen als Banner zurückkämen —
+    // auch dann, wenn dieser Aufruf nur durch die Identitätsänderung von
+    // persistDraft nach dem Verwerfen getriggert wurde.
+    if (!draftHasSubstance(draft)) {
+      clearTimeout(draftTimerRef.current);
+      return;
+    }
     if (immediate) {
       writeDraft(note?._id || null, draftUserId, draft);
       return;
@@ -188,6 +198,9 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   }, [draftOffer, setTodoItems]);
 
   const discardDraft = useCallback(() => {
+    // Ein noch laufender Debounce-Write würde den soeben verworfenen Entwurf
+    // bis zu 400 ms nach dem Verwerfen zurückschreiben.
+    clearTimeout(draftTimerRef.current);
     clearDraft(note?._id || null, draftUserId);
     setDraftOffer(null);
   }, [note?._id, draftUserId]);
