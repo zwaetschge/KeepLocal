@@ -197,3 +197,43 @@ test('both languages translate the draft banner', () => {
     }
   }
 });
+
+// Flake vom 2026-09-16 (E2E spec.mjs:1022): Nach dem Verwerfen bot der Editor
+// beim nächsten Öffnen wieder einen „Entwurf" an. persistDraft schrieb den leeren
+// Editor-Zustand, weil das Verwerfen die persistDraft-Identität änderte und der
+// Debounce-Effekt dadurch ohne Nutzereingabe erneut lief; auf einem langsamen
+// Runner feuerte der Write, bevor der Unmount den Timer clearte.
+test('draftHasSubstance rejects drafts without visible content', async () => {
+  const { draftHasSubstance } = await import(draftUrl);
+  assert.equal(draftHasSubstance(null), false);
+  assert.equal(draftHasSubstance({}), false);
+  assert.equal(draftHasSubstance({ title: '', content: '' }), false);
+  assert.equal(draftHasSubstance({ title: '   ', content: '\n\t' }), false, 'whitespace is not substance');
+  assert.equal(draftHasSubstance({ title: '', content: '', tags: [], todoItems: [] }), false);
+  // Eine nur angefasste Farbe/Notizart allein ist kein wiederherstellbarer Verlust.
+  assert.equal(draftHasSubstance({ title: '', content: '', color: '#fff740', isTodoList: true }), false);
+  // Leere Todo-Einträge (Komplett-Löschen der Texte) haben ebenfalls keine Substanz.
+  assert.equal(draftHasSubstance({ todoItems: [{ text: '  ', completed: false }] }), false);
+});
+
+test('draftHasSubstance accepts any real content', async () => {
+  const { draftHasSubstance } = await import(draftUrl);
+  assert.equal(draftHasSubstance({ title: 'Einkauf' }), true);
+  assert.equal(draftHasSubstance({ content: 'Milch' }), true);
+  assert.equal(draftHasSubstance({ tags: ['einkauf'] }), true);
+  assert.equal(draftHasSubstance({ todoItems: [{ text: 'Milch', completed: false }] }), true);
+});
+
+test('the editor never writes or resurrects a discarded draft', () => {
+  const modal = read('components', 'NoteModal.jsx');
+  assert.match(modal, /draftHasSubstance/, 'persistDraft consults the substance guard');
+  const persistBody = modal.slice(modal.indexOf('const persistDraft'), modal.indexOf('// Nach jeder Änderung'));
+  assert.match(
+    persistBody,
+    /if \(!draftHasSubstance\(draft\)\) \{\s*\n\s*clearTimeout\(draftTimerRef\.current\);\s*\n\s*return;\s*\n\s*\}/,
+    'substance-less drafts are neither written nor left on a running timer'
+  );
+  const discardBody = modal.slice(modal.indexOf('const discardDraft'), modal.indexOf('// Reset the form'));
+  assert.match(discardBody, /clearTimeout\(draftTimerRef\.current\);/,
+    'discarding cancels a pending debounce write before it can resurrect the draft');
+});

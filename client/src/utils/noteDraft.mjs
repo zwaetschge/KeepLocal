@@ -154,6 +154,26 @@ export function isDraftWorthRestoring(draft, note) {
   return savedAt >= serverUpdatedAt;
 }
 
+/**
+ * Hat der Entwurf sichtbaren Inhalt? Substanzlose Entwürfe (der leere Editor
+ * direkt nach dem Verwerfen, eine nur angefasste Farbe) dürfen nie geschrieben
+ * werden: `draftDiffers` behandelt leere Arrays gegen eine fehlende Notiz als
+ * Abweichung, sodass sonst jeder geöffnete und geschlossene Neue-Notiz-Editor
+ * beim nächsten Öffnen ein „Entwurf wiederherstellen" anbietet — inklusive
+ * dem direkt nach dem Verwerfen (E2E-Flake 2026-09-16, spec.mjs:1022).
+ */
+export function draftHasSubstance(draft) {
+  if (!draft) return false;
+  if ((draft.title || '').trim()) return true;
+  if ((draft.content || '').trim()) return true;
+  if (Array.isArray(draft.tags) && draft.tags.length > 0) return true;
+  if (
+    Array.isArray(draft.todoItems) &&
+    draft.todoItems.some((item) => (item?.text || '').trim())
+  ) return true;
+  return false;
+}
+
 const noteDraft = {
   DRAFT_STORAGE_KEY,
   MAX_DRAFTS,
@@ -166,6 +186,7 @@ const noteDraft = {
   clearDraft,
   clearDraftsForUser,
   draftDiffers,
-  isDraftWorthRestoring
+  isDraftWorthRestoring,
+  draftHasSubstance
 };
 export default noteDraft;
