@@ -1,0 +1,50 @@
+package com.keeplocal.android.data.sync
+
+import android.content.Context
+import androidx.hilt.work.HiltWorker
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import com.keeplocal.android.data.local.SettingsDataStore
+import com.keeplocal.android.data.local.SyncManager
+import com.keeplocal.android.data.local.TokenManager
+import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.widget.PinnedNotesWidget
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
+
+/**
+ * Drains the offline queue while the app is in the background (every 15 min,
+ * network permitting — see BackgroundSync). Quietly succeeds when there is
+ * no session or the user turned background sync off; RETRY only on real
+ * infrastructure errors, never on HTTP failures (those are already counted
+ * as failed ops by the SyncManager and will be retried next period).
+ */
+@HiltWorker
+class SyncWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted params: WorkerParameters,
+    private val syncManager: SyncManager,
+    private val settingsDataStore: SettingsDataStore,
+    private val tokenManager: TokenManager,
+    private val fileLogger: FileLogger
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result {
+        if (!tokenManager.hasStoredSession()) return Result.success()
+        if (!settingsDataStore.backgroundSync.first()) return Result.success()
+        return try {
+            val result = syncManager.syncPendingOperations()
+            fileLogger.log(
+                "SyncWorker",
+                "background sync: synced=${result.synced} failed=${result.failed} skipped=${result.skipped}"
+            )
+            // Pinned notes may have arrived/changed — refresh the widget too.
+            runCatching { PinnedNotesWidget.refreshAll(applicationContext) }
+            Result.success()
+        } catch (e: Exception) {
+            fileLogger.error("SyncWorker", "background sync crashed", e)
+            Result.retry()
+        }
+    }
+}

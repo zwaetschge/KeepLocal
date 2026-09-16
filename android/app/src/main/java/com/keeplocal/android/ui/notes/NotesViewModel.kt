@@ -1,0 +1,430 @@
+package com.keeplocal.android.ui.notes
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.keeplocal.android.data.local.SettingsDataStore
+import com.keeplocal.android.data.local.SyncManager
+import com.keeplocal.android.data.local.SyncStatus
+import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.usecase.auth.GetCurrentUserUseCase
+import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
+import com.keeplocal.android.domain.usecase.notes.DeleteNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.ReorderNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.ToggleArchiveUseCase
+import com.keeplocal.android.domain.usecase.notes.TogglePinUseCase
+import com.keeplocal.android.domain.usecase.notes.UndoDeleteUseCase
+import com.keeplocal.android.domain.usecase.notes.UpdateNoteUseCase
+import com.keeplocal.android.util.IncomingIntents
+import com.keeplocal.android.util.Result
+import com.keeplocal.android.util.UiState
+import com.keeplocal.android.widget.PinnedNotesWidget
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+private const val SEARCH_DEBOUNCE_MS = 300L
+
+/** Presentation of the note collection — mirrors the WebUI grid/list switch. */
+enum class NoteViewMode {
+    GRID, LIST;
+
+    val key: String get() = if (this == LIST) "list" else "grid"
+
+    companion object {
+        fun fromKey(key: String?): NoteViewMode = if (key == "list") LIST else GRID
+    }
+}
+
+/** What the sync banner above the note list should show. */
+sealed interface SyncBanner {
+    object None : SyncBanner
+    data class Syncing(val pending: Int) : SyncBanner
+    data class Failed(val count: Int) : SyncBanner
+    object AuthRequired : SyncBanner
+}
+
+data class NotesScreenState(
+    val notes: UiState<List<Note>> = UiState.Loading,
+    val searchQuery: String = "",
+    val selectedTag: String? = null,
+    val showArchived: Boolean = false,
+    val selectedNoteIds: Set<String> = emptySet(),
+    val isMultiSelectMode: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val availableTags: List<String> = emptyList(),
+    val viewMode: NoteViewMode = NoteViewMode.GRID,
+    val snackbarMessage: String? = null,
+    val syncBanner: SyncBanner = SyncBanner.None,
+    val syncConflicts: List<String> = emptyList(),
+    /** Note deleted moments ago, offered as "Undo" in the snackbar. */
+    val undoableNote: Note? = null,
+    /** Note currently being dragged (index 0) and the id it hovers over. */
+    val draggingNoteId: String? = null,
+    val dragOverNoteId: String? = null,
+    // Owner badge (v1.6.0 Nr. 10): own id + resolved owner usernames.
+    val currentUserId: String? = null,
+    val ownerNames: Map<String, String> = emptyMap(),
+    /** One-shot "focus the search field" (launcher shortcut "Suche"). */
+    val searchFocusRequest: Boolean = false,
+    /** Recent search terms, most recent first (v1.7.0 design round). */
+    val recentSearches: List<String> = emptyList()
+)
+
+@HiltViewModel
+class NotesViewModel @Inject constructor(
+    private val getNotesUseCase: GetNotesUseCase,
+    private val togglePinUseCase: TogglePinUseCase,
+    private val toggleArchiveUseCase: ToggleArchiveUseCase,
+    private val deleteNoteUseCase: DeleteNoteUseCase,
+    private val updateNoteUseCase: UpdateNoteUseCase,
+    private val reorderNotesUseCase: ReorderNotesUseCase,
+    private val undoDeleteUseCase: UndoDeleteUseCase,
+    private val getCurrentUserUseCase: GetCurrentUserUseCase,
+    private val getFriendsUseCase: GetFriendsUseCase,
+    private val settingsDataStore: SettingsDataStore,
+    private val syncManager: SyncManager,
+    @ApplicationContext private val appContext: Context
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(NotesScreenState())
+    val uiState = _uiState.asStateFlow()
+
+    /** Navigation signal for "session expired, re-login" — collected by NotesScreen. */
+    private val _reloginEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val reloginEvent = _reloginEvent.asSharedFlow()
+
+    private var loadJob: Job? = null
+    private var searchJob: Job? = null
+
+    init {
+        loadNotes()
+        // Launcher-shortcut "Suche": arrives via IncomingIntents while the
+        // nav host brings the notes screen into view. An empty query is the
+        // pure "open and focus the search field" variant.
+        viewModelScope.launch {
+            IncomingIntents.searchRequest.collect { query ->
+                if (query != null) {
+                    if (query.isNotBlank()) onSearchQueryChanged(query)
+                    else _uiState.update { it.copy(searchFocusRequest = true) }
+                    IncomingIntents.consumeSearchRequest()
+                }
+            }
+        }
+        // Owner badge (v1.6.0 Nr. 10): the server sends an opaque owner id —
+        // resolve it against the own user id and the friends list.
+        viewModelScope.launch {
+            getCurrentUserUseCase().getOrNull()?.let { user ->
+                _uiState.update { it.copy(currentUserId = user.id) }
+            }
+        }
+        viewModelScope.launch {
+            val friends = getFriendsUseCase().getOrNull().orEmpty()
+            if (friends.isNotEmpty()) {
+                _uiState.update { it.copy(ownerNames = friends.associate { it.id to it.username }) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.noteViewMode.collect { key ->
+                _uiState.update { it.copy(viewMode = NoteViewMode.fromKey(key)) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.recentSearches.collect { recent ->
+                _uiState.update { it.copy(recentSearches = recent) }
+            }
+        }
+        viewModelScope.launch {
+            var authSignalled = false
+            syncManager.syncStatus.collect { status ->
+                _uiState.update {
+                    it.copy(syncBanner = status.toBanner(), syncConflicts = status.conflicts)
+                }
+                if (status.authRequired && !authSignalled) {
+                    authSignalled = true
+                    _reloginEvent.tryEmit(Unit)
+                } else if (!status.authRequired) {
+                    authSignalled = false
+                }
+            }
+        }
+    }
+
+    fun setViewMode(mode: NoteViewMode) {
+        _uiState.update { it.copy(viewMode = mode) }
+        viewModelScope.launch { settingsDataStore.setNoteViewMode(mode.key) }
+    }
+
+    fun toggleViewMode() {
+        setViewMode(
+            if (_uiState.value.viewMode == NoteViewMode.GRID) NoteViewMode.LIST else NoteViewMode.GRID
+        )
+    }
+
+    fun loadNotes() = startLoad(showLoading = true)
+
+    fun refresh() {
+        _uiState.update { it.copy(isRefreshing = true) }
+        startLoad(showLoading = false)
+    }
+
+    private fun startLoad(showLoading: Boolean) {
+        // Cancel any load still in flight so results of a stale filter or
+        // archive view can never overwrite the current ones.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (showLoading) _uiState.update { it.copy(notes = UiState.Loading) }
+            val state = _uiState.value
+            getNotesUseCase(
+                search = state.searchQuery.ifBlank { null },
+                tag = state.selectedTag,
+                archived = state.showArchived
+            ).collect { result ->
+                applyNotesResult(result)
+            }
+        }
+    }
+
+    private fun applyNotesResult(result: Result<List<Note>>) {
+        val data = result.getOrNull()
+        val errorMsg = if (result is Result.Error) result.message else null
+        _uiState.update {
+            it.copy(
+                notes = when {
+                    data == null -> UiState.Error(errorMsg ?: "Failed to load notes")
+                    data.isEmpty() -> UiState.Empty
+                    else -> UiState.Success(data)
+                },
+                isRefreshing = false,
+                availableTags = data?.flatMap { note -> note.tags }?.distinct()?.sorted() ?: it.availableTags
+            )
+        }
+        // Pinned set/order may have changed — keep the home-screen widget
+        // in step with what the user just saw.
+        if (data != null) viewModelScope.launch { refreshWidget() }
+    }
+
+    private suspend fun refreshWidget() {
+        runCatching { PinnedNotesWidget.refreshAll(appContext) }
+    }
+
+    fun onSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        // Debounce keystrokes: reload only once typing has paused for 300ms.
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            // A term someone actually searched for (not every keystroke) is
+            // worth remembering for the recent-searches chips.
+            if (query.trim().length >= 3) {
+                runCatching { settingsDataStore.addRecentSearch(query) }
+            }
+            loadNotes()
+        }
+    }
+
+    /** Clears the recent-search chips (v1.7.0 design round). */
+    fun clearRecentSearches() {
+        viewModelScope.launch { settingsDataStore.clearRecentSearches() }
+    }
+
+    fun onTagSelected(tag: String?) {
+        _uiState.update { it.copy(selectedTag = tag) }
+        loadNotes()
+    }
+
+    /** Called by the screen once the search field actually has focus. */
+    fun searchFocusHandled() {
+        _uiState.update { it.copy(searchFocusRequest = false) }
+    }
+
+    fun toggleArchiveView(showArchived: Boolean) {
+        _uiState.update { it.copy(showArchived = showArchived) }
+        loadNotes()
+    }
+
+    fun toggleNoteSelection(noteId: String) {
+        _uiState.update {
+            val selected = it.selectedNoteIds.toMutableSet()
+            if (selected.contains(noteId)) selected.remove(noteId) else selected.add(noteId)
+            it.copy(
+                selectedNoteIds = selected,
+                isMultiSelectMode = selected.isNotEmpty()
+            )
+        }
+    }
+
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedNoteIds = emptySet(), isMultiSelectMode = false) }
+    }
+
+    fun togglePin(noteId: String) {
+        viewModelScope.launch {
+            togglePinUseCase(noteId)
+            loadNotes()
+        }
+    }
+
+    fun toggleArchive(noteId: String) {
+        viewModelScope.launch {
+            toggleArchiveUseCase(noteId)
+            loadNotes()
+        }
+    }
+
+    fun deleteNote(noteId: String) {
+        viewModelScope.launch {
+            deleteNoteUseCase(noteId)
+            loadNotes()
+        }
+    }
+
+    /**
+     * Immediate delete without confirm dialog (Keep pattern): the snackbar
+     * with "Undo" is the safety net. [note] is the snapshot from before the
+     * delete so undo can restore it exactly.
+     */
+    fun deleteNoteWithUndo(note: Note) {
+        viewModelScope.launch {
+            deleteNoteUseCase(note.id)
+            _uiState.update { it.copy(undoableNote = note) }
+            loadNotes()
+        }
+    }
+
+    fun undoDelete() {
+        val note = _uiState.value.undoableNote ?: return
+        viewModelScope.launch {
+            undoDeleteUseCase(note)
+            _uiState.update { it.copy(undoableNote = null) }
+            loadNotes()
+        }
+    }
+
+    fun dismissUndo() {
+        _uiState.update { it.copy(undoableNote = null) }
+    }
+
+    fun archiveSelectedNotes() {
+        viewModelScope.launch {
+            _uiState.value.selectedNoteIds.forEach { toggleArchiveUseCase(it) }
+            _uiState.update { it.copy(selectedNoteIds = emptySet(), isMultiSelectMode = false) }
+            loadNotes()
+        }
+    }
+
+    /** Pins or unpins the whole selection (multi-select extension). */
+    fun pinSelectedNotes(pin: Boolean) {
+        viewModelScope.launch {
+            val selected = _uiState.value.selectedNoteIds
+            (_uiState.value.notes as? UiState.Success)?.data
+                ?.filter { it.id in selected && it.isPinned != pin }
+                ?.forEach { togglePinUseCase(it.id) }
+            _uiState.update { it.copy(selectedNoteIds = emptySet(), isMultiSelectMode = false) }
+            loadNotes()
+        }
+    }
+
+    /** Adds a tag to every selected note (skips notes that already have it). */
+    fun tagSelectedNotes(tag: String) {
+        if (tag.isBlank()) return
+        viewModelScope.launch {
+            val selected = _uiState.value.selectedNoteIds
+            (_uiState.value.notes as? UiState.Success)?.data
+                ?.filter { it.id in selected && !it.tags.contains(tag) }
+                ?.forEach { note ->
+                    updateNoteUseCase(note.copy(tags = note.tags + tag.trim()))
+                }
+            _uiState.update { it.copy(selectedNoteIds = emptySet(), isMultiSelectMode = false) }
+            loadNotes()
+        }
+    }
+
+    fun deleteSelectedNotes() {
+        viewModelScope.launch {
+            _uiState.value.selectedNoteIds.forEach { deleteNoteUseCase(it) }
+            _uiState.update { it.copy(selectedNoteIds = emptySet(), isMultiSelectMode = false) }
+            loadNotes()
+        }
+    }
+
+    /**
+     * Reorders the visible list while a drag is in progress — state only,
+     * nothing persisted until commitDragReorder, so a cancelled drag simply
+     * reloads.
+     */
+    fun previewDragReorder(orderedIds: List<String>) {
+        val current = (_uiState.value.notes as? UiState.Success)?.data ?: return
+        val byId = current.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull { byId[it] }
+        if (reordered.size == current.size) {
+            _uiState.update { it.copy(notes = UiState.Success(reordered)) }
+        }
+    }
+
+    /** Final order after the finger lifts: persists Room + PATCHes the server. */
+    fun commitDragReorder(orderedIds: List<String>) {
+        _uiState.update { it.copy(draggingNoteId = null, dragOverNoteId = null) }
+        viewModelScope.launch {
+            reorderNotesUseCase(orderedIds)
+            loadNotes()
+        }
+    }
+
+    fun dragStarted(noteId: String) {
+        _uiState.update { it.copy(draggingNoteId = noteId, dragOverNoteId = noteId) }
+    }
+
+    fun dragHoveringOver(noteId: String?) {
+        if (noteId != null && noteId != _uiState.value.dragOverNoteId) {
+            _uiState.update { it.copy(dragOverNoteId = noteId) }
+        }
+    }
+
+    fun dragCancelled() {
+        _uiState.update { it.copy(draggingNoteId = null, dragOverNoteId = null) }
+        loadNotes()
+    }
+
+    /** Re-runs the offline queue, e.g. from the failed-sync banner action. */
+    fun retrySync() {
+        viewModelScope.launch {
+            syncManager.syncPendingOperations()
+            loadNotes()
+            refreshWidget()
+        }
+    }
+
+    /** Fired by the banner action and by an auth-required sync status. */
+    fun requestRelogin() {
+        _reloginEvent.tryEmit(Unit)
+    }
+
+    fun clearSyncConflicts() {
+        _uiState.update { it.copy(syncConflicts = emptyList()) }
+    }
+
+    fun showSnackbar(message: String) {
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    fun clearSnackbar() {
+        _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    private fun SyncStatus.toBanner(): SyncBanner = when {
+        authRequired -> SyncBanner.AuthRequired
+        failedCount > 0 -> SyncBanner.Failed(failedCount)
+        isSyncing || pendingCount > 0 -> SyncBanner.Syncing(pendingCount)
+        else -> SyncBanner.None
+    }
+}

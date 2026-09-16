@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KeepLocal</string>
+
+    <string name="nav_notes">Notizen</string>
+    <string name="nav_archive">Archiv</string>
+    <string name="nav_friends">Freunde</string>
+    <string name="nav_settings">Einstellungen</string>
+    <string name="nav_admin">Admin</string>
+    <string name="nav_tags">Tags</string>
+
+    <string name="auth_title">Anmelden</string>
+    <string name="auth_username">Benutzername</string>
+    <string name="auth_password">Passwort</string>
+    <string name="auth_login">Anmelden</string>
+    <string name="auth_logout">Abmelden</string>
+    <string name="auth_register">Registrieren</string>
+    <string name="auth_authenticating">Authentifizierung…</string>
+    <string name="auth_authelia_title">Authentifizierung erforderlich</string>
+    <string name="auth_login_failed">Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.</string>
+
+    <string name="setup_title">Willkommen bei KeepLocal</string>
+    <string name="setup_server_url">Server-URL</string>
+    <string name="setup_server_url_hint">https://notizen.beispiel.de</string>
+    <string name="setup_test_connection">Verbindung testen</string>
+    <string name="setup_testing">Verbindung wird getestet…</string>
+    <string name="setup_connected">Verbunden</string>
+    <string name="setup_connection_failed">Verbindung fehlgeschlagen</string>
+    <string name="setup_authelia_detected">Authelia erkannt</string>
+    <string name="setup_no_authelia">Direktverbindung</string>
+    <string name="setup_continue">Weiter</string>
+    <string name="setup_admin_setup">Admin-Einrichtung</string>
+    <string name="setup_admin_setup_description">Erstelle das erste Administratorkonto für deine KeepLocal-Instanz.</string>
+
+    <string name="notes_title">Notizen</string>
+    <string name="notes_search">Notizen suchen…</string>
+    <string name="notes_empty_title">Noch keine Notizen</string>
+    <string name="notes_empty_subtitle">Tippe auf + um deine erste Notiz zu erstellen</string>
+    <string name="recent_searches">Letzte Suchen</string>
+    <string name="clear">Leeren</string>
+    <string name="search_no_results_title">Keine Treffer</string>
+    <string name="search_no_results_subtitle">Nichts passt zu „%1$s“.</string>
+    <string name="search_reset">Suche zurücksetzen</string>
+    <string name="tag_empty_title">Nichts mit diesem Tag</string>
+    <string name="tag_empty_subtitle">Keine Notiz ist mit %1$s getaggt.</string>
+    <string name="tag_empty_reset">Alle Notizen zeigen</string>
+    <string name="archive_empty_title">Archiv ist leer</string>
+    <string name="archive_empty_subtitle">Weggewischte Notizen landen hier, bevor sie gelöscht werden</string>
+    <string name="trash_empty_state_title">Papierkorb ist leer</string>
+    <string name="trash_empty_state_subtitle">Gelöschte Notizen bleiben 30 Tage hier</string>
+    <string name="editor_draft_saved">Entwurf gespeichert</string>
+    <string name="editor_color_picker_title">Notizfarbe</string>
+    <string name="notes_pinned">Angepinnt</string>
+    <string name="notes_others">Andere</string>
+    <string name="notes_archived">Archiviert</string>
+    <string name="notes_delete_confirm">Diese Notiz löschen?</string>
+    <string name="notes_deleted">Notiz gelöscht</string>
+    <string name="notes_archived_toast">Notiz archiviert</string>
+    <string name="notes_unarchived_toast">Notiz entarchiviert</string>
+    <string name="notes_offline_indicator">Offline</string>
+
+    <string name="editor_title_hint">Titel</string>
+    <string name="editor_content_hint">Notiz</string>
+    <string name="editor_save">Speichern</string>
+    <string name="editor_new_note">Neue Notiz</string>
+    <string name="editor_edit_note">Notiz bearbeiten</string>
+    <string name="editor_add_tag">Tag hinzufügen</string>
+    <string name="editor_color">Farbe</string>
+    <string name="editor_todo_mode">Aufgabenliste</string>
+    <string name="editor_share">Teilen</string>
+    <string name="editor_add_todo_item">Element hinzufügen</string>
+
+    <string name="color_default">Standard</string>
+    <string name="color_red">Rot</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_yellow">Gelb</string>
+    <string name="color_green">Grün</string>
+    <string name="color_teal">Türkis</string>
+    <string name="color_blue">Blau</string>
+    <string name="color_dark_blue">Dunkelblau</string>
+    <string name="color_purple">Lila</string>
+    <string name="color_pink">Rosa</string>
+    <string name="color_brown">Braun</string>
+    <string name="color_gray">Grau</string>
+
+    <string name="friends_title">Freunde</string>
+    <string name="friends_empty">Noch keine Freunde</string>
+    <string name="friends_search">Benutzer suchen…</string>
+    <string name="friends_pending">Ausstehende Anfragen</string>
+    <string name="friends_incoming">Eingehend</string>
+    <string name="friends_outgoing">Ausgehend</string>
+    <string name="friends_accept">Annehmen</string>
+    <string name="friends_reject">Ablehnen</string>
+    <string name="friends_remove">Entfernen</string>
+    <string name="friends_send_request">Anfrage senden</string>
+    <string name="friends_request_sent">Freundschaftsanfrage gesendet</string>
+    <string name="friends_removed">Freund entfernt</string>
+
+    <string name="share_title">Notiz teilen</string>
+    <string name="share_with_friends">Mit Freunden teilen</string>
+    <string name="share_no_friends">Füge Freunde hinzu um Notizen zu teilen</string>
+
+    <string name="admin_title">Admin-Konsole</string>
+    <string name="admin_stats">Statistiken</string>
+    <string name="admin_users">Benutzer</string>
+    <string name="admin_user_count">Benutzer gesamt</string>
+    <string name="admin_note_count">Notizen gesamt</string>
+    <string name="admin_create_user">Benutzer erstellen</string>
+    <string name="admin_delete_user">Benutzer löschen</string>
+    <string name="admin_toggle_admin">Admin umschalten</string>
+    <string name="admin_registration">Registrierung</string>
+    <string name="admin_registration_enabled">Registrierung aktiviert</string>
+    <string name="admin_settings">Systemeinstellungen</string>
+
+    <string name="settings_title">Einstellungen</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_server_url">Server-URL</string>
+    <string name="settings_theme">Darstellung</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Hell</string>
+    <string name="settings_theme_dark">Dunkel</string>
+    <string name="settings_theme_oled">OLED</string>
+    <string name="settings_theme_eink">E-Ink</string>
+    <string name="settings_language">Sprache</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_de">Deutsch</string>
+    <string name="settings_remember_credentials">Zugangsdaten merken</string>
+    <string name="settings_authelia_enabled">Authelia aktiviert</string>
+    <string name="settings_biometric_lock">Biometrische Sperre</string>
+    <string name="settings_clear_cache">Lokalen Cache leeren</string>
+    <string name="settings_cache_cleared">Cache geleert</string>
+    <string name="settings_cache_cleared_kept">Cache geleert — %1$d Offline-Notizen behalten</string>
+    <string name="settings_about">Über</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_connection_status">Verbindungsstatus</string>
+    <string name="settings_connected">Verbunden</string>
+    <string name="settings_disconnected">Getrennt</string>
+
+    <!-- Sicherheit & Biometrie -->
+    <string name="settings_security">Sicherheit</string>
+    <string name="settings_biometric_unavailable">Biometrisches Entsperren ist auf diesem Gerät nicht verfügbar</string>
+    <string name="biometric_prompt_title">KeepLocal entsperren</string>
+    <string name="biometric_prompt_subtitle">Bestätige deine Identität, um fortzufahren</string>
+
+    <!-- SSL-Opt-in für self-signed certificates -->
+    <string name="ssl_error_title">Ungültiges SSL-Zertifikat</string>
+    <string name="ssl_error_message">Das SSL-Zertifikat dieses Servers konnte nicht verifiziert werden. Trotzdem fortfahren? (nicht empfohlen)</string>
+    <string name="ssl_error_continue">(Unsicher) Fortfahren</string>
+
+    <!-- API-Keys -->
+    <string name="settings_api_keys">API-Keys</string>
+    <string name="api_keys_empty">Noch keine API-Keys</string>
+    <string name="api_key_create">API-Key erstellen</string>
+    <string name="api_key_name">Name</string>
+    <string name="api_key_name_required">Bitte einen Namen eingeben</string>
+    <string name="api_key_expiry">Läuft ab nach</string>
+    <string name="api_key_expiry_30">30 Tage</string>
+    <string name="api_key_expiry_90">90 Tage</string>
+    <string name="api_key_expiry_365">1 Jahr</string>
+    <string name="api_key_expiry_never">Niemals</string>
+    <string name="api_key_details">Präfix %1$s · erstellt %2$s</string>
+    <string name="api_key_expires">Läuft ab: %1$s</string>
+    <string name="api_key_never_expires">niemals</string>
+    <string name="api_key_created_title">API-Key erstellt</string>
+    <string name="api_key_created_hint">Dieser Key wird nur einmal angezeigt — kopiere ihn jetzt.</string>
+    <string name="api_key_copy">Kopieren</string>
+    <string name="api_key_revoke">Widerrufen</string>
+    <string name="api_key_revoke_title">API-Key widerrufen?</string>
+    <string name="api_key_revoke_message">„%1$s“ wird sofort ungültig und kann nicht wiederhergestellt werden.</string>
+    <string name="api_key_revoked">API-Key widerrufen</string>
+
+    <string name="ok">OK</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="retry">Wiederholen</string>
+    <string name="delete">Löschen</string>
+    <string name="save">Speichern</string>
+    <string name="error_generic">Etwas ist schiefgelaufen</string>
+    <string name="error_network">Netzwerkfehler. Bitte Verbindung prüfen.</string>
+    <string name="error_server">Serverfehler. Bitte später erneut versuchen.</string>
+    <string name="error_unauthorized">Sitzung abgelaufen. Bitte erneut anmelden.</string>
+    <string name="undo">Rückgängig</string>
+    <string name="loading">Laden…</string>
+
+    <string name="authelia_login">Authelia-Anmeldung</string>
+    <string name="back">Zurück</string>
+
+    <string name="cd_add_note">Notiz hinzufügen</string>
+    <string name="cd_back">Zurück</string>
+    <string name="cd_menu">Menü</string>
+    <string name="cd_search">Suchen</string>
+    <string name="cd_pin_note">Notiz anpinnen</string>
+    <string name="cd_unpin_note">Notiz lösen</string>
+    <string name="cd_archive_note">Notiz archivieren</string>
+    <string name="cd_delete_note">Notiz löschen</string>
+    <string name="cd_color_picker">Farbe wählen</string>
+    <string name="cd_close">Schließen</string>
+    <string name="cd_more_options">Weitere Optionen</string>
+
+    <!-- Registration -->
+    <string name="auth_register_title">Konto erstellen</string>
+    <string name="auth_confirm_password">Passwort bestätigen</string>
+    <string name="auth_passwords_no_match">Passwörter stimmen nicht überein</string>
+    <string name="auth_password_too_short">Das Passwort muss mindestens 8 Zeichen lang sein</string>
+    <string name="auth_register_failed">Registrierung fehlgeschlagen</string>
+    <string name="auth_register_failed_detail">Registrierung fehlgeschlagen: %1$s</string>
+    <string name="auth_login_failed_detail">Anmeldung fehlgeschlagen: %1$s</string>
+    <string name="auth_session_expired">Authelia-Sitzung abgelaufen. Bitte neu authentifizieren.</string>
+    <string name="setup_enter_url">Bitte eine Server-URL eingeben</string>
+    <string name="setup_invalid_url">Ungültiges URL-Format</string>
+    <string name="error_with_reason">Fehler: %1$s</string>
+
+    <!-- Quick Create -->
+    <string name="notes_quick_create">Notiz eingeben…</string>
+
+    <!-- Adaptive Layout / Ansichtsmodi -->
+    <string name="settings_theme_doodle">Doodle</string>
+    <string name="settings_view_mode">Notiz-Layout</string>
+    <string name="settings_material_you">Material-You-Farben</string>
+    <string name="settings_material_you_hint">Färbt helles und dunkles Thema nach dem Hintergrundbild. E-Ink und Doodle behalten ihre Palette, OLED bleibt schwarz.</string>
+    <string name="settings_view_mode_grid">Raster</string>
+    <string name="settings_view_mode_list">Liste</string>
+    <string name="cd_view_grid">Zur Rasteransicht wechseln</string>
+    <string name="cd_view_list">Zur Listenansicht wechseln</string>
+    <string name="detail_empty_title">Keine Notiz ausgewählt</string>
+    <string name="detail_empty_subtitle">Wähle links eine Notiz aus oder erstelle eine neue.</string>
+
+    <string name="cd_expand_sidebar">Labels anzeigen</string>
+    <string name="cd_collapse_sidebar">Labels ausblenden</string>
+    <string name="auth_email">E-Mail</string>
+    <string name="auth_email_hint">du@beispiel.de</string>
+    <string name="auth_username_hint">3-50 Zeichen, Buchstaben, Ziffern, - und _</string>
+    <string name="auth_password_hint">Mindestens 8 Zeichen, Gross-, Kleinbuchstabe und Ziffer</string>
+    <string name="auth_enter_email_password">Bitte E-Mail und Passwort eingeben</string>
+    <string name="auth_enter_all_fields">Bitte Benutzername, E-Mail und Passwort ausfuellen</string>
+    <string name="auth_invalid_email">Bitte eine gueltige E-Mail-Adresse eingeben</string>
+    <string name="sync_banner_syncing">%1$d Änderung(en) werden synchronisiert…</string>
+    <string name="sync_banner_failed">%1$d Änderungen konnten nicht synchronisiert werden</string>
+    <string name="sync_banner_retry">Erneut versuchen</string>
+    <string name="sync_conflict_snackbar">Konflikt bei \'%1$s\' — lokale Version als Kopie gesichert</string>
+    <string name="editor_add_image">Bild hinzufügen</string>
+    <string name="editor_remove_image">Bild entfernen</string>
+    <string name="editor_start_recording">Diktieren</string>
+    <string name="editor_stop_recording">Aufnahme beenden</string>
+    <string name="editor_transcribing">Transkribiere…</string>
+    <string name="viewer_previous_image">Vorheriges Bild</string>
+    <string name="viewer_next_image">Nächstes Bild</string>
+    <string name="media_save_note_first">Notiz zuerst speichern</string>
+    <string name="media_image_limit_reached">Maximal 25 Bilder pro Notiz</string>
+    <string name="media_images_dropped">%1$d weitere(s) Bild verworfen — maximal 25 pro Notiz</string>
+    <string name="media_upload_offline">Bilder können nur online hochgeladen werden</string>
+    <string name="media_upload_failed">Bild-Upload fehlgeschlagen</string>
+    <string name="media_delete_failed">Bild konnte nicht gelöscht werden</string>
+    <string name="media_recording_permission_denied">Mikrofonzugriff wird für Diktate benötigt</string>
+    <string name="media_recording_failed">Aufnahme konnte nicht gestartet werden</string>
+    <string name="media_transcribe_failed">Transkription fehlgeschlagen</string>
+    <string name="transcribe_service_unavailable">Transkriptionsdienst nicht erreichbar. Bitte später erneut versuchen.</string>
+    <!-- Papierkorb (kontoweit, 30 Tage Server-Retention) -->
+    <string name="nav_trash">Papierkorb</string>
+    <string name="action_cancel">Abbrechen</string>
+    <string name="transcribe_retry">Erneut senden</string>
+    <string name="transcribe_recording_kept">Aufnahme bleibt erhalten — du kannst sie erneut senden</string>
+    <string name="trash_title">Papierkorb</string>
+    <string name="trash_empty">Der Papierkorb ist leer</string>
+    <string name="trash_retention_hint">Gelöschte Notizen bleiben 30 Tage hier, dann entfernt der Server sie endgültig.</string>
+    <string name="trash_empty_action">Papierkorb leeren</string>
+    <string name="trash_restore">Notiz wiederherstellen</string>
+    <string name="trash_delete_forever_title">Endgültig löschen?</string>
+    <string name="trash_delete_forever_text">„%1$s“ wird endgültig gelöscht, inklusive Bilder. Das lässt sich nicht rückgängig machen.</string>
+    <string name="trash_delete_forever_confirm">Endgültig löschen</string>
+    <string name="trash_empty_title">Papierkorb leeren?</string>
+    <string name="trash_empty_text">Alle Notizen im Papierkorb werden endgültig gelöscht, inklusive ihrer Bilder. Das lässt sich nicht rückgängig machen.</string>
+    <string name="trash_empty_confirm">Papierkorb leeren</string>
+    <string name="trash_load_failed">Papierkorb konnte nicht geladen werden</string>
+    <string name="trash_retry_load">Erneut versuchen</string>
+    <string name="trash_untitled">(Notiz ohne Titel)</string>
+    <string name="trash_deleted_at">Gelöscht %1$s</string>
+    <!-- v1.5.0: Undo-Löschen, Mehrfachauswahl-Tagging, Konfliktdialog -->
+    <string name="note_deleted_snackbar">Notiz gelöscht</string>
+    <string name="cd_tag_selection">Auswahl taggen</string>
+    <string name="tag_selection_title">Tag hinzufügen</string>
+    <string name="tag_selection_label">Tag</string>
+    <string name="tag_selection_add">Hinzufügen</string>
+    <string name="sync_conflict_title">Sync-Konflikt gelöst</string>
+    <string name="sync_conflict_dialog_text">Diese Notizen wurden zwischenzeitlich auf einem anderen Gerät geändert. Deine Änderungen wurden als Kopien mit der Markierung \"(lokale Version)\" erhalten: %1$s</string>
+
+    <!-- v1.5.0: OAuth-Anmeldung -->
+    <string name="auth_oauth_google">Weiter mit Google</string>
+    <string name="auth_oauth_github">Weiter mit GitHub</string>
+    <string name="auth_oauth_failed">Anmeldung beim Anbieter fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="auth_oauth_title">Anmelden</string>
+
+    <!-- v1.5.0: Widget + Schnellzugriff-Kachel -->
+    <string name="widget_pinned_name">Angepinnte Notizen</string>
+    <string name="widget_pinned_description">Deine angepinnten Notizen auf einen Blick</string>
+    <string name="tile_new_note">Neue Notiz</string>
+
+    <!-- v1.5.0: Einstellungen — Hintergrund-Sync + Passwort ändern -->
+    <string name="settings_background_sync">Hintergrund-Sync</string>
+    <string name="settings_background_sync_hint">Synchronisiert Notizen alle 15 Minuten, wenn online</string>
+    <string name="settings_change_password">Passwort ändern</string>
+    <string name="settings_password_current">Aktuelles Passwort</string>
+    <string name="settings_password_new">Neues Passwort</string>
+    <string name="settings_password_changed">Passwort geändert. Andere Geräte wurden abgemeldet.</string>
+    <string name="settings_password_change_failed">Passwort konnte nicht geändert werden: %1$s</string>
+    <string name="settings_password_signs_out_others">Durch das Ändern des Passworts werden deine anderen Geräte abgemeldet.</string>
+
+    <!-- v1.6.0 -->
+    <string name="settings_voice_transcription">Diktieren (Sprache-zu-Text)</string>
+    <string name="settings_voice_transcription_hint">Konto-weites KI-Feature. Aus = das Mikrofon verschwindet aus dem Editor.</string>
+    <string name="settings_data">Daten</string>
+    <string name="settings_queue">Offline-Warteschlange</string>
+    <string name="settings_queue_hint">Änderungen, die noch nicht beim Server sind</string>
+    <string name="settings_queue_dialog_hint">Diese Änderungen entstanden offline und werden automatisch synchronisiert. Verwerfe nur Einträge, deren Verlust du sicher willst — die Änderung erreicht den Server dann nie.</string>
+    <string name="settings_queue_empty">Die Warteschlange ist leer — alles synchronisiert.</string>
+    <string name="settings_queue_discard">Wartende Änderung verwerfen</string>
+    <string name="settings_queue_type_create">Anlegen</string>
+    <string name="settings_queue_type_update">Bearbeiten</string>
+    <string name="settings_queue_type_delete">Löschen</string>
+    <string name="settings_queue_type_pin">Anheften</string>
+    <string name="settings_queue_type_archive">Archivieren</string>
+    <string name="settings_queue_type_reorder">Sortierung</string>
+    <string name="settings_export_json">Als JSON exportieren</string>
+    <string name="settings_export_json_hint">Vollständiges Backup inkl. To-dos, Tags und Bildern</string>
+    <string name="settings_export_markdown">Als Markdown exportieren</string>
+    <string name="settings_export_markdown_hint">Lesbares Archiv aller Notizen</string>
+    <string name="settings_exporting">Export wird erzeugt…</string>
+    <string name="settings_export_written">Export geschrieben (%1$d Zeichen)</string>
+    <string name="settings_export_failed">Export fehlgeschlagen</string>
+    <string name="settings_share_log">Diagnose-Log teilen</string>
+    <string name="settings_log_empty">Das Diagnose-Log ist leer</string>
+    <plurals name="trash_days_remaining">
+        <item quantity="one">noch %1$d Tag</item>
+        <item quantity="other">noch %1$d Tage</item>
+    </plurals>
+    <string name="shortcut_new_note">Neue Notiz</string>
+    <string name="shortcut_search">Suche</string>
+    <string name="shortcut_trash">Papierkorb</string>
+    <string name="note_owner_badge">von %1$s</string>
+    <string name="note_shared_badge">geteilt</string>
+</resources>

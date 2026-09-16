@@ -1,0 +1,296 @@
+package com.keeplocal.android.data.repository
+
+import com.keeplocal.android.data.api.KeepLocalApi
+import com.keeplocal.android.data.api.SessionCookieJar
+import com.keeplocal.android.data.api.dto.ChangePasswordDto
+import com.keeplocal.android.data.api.dto.LoginRequestDto
+import com.keeplocal.android.data.api.dto.RegisterRequestDto
+import com.keeplocal.android.data.api.dto.UpdateAiFeaturesDto
+import com.keeplocal.android.data.api.dto.UpdatePreferencesDto
+import com.keeplocal.android.data.api.dto.UserPreferencesDto
+import com.keeplocal.android.data.api.dto.toDomain
+import com.keeplocal.android.data.local.SettingsDataStore
+import com.keeplocal.android.data.local.TokenManager
+import com.keeplocal.android.domain.model.AuthState
+import com.keeplocal.android.domain.model.OAuthProviders
+import com.keeplocal.android.domain.model.User
+import com.keeplocal.android.domain.repository.AuthRepository
+import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.util.Result
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import javax.inject.Inject
+
+class AuthRepositoryImpl @Inject constructor(
+    private val api: KeepLocalApi,
+    private val tokenManager: TokenManager,
+    private val settingsDataStore: SettingsDataStore,
+    private val okHttpClient: OkHttpClient,
+    private val cookieJar: SessionCookieJar,
+    private val fileLogger: FileLogger
+) : AuthRepository {
+
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
+    override val authState: Flow<AuthState> = _authState.asStateFlow()
+
+    override suspend fun checkServerConnection(serverUrl: String): Result<Boolean> = Result.catching {
+        withContext(Dispatchers.IO) {
+            val normalizedUrl = normalizeUrl(serverUrl)
+            fileLogger.log("AuthRepo", "checkServerConnection: $normalizedUrl")
+            val client = OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val request = Request.Builder()
+                .url(normalizedUrl.trimEnd('/') + "/api/csrf-token")
+                .get()
+                .build()
+            val response = client.newCall(request).execute()
+            val code = response.code
+            response.close()
+            fileLogger.log("AuthRepo", "checkServerConnection response: code=$code")
+            code in 200..499
+        }
+    }
+
+    override suspend fun isAutheliaPresent(serverUrl: String): Result<Boolean> = Result.catching {
+        withContext(Dispatchers.IO) {
+            val normalizedUrl = normalizeUrl(serverUrl)
+            fileLogger.log("AuthRepo", "isAutheliaPresent: $normalizedUrl")
+            val client = OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val request = Request.Builder()
+                .url(normalizedUrl.trimEnd('/'))
+                .get()
+                .build()
+            val response = client.newCall(request).execute()
+            response.use {
+                val code = it.code
+                val location = it.header("Location") ?: ""
+                fileLogger.log("AuthRepo", "isAutheliaPresent response: code=$code location=$location")
+                location.isNotEmpty() && (location.contains("authelia") || location.contains("auth"))
+            }
+        }
+    }
+
+    private fun normalizeUrl(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+        return "https://$trimmed"
+    }
+
+    override suspend fun getCsrfToken(): Result<String> = Result.catching {
+        fileLogger.log("AuthRepo", "getCsrfToken: calling api.getCsrfToken()")
+        val response = api.getCsrfToken()
+        fileLogger.log("AuthRepo", "getCsrfToken response: code=${response.code()}")
+        if (response.isSuccessful) {
+            val token = response.body()?.csrfToken ?: throw Exception("No CSRF token in response")
+            tokenManager.saveCsrfToken(token)
+            fileLogger.log("AuthRepo", "getCsrfToken success")
+            token
+        } else {
+            val code = response.code()
+            val location = response.headers()["Location"] ?: ""
+            val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { "unreadable" }
+            fileLogger.error("AuthRepo", "getCsrfToken failed: code=$code location=$location body=$body")
+            if (code in 301..303 && (location.contains("auth") || location.contains("authelia"))) {
+                throw Exception("Authelia session expired. Please authenticate via Authelia first.")
+            }
+            // AuthInterceptor synthesizes 401 with JSON body for Authelia blocks
+            if (code == 401 && (body?.contains("authelia") == true || body?.contains("Authelia") == true || body?.contains("auth.") == true)) {
+                throw Exception("Authelia session expired. Please authenticate via Authelia first.")
+            }
+            throw Exception("Failed to get CSRF token: $code body=$body")
+        }
+    }
+
+    override suspend fun login(email: String, password: String): Result<User> = Result.catching {
+        fileLogger.log("AuthRepo", "login: email=${FileLogger.redactEmail(email)}")
+        val csrfResult = getCsrfToken()
+        if (csrfResult.isError) {
+            val msg = (csrfResult as Result.Error).message
+            fileLogger.error("AuthRepo", "login: CSRF fetch failed: $msg")
+            throw Exception("Failed to get CSRF token: $msg")
+        }
+
+        fileLogger.log("AuthRepo", "login: calling api.login()")
+        val response = api.login(LoginRequestDto(email, password))
+        fileLogger.log("AuthRepo", "login response: code=${response.code()}")
+        if (response.isSuccessful) {
+            val authResponse = response.body() ?: throw Exception("Empty response")
+            authResponse.token?.let { tokenManager.saveJwtToken(it) }
+            val user = authResponse.user?.toDomain() ?: throw Exception("No user data")
+            fileLogger.log("AuthRepo", "login success: userId=${user.id}")
+            _authState.value = AuthState.Authenticated(user)
+            applyServerPreferences(authResponse.user?.preferences)
+            user
+        } else {
+            val code = response.code()
+            val location = response.headers()["Location"] ?: ""
+            val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { "unreadable" }
+            fileLogger.error("AuthRepo", "login failed: code=$code location=$location body=$body")
+            if (code in 301..303 && (location.contains("auth") || location.contains("authelia"))) {
+                throw Exception("Authelia session expired. Please authenticate via Authelia first.")
+            }
+            throw Exception(serverMessage(body) ?: "Login failed (HTTP $code)")
+        }
+    }
+
+    override suspend fun logout(): Result<Unit> = Result.catching {
+        try { api.logout() } catch (_: Exception) {}
+        // Drop the in-memory session cookies too; without this the next
+        // login in the same process would silently reuse this session.
+        cookieJar.clear()
+        tokenManager.clearCredentials()
+        tokenManager.clearAll()
+        _authState.value = AuthState.Unauthenticated
+    }
+
+    override suspend fun pushPreferences(
+        theme: String?,
+        language: String?,
+        transcriptionLanguage: String?,
+        voiceTranscription: Boolean?
+    ): Result<Unit> = Result.catching {
+        if (theme == null && language == null && transcriptionLanguage == null && voiceTranscription == null) return@catching
+        fileLogger.log("AuthRepo", "pushPreferences: theme=$theme language=$language transcription=$transcriptionLanguage voice=$voiceTranscription")
+        val response = api.updatePreferences(
+            UpdatePreferencesDto(
+                theme = theme,
+                language = language,
+                transcriptionLanguage = transcriptionLanguage,
+                aiFeatures = voiceTranscription?.let { UpdateAiFeaturesDto(voiceTranscription = it) }
+            )
+        )
+        if (!response.isSuccessful) {
+            val body = try { response.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
+            fileLogger.error("AuthRepo", "pushPreferences failed: code=${response.code()} body=$body")
+            throw Exception(serverMessage(body) ?: "Preferences not saved (HTTP ${response.code()})")
+        }
+    }
+
+    /**
+     * Login response pull (Top-30 Nr. 17): theme, language and the Whisper
+     * hint travel with the account. The server stores themes as
+     * light/dark/oled/eink/doodle; the local keys only differ in `e_ink`.
+     */
+    private suspend fun applyServerPreferences(preferences: UserPreferencesDto?) {
+        if (preferences == null) return
+        runCatching {
+            preferences.theme?.let { serverTheme ->
+                val localKey = when (serverTheme) {
+                    "light", "dark", "oled", "doodle" -> serverTheme
+                    "eink" -> "e_ink"
+                    else -> null
+                }
+                localKey?.let { settingsDataStore.setThemeMode(it) }
+            }
+            preferences.language
+                ?.takeIf { it == "de" || it == "en" }
+                ?.let { settingsDataStore.setLanguage(it) }
+            preferences.transcriptionLanguage
+                ?.takeIf { it.isNotBlank() }
+                ?.let { settingsDataStore.setTranscriptionLanguage(it) }
+            preferences.aiFeatures?.voiceTranscription
+                ?.let { settingsDataStore.setVoiceTranscription(it) }
+        }.onFailure { fileLogger.error("AuthRepo", "applyServerPreferences failed", it) }
+    }
+
+    override suspend fun getCurrentUser(): Result<User> = Result.catching {
+        val response = api.getCurrentUser()
+        if (response.isSuccessful) {
+            val user = response.body()?.toDomain() ?: throw Exception("No user data")
+            _authState.value = AuthState.Authenticated(user)
+            user
+        } else {
+            _authState.value = AuthState.Unauthenticated
+            throw Exception("Not authenticated: ${response.code()}")
+        }
+    }
+
+    override suspend fun register(username: String, email: String, password: String): Result<User> =
+        Result.catching {
+            val csrfResult = getCsrfToken()
+            if (csrfResult.isError) {
+                throw Exception("Failed to get CSRF token: ${(csrfResult as Result.Error).message}")
+            }
+            fileLogger.log("AuthRepo", "register: user=$username email=${FileLogger.redactEmail(email)}")
+            val response = api.register(RegisterRequestDto(username, email, password))
+            if (response.isSuccessful) {
+                val authResponse = response.body() ?: throw Exception("Empty response")
+                authResponse.token?.let { tokenManager.saveJwtToken(it) }
+                val user = authResponse.user?.toDomain() ?: throw Exception("No user data")
+                fileLogger.log("AuthRepo", "register success: userId=${user.id}")
+                _authState.value = AuthState.Authenticated(user)
+                user
+            } else {
+                val body = try {
+                    response.errorBody()?.string()?.take(500)
+                } catch (_: Exception) {
+                    null
+                }
+                fileLogger.error("AuthRepo", "register failed: code=${response.code()} body=$body")
+                throw Exception(serverMessage(body) ?: "Registration failed: ${response.code()}")
+            }
+        }
+
+    /** Surfaces the API's own validation text instead of a bare status code. */
+    private fun serverMessage(body: String?): String? {
+        if (body.isNullOrBlank()) return null
+        val detail = Regex("\"msg\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)
+        if (detail != null) return detail
+        return Regex("\"error\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)
+    }
+
+    override fun saveAutheliaCookies(cookies: String) {
+        fileLogger.log("AuthRepo", "saveAutheliaCookies: ${if (cookies.isBlank()) "empty" else "present"}")
+        tokenManager.saveAutheliaCookies(cookies)
+    }
+
+    override suspend fun getOAuthProviders(): Result<OAuthProviders> = Result.catching {
+        val response = api.getOAuthProviders()
+        if (!response.isSuccessful) {
+            throw Exception("Providers not available (HTTP ${response.code()})")
+        }
+        val providers = response.body()?.providers
+        OAuthProviders(
+            google = providers?.google == true,
+            github = providers?.github == true,
+            demo = providers?.demo == true
+        )
+    }
+
+    override suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> =
+        Result.catching {
+            val csrfResult = getCsrfToken()
+            if (csrfResult.isError) {
+                throw Exception("Failed to get CSRF token: ${(csrfResult as Result.Error).message}")
+            }
+            fileLogger.log("AuthRepo", "changePassword: calling api")
+            val response = api.changePassword(ChangePasswordDto(currentPassword, newPassword))
+            if (!response.isSuccessful) {
+                val body = try { response.errorBody()?.string()?.take(300) } catch (_: Exception) { null }
+                fileLogger.error("AuthRepo", "changePassword failed: code=${response.code()}")
+                throw Exception(serverMessage(body) ?: "Password change failed (HTTP ${response.code()})")
+            }
+            fileLogger.log("AuthRepo", "changePassword success")
+        }
+
+    override fun getServerUrl(): String? = null
+
+    override suspend fun setServerUrl(url: String) {
+        settingsDataStore.setServerUrl(url)
+    }
+}

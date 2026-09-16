@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcuts (v1.6.0 Nr. 5): long-press on the app icon offers the
+     three most common entries. All land in the singleTask MainActivity, where
+     IncomingIntents routes the extras — same path as widget and tile. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_note"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new_note"
+        android:shortcutLongLabel="@string/shortcut_new_note">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.keeplocal.android"
+            android:targetClass="com.keeplocal.android.ui.MainActivity">
+            <extra android:name="keeplocal.extra.NEW_NOTE" android:value="true" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search"
+        android:shortcutLongLabel="@string/shortcut_search">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.keeplocal.android"
+            android:targetClass="com.keeplocal.android.ui.MainActivity">
+            <extra android:name="keeplocal.extra.OPEN_SEARCH" android:value="true" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="trash"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_trash"
+        android:shortcutShortLabel="@string/shortcut_trash"
+        android:shortcutLongLabel="@string/shortcut_trash">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.keeplocal.android"
+            android:targetClass="com.keeplocal.android.ui.MainActivity">
+            <extra android:name="keeplocal.extra.OPEN_TRASH" android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

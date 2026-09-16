@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KeepLocal brand mark: white note sheet with folded corner, two text
+     lines and a check badge breaking out of the sheet's bottom-right
+     corner. Authored on the 48x48 web-logo viewBox, scaled 1.45x and
+     centered in the 108dp adaptive-icon canvas (safe zone). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Note sheet -->
+    <path
+        android:pathData="M 39.5 28.3 H 61.3 L 72.9 39.9 V 75.4 Q 72.9 79.7 68.5 79.7 H 39.5 Q 35.2 79.7 35.2 75.4 V 32.6 Q 35.2 28.3 39.5 28.3 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Folded corner -->
+    <path
+        android:pathData="M 61.3 28.3 V 35.5 Q 61.3 39.9 65.6 39.9 H 72.9 Z"
+        android:fillColor="#E7D9C9" />
+    <path
+        android:pathData="M 61.3 39.9 H 65.6 Q 67.6 37.8 68.7 35.7 L 72.9 39.9 Z"
+        android:fillColor="#000000"
+        android:fillAlpha="0.08" />
+
+    <!-- Text lines -->
+    <path
+        android:pathData="M 39.7 45.7 L 66.3 45.7"
+        android:strokeColor="#B56B55"
+        android:strokeWidth="3.9"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M 39.7 53.6 L 56.9 53.6"
+        android:strokeColor="#B56B55"
+        android:strokeWidth="3.9"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.55" />
+
+    <!-- Check badge -->
+    <path
+        android:pathData="M 63.4 71.7 m -7.8 0 a 7.8 7.8 0 1 0 15.6 0 a 7.8 7.8 0 1 0 -15.6 0"
+        android:fillColor="#B56B55" />
+    <path
+        android:pathData="M 63.4 71.7 m -7.8 0 a 7.8 7.8 0 1 0 15.6 0 a 7.8 7.8 0 1 0 -15.6 0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeAlpha="0.35" />
+    <path
+        android:pathData="M 59.9 71.9 L 62.4 74.4 L 67.2 69.3"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
