@@ -13,11 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.keeplocal.android.domain.model.LinkPreview
+import com.keeplocal.android.util.LinkOpener
 
 @Composable
 fun LinkPreviewCard(
@@ -25,14 +26,12 @@ fun LinkPreviewCard(
     onRemove: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable {
-                try { uriHandler.openUri(preview.url) } catch (_: Exception) {}
-            },
+            .clickable { LinkOpener.open(context, preview.url) },
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)

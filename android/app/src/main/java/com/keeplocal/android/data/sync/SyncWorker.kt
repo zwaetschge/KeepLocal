@@ -7,7 +7,9 @@ import androidx.work.WorkerParameters
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.SyncManager
 import com.keeplocal.android.data.local.TokenManager
+import com.keeplocal.android.reminder.ReminderScheduler
 import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.widget.NoteWidget
 import com.keeplocal.android.widget.PinnedNotesWidget
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -27,6 +29,7 @@ class SyncWorker @AssistedInject constructor(
     private val syncManager: SyncManager,
     private val settingsDataStore: SettingsDataStore,
     private val tokenManager: TokenManager,
+    private val reminderScheduler: ReminderScheduler,
     private val fileLogger: FileLogger
 ) : CoroutineWorker(appContext, params) {
 
@@ -39,8 +42,14 @@ class SyncWorker @AssistedInject constructor(
                 "SyncWorker",
                 "background sync: synced=${result.synced} failed=${result.failed} skipped=${result.skipped}"
             )
-            // Pinned notes may have arrived/changed — refresh the widget too.
+            settingsDataStore.setLastSyncAt(System.currentTimeMillis())
+            // Pinned notes/single-note widgets may show stale data now — refresh.
             runCatching { PinnedNotesWidget.refreshAll(applicationContext) }
+            runCatching { NoteWidget.refreshAll(applicationContext) }
+            // Synced updates may have changed reminders — re-plan the alarms.
+            if (result.synced > 0) {
+                runCatching { reminderScheduler.rescheduleAll() }
+            }
             Result.success()
         } catch (e: Exception) {
             fileLogger.error("SyncWorker", "background sync crashed", e)

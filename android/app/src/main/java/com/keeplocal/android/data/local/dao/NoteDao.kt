@@ -1,6 +1,7 @@
 package com.keeplocal.android.data.local.dao
 
 import androidx.room.*
+import androidx.sqlite.db.SupportSQLiteQuery
 import com.keeplocal.android.data.local.entity.NoteEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -14,6 +15,16 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE isArchived = 0 AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%' OR todoItemsJson LIKE '%' || :query || '%' OR tagsJson LIKE '%' || :query || '%') ORDER BY isPinned DESC, updatedAt DESC")
     fun searchNotes(query: String): Flow<List<NoteEntity>>
+
+    // --- Sort modes + paging (v1.8.0); SQL built in NoteQueries ---
+
+    @RawQuery(observedEntities = [NoteEntity::class])
+    fun getNotesQuery(query: SupportSQLiteQuery): Flow<List<NoteEntity>>
+
+    /** Live notes with a reminder in the future — the reminder scheduler's
+     *  source of truth when (re)planning alarms. */
+    @Query("SELECT * FROM notes WHERE remindAtEpochMs IS NOT NULL AND remindAtEpochMs > :nowEpochMs AND isArchived = 0")
+    suspend fun getNotesWithUpcomingReminders(nowEpochMs: Long): List<NoteEntity>
 
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: String): NoteEntity?
@@ -61,3 +72,4 @@ interface NoteDao {
     @Query("DELETE FROM notes WHERE id NOT IN (SELECT noteId FROM pending_operations)")
     suspend fun deleteSyncedNotes(): Int
 }
+

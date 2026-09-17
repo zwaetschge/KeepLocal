@@ -1,5 +1,6 @@
 package com.keeplocal.android.ui.notes
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -13,6 +14,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
@@ -41,10 +43,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -53,6 +57,7 @@ import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.outlined.PushPin
@@ -78,6 +83,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -94,6 +100,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -118,6 +125,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -127,6 +135,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.keeplocal.android.R
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.ui.adaptive.LayoutMode
 import com.keeplocal.android.ui.adaptive.LocalAppWindowInfo
 import com.keeplocal.android.ui.adaptive.isTwoPane
@@ -136,8 +145,13 @@ import com.keeplocal.android.ui.components.ShimmerNoteGrid
 import com.keeplocal.android.ui.components.ShimmerNoteList
 import com.keeplocal.android.ui.theme.Motion
 import com.keeplocal.android.ui.theme.doodleCard
+import com.keeplocal.android.util.NoteShareFormatter
 import com.keeplocal.android.util.Ordering
 import com.keeplocal.android.util.UiState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.max
 import kotlinx.coroutines.flow.collect
@@ -463,7 +477,20 @@ private fun NotesPane(
     var showDeleteConfirm by remember { mutableStateOf<String?>(null) }
     var showContextMenu by remember { mutableStateOf<Note?>(null) }
     var showTagDialog by remember { mutableStateOf(false) }
+    var showSortDialog by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
+    val context = LocalContext.current
+
+    // Teilen als Text (v1.8.0 Nr. 8): formatted like the WebUI share, then
+    // straight into the system share sheet.
+    fun shareNoteAsText(note: Note) {
+        val text = NoteShareFormatter.plainText(note, context.getString(R.string.app_name))
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, null))
+    }
 
     // Precomputed outside the effects — stringResource is composable-only.
     val undoText = stringResource(R.string.undo)
@@ -642,6 +669,13 @@ private fun NotesPane(
                         }
                     },
                     actions = {
+                        // Sort mode picker (v1.8.0 Nr. 9).
+                        IconButton(onClick = { showSortDialog = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = stringResource(R.string.sort_label)
+                            )
+                        }
                         IconButton(onClick = viewModel::toggleViewMode) {
                             Icon(
                                 if (isListMode) Icons.Default.GridView else Icons.Default.ViewAgenda,
@@ -812,14 +846,35 @@ private fun NotesPane(
                                 max(1, floor(paneMaxWidth / MinNoteColumnWidth).toInt())
                             }
                             val allNotes = notes.data
-                            val pinnedNotes = allNotes.filter { it.isPinned }
-                            val otherNotes = allNotes.filter { !it.isPinned }
+                            // Explicit sorts (v1.8.0 Nr. 9) show ONE flat sequence —
+                            // pin sections would fight the chosen order — and manual
+                            // drag reorder only makes sense in the custom order.
+                            val manualSort = uiState.sortMode == SortMode.MANUAL
+                            val pinnedNotes = if (manualSort) allNotes.filter { it.isPinned } else emptyList()
+                            val otherNotes = if (manualSort) allNotes.filter { !it.isPinned } else emptyList()
                             val haptic = LocalHapticFeedback.current
 
                             // Drag & drop manual ordering. The gesture lives on the
                             // GRID, not on the cards, so the finger position maps
                             // 1:1 onto item coordinates even while cards swap.
                             val gridState = rememberLazyStaggeredGridState()
+
+                            // Infinite scroll (v1.8.0 Nr. 4): nearing the end of the
+                            // window grows it by one page straight from Room. Both
+                            // keys matter: size grows on loadMore (may STILL be near
+                            // the end → load again), nearEnd flips on every scroll.
+                            val nearEndOfWindow by remember {
+                                derivedStateOf {
+                                    val info = gridState.layoutInfo
+                                    val last = info.visibleItemsInfo.lastOrNull()
+                                    last != null &&
+                                        last.offset.y + last.size.height <= info.viewportEndOffset + 600
+                                }
+                            }
+                            LaunchedEffect(allNotes.size, nearEndOfWindow) {
+                                if (nearEndOfWindow && uiState.hasMore) viewModel.loadMore()
+                            }
+
                             var draggingId by remember { mutableStateOf<String?>(null) }
                             var dragMoved by remember { mutableStateOf(false) }
                             var dragFinger by remember { mutableStateOf(Offset.Zero) }
@@ -831,6 +886,7 @@ private fun NotesPane(
                             val currentPinnedIds by rememberUpdatedState(pinnedIdSet)
                             val currentUiState by rememberUpdatedState(uiState)
                             val currentAllNotes by rememberUpdatedState(allNotes)
+                            val currentManualSort by rememberUpdatedState(manualSort)
 
                             LazyVerticalStaggeredGrid(
                                 state = gridState,
@@ -856,13 +912,17 @@ private fun NotesPane(
                                                 val id = draggingId ?: return@detectDragGesturesAfterLongPress
                                                 dragFinger += amount
                                                 dragMoved = true
-                                                val target = noteIdAt(gridState.layoutInfo, dragFinger)
-                                                if (target != null && target != id) {
-                                                    val newOrder = Ordering.orderAfterDrop(
-                                                        currentOrderedIds, id, target, currentPinnedIds
-                                                    )
-                                                    if (newOrder != currentOrderedIds) {
-                                                        viewModel.previewDragReorder(newOrder)
+                                                // Reordering only exists in the custom order —
+                                                // sorted views keep their chosen sequence.
+                                                if (currentManualSort) {
+                                                    val target = noteIdAt(gridState.layoutInfo, dragFinger)
+                                                    if (target != null && target != id) {
+                                                        val newOrder = Ordering.orderAfterDrop(
+                                                            currentOrderedIds, id, target, currentPinnedIds
+                                                        )
+                                                        if (newOrder != currentOrderedIds) {
+                                                            viewModel.previewDragReorder(newOrder)
+                                                        }
                                                     }
                                                 }
                                             },
@@ -870,9 +930,9 @@ private fun NotesPane(
                                                 val id = draggingId
                                                 draggingId = null
                                                 if (id != null) {
-                                                    if (dragMoved) {
+                                                    if (dragMoved && currentManualSort) {
                                                         viewModel.commitDragReorder(currentOrderedIds)
-                                                    } else {
+                                                    } else if (!dragMoved) {
                                                         // Long-press without moving: context menu.
                                                         showContextMenu = currentAllNotes.find { it.id == id }
                                                     }
@@ -891,33 +951,7 @@ private fun NotesPane(
                                     }
                                 }
 
-                                if (pinnedNotes.isNotEmpty()) {
-                                    item(span = StaggeredGridItemSpan.FullLine) {
-                                        SectionLabel(stringResource(R.string.notes_pinned))
-                                    }
-                                    items(pinnedNotes, key = { it.id }) { note ->
-                                        DraggableNoteCard(isDragged = note.id == draggingId) {
-                                            AnimatedNoteCard(
-                                                note = note,
-                                                uiState = uiState,
-                                                compact = isListMode,
-                                                isSelected = note.id == selectedNoteId ||
-                                                    note.id in uiState.selectedNoteIds,
-                                                onOpen = { onOpenNote(note.id) },
-                                                viewModel = viewModel,
-                                                haptic = haptic,
-                                                archivedText = archivedText,
-                                                onDelete = { showDeleteConfirm = note.id }
-                                            )
-                                        }
-                                    }
-                                }
-                                if (pinnedNotes.isNotEmpty() && otherNotes.isNotEmpty()) {
-                                    item(span = StaggeredGridItemSpan.FullLine) {
-                                        SectionLabel(stringResource(R.string.notes_others))
-                                    }
-                                }
-                                items(otherNotes, key = { it.id }) { note ->
+                                val noteItem: @Composable (Note) -> Unit = { note ->
                                     DraggableNoteCard(isDragged = note.id == draggingId) {
                                         AnimatedNoteCard(
                                             note = note,
@@ -933,6 +967,24 @@ private fun NotesPane(
                                         )
                                     }
                                 }
+
+                                if (manualSort) {
+                                    if (pinnedNotes.isNotEmpty()) {
+                                        item(span = StaggeredGridItemSpan.FullLine) {
+                                            SectionLabel(stringResource(R.string.notes_pinned))
+                                        }
+                                        items(pinnedNotes, key = { it.id }) { note -> noteItem(note) }
+                                    }
+                                    if (pinnedNotes.isNotEmpty() && otherNotes.isNotEmpty()) {
+                                        item(span = StaggeredGridItemSpan.FullLine) {
+                                            SectionLabel(stringResource(R.string.notes_others))
+                                        }
+                                    }
+                                    items(otherNotes, key = { it.id }) { note -> noteItem(note) }
+                                } else {
+                                    // Sorted views: one flat sequence in the chosen order.
+                                    items(allNotes, key = { it.id }) { note -> noteItem(note) }
+                                }
                             }
                         }
                     }
@@ -944,6 +996,10 @@ private fun NotesPane(
                         contentColor = MaterialTheme.colorScheme.primary
                     )
                 }
+
+                // Visible sync status (v1.8.0 Nr. 3): when the list last
+                // matched the server, pulled-to-refresh or background sync.
+                LastSyncFooter(lastSyncAt = uiState.lastSyncAt)
             }
         }
     }
@@ -1045,9 +1101,93 @@ private fun NotesPane(
             onEdit = {
                 showContextMenu = null
                 onOpenNote(note.id)
+            },
+            onShare = {
+                showContextMenu = null
+                shareNoteAsText(note)
+            },
+            onDuplicate = {
+                showContextMenu = null
+                viewModel.duplicateNote(note.id, context.getString(R.string.duplicate_copy_label))
             }
         )
     }
+
+    // Sort mode picker (v1.8.0 Nr. 9): custom order stays the default; the
+    // others re-read the window from the Room cache instantly.
+    if (showSortDialog) {
+        AlertDialog(
+            onDismissRequest = { showSortDialog = false },
+            title = { Text(stringResource(R.string.sort_label)) },
+            text = {
+                Column {
+                    SortMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setSortMode(mode)
+                                    showSortDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.sortMode == mode,
+                                onClick = {
+                                    viewModel.setSortMode(mode)
+                                    showSortDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(sortModeLabel(mode))
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+}
+
+@Composable
+private fun sortModeLabel(mode: SortMode): String = stringResource(
+    when (mode) {
+        SortMode.MANUAL -> R.string.sort_manual
+        SortMode.UPDATED -> R.string.sort_updated
+        SortMode.CREATED -> R.string.sort_created
+        SortMode.TITLE -> R.string.sort_title_az
+    }
+)
+
+/**
+ * Quiet "zuletzt synchronisiert" line under the note list. Empty before the
+ * first sync so a fresh install doesn't start with a warning color.
+ */
+@Composable
+private fun LastSyncFooter(lastSyncAt: Long) {
+    val text = when {
+        lastSyncAt <= 0L -> stringResource(R.string.sync_last_never)
+        System.currentTimeMillis() - lastSyncAt < 60_000L -> stringResource(R.string.sync_just_now)
+        else -> stringResource(R.string.sync_last_prefix) + " " + formatSyncTime(lastSyncAt)
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+    )
+}
+
+/** Short local timestamp for the sync footer ("17.9. 14:32"). */
+private fun formatSyncTime(epochMillis: Long): String = try {
+    DateTimeFormatter.ofPattern("d.M. HH:mm").withLocale(Locale.getDefault())
+        .format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
+} catch (_: Exception) {
+    "-"
 }
 
 /**
@@ -1178,7 +1318,9 @@ private fun NoteContextSheet(
     onPin: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onShare: () -> Unit,
+    onDuplicate: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(bottom = 24.dp)) {
@@ -1196,6 +1338,18 @@ private fun NoteContextSheet(
                 headlineContent = { Text(stringResource(R.string.editor_edit_note)) },
                 leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
                 modifier = Modifier.clickableListItem(onEdit)
+            )
+            // Share as text / duplicate (v1.8.0 Nr. 8) — the two actions that
+            // used to be WebUI-only.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.action_share)) },
+                leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
+                modifier = Modifier.clickableListItem(onShare)
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.action_duplicate)) },
+                leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                modifier = Modifier.clickableListItem(onDuplicate)
             )
             ListItem(
                 headlineContent = {

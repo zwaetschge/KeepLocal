@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Delete
@@ -68,7 +69,9 @@ import com.keeplocal.android.ui.theme.Motion
 import com.keeplocal.android.ui.theme.NoteContentColors
 import com.keeplocal.android.ui.theme.contentColorsFor
 import com.keeplocal.android.ui.theme.doodleCard
+import com.keeplocal.android.util.ChecklistProgress
 import com.keeplocal.android.util.SearchHighlight
+import java.time.Instant
 
 private val CardShape = RoundedCornerShape(8.dp)
 
@@ -259,6 +262,16 @@ fun NoteCard(
                         if (ownerLabel != null) {
                             OwnerBadge(ownerLabel, cc)
                         }
+                        // Future reminder (v1.8.0 Nr. 2): tiny clock next to the pin.
+                        val remindAt = note.remindAt
+                        if (remindAt != null && remindAt.isAfter(Instant.now())) {
+                            Icon(
+                                Icons.Default.Alarm,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = cc.accent
+                            )
+                        }
                         if (note.isPinned) {
                             Icon(
                                 Icons.Default.PushPin,
@@ -274,6 +287,24 @@ fun NoteCard(
                     }
 
                     if (note.isTodoList) {
+                        // Checklist progress chip (v1.8.0 Nr. 5): "3/7" at a
+                        // glance — done flying through a shopping list.
+                        val progress = ChecklistProgress.of(note.todoItems)
+                        if (progress.total > 0) {
+                            Surface(
+                                color = cc.chipContainer,
+                                contentColor = cc.onCardVariant,
+                                border = BorderStroke(1.dp, cc.chipOutline),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = progress.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                         note.todoItems.take(5).forEach { item ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -568,6 +599,26 @@ fun NoteRow(
                 }
                 if (note.tags.isNotEmpty()) {
                     TagChip(tag = note.tags.first(), cc = cc, onTagClick = onTagClick)
+                }
+                // Progress + reminder markers in dense rows too (v1.8.0).
+                if (note.isTodoList) {
+                    val progress = ChecklistProgress.of(note.todoItems)
+                    if (progress.total > 0) {
+                        Text(
+                            text = progress.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = cc.onCardVariant
+                        )
+                    }
+                }
+                val remindAt = note.remindAt
+                if (remindAt != null && remindAt.isAfter(Instant.now())) {
+                    Icon(
+                        Icons.Default.Alarm,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = cc.accent
+                    )
                 }
                 if (ownerLabel != null) {
                     Text(

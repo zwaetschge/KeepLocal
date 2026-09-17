@@ -27,5 +27,8 @@ data class NoteEntity(
     val imagesJson: String = "[]",
     // Raw ISO updatedAt string of the server version this row is based on;
     // sent back as UpdateNoteDto.baseUpdatedAt for optimistic locking.
-    val baseUpdatedAt: String? = null
+    val baseUpdatedAt: String? = null,
+    // Reminder trigger time as epoch millis; null = no reminder. Room cannot
+    // store Instant, and millis keep the v4 migration a single ADD COLUMN.
+    val remindAtEpochMs: Long? = null
 )

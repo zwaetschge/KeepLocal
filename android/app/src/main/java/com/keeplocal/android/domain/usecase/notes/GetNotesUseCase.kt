@@ -1,6 +1,7 @@
 package com.keeplocal.android.domain.usecase.notes
 
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.util.Result
 import kotlinx.coroutines.flow.Flow
@@ -12,7 +13,18 @@ class GetNotesUseCase @Inject constructor(
     operator fun invoke(
         search: String? = null,
         tag: String? = null,
-        archived: Boolean = false
+        archived: Boolean = false,
+        sortMode: SortMode = SortMode.MANUAL,
+        limit: Int? = null
     ): Flow<Result<List<Note>>> =
-        noteRepository.getNotes(search = search, tag = tag, archived = archived)
+        noteRepository.getNotes(search = search, tag = tag, archived = archived, sortMode = sortMode, limit = limit)
+
+    /** Room-only re-read for sort switches and "load more" — no network. */
+    fun invokeCached(
+        search: String? = null,
+        archived: Boolean = false,
+        sortMode: SortMode = SortMode.MANUAL,
+        limit: Int? = null
+    ): Flow<Result<List<Note>>> =
+        noteRepository.getCachedNotes(search = search, archived = archived, sortMode = sortMode, limit = limit)
 }

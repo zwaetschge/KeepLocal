@@ -1,6 +1,7 @@
 package com.keeplocal.android.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -56,6 +57,8 @@ fun SettingsScreen(
     var revokeTarget by remember { mutableStateOf<ApiKeyDto?>(null) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showQueueDialog by remember { mutableStateOf(false) }
+    var showBackupIntervalDialog by remember { mutableStateOf(false) }
+    var showBackupRetentionDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     // The lock only makes sense with something to authenticate with; without
@@ -75,6 +78,15 @@ fun SettingsScreen(
     val exportMarkdownLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/markdown")
     ) { uri -> uri?.let { viewModel.writeExport(it, ExportNotesUseCase.Format.MARKDOWN) } }
+
+    // JSON import (v1.8.0 Nr. 1) and the backup target folder (Nr. 7).
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.importFromUri(it) } }
+
+    val backupFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> uri?.let { viewModel.setBackupFolder(it) } }
 
     LaunchedEffect(Unit) {
         viewModel.logoutEvent.collect { onLogout() }
@@ -400,6 +412,77 @@ fun SettingsScreen(
                 }
             )
 
+            // JSON import (v1.8.0 Nr. 1): every note in the export lands as a
+            // new copy — nothing is merged onto existing notes.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.import_title)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.isImporting) stringResource(R.string.loading)
+                        else stringResource(R.string.import_description)
+                    )
+                },
+                leadingContent = {
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.UploadFile, contentDescription = null)
+                    }
+                },
+                modifier = Modifier.clickable(enabled = !uiState.isImporting) {
+                    importLauncher.launch(arrayOf("application/json"))
+                }
+            )
+
+            // Automatic backup (v1.8.0 Nr. 7): WorkManager writes JSON exports
+            // into a SAF folder granted once; retention trims old files.
+            Text(
+                stringResource(R.string.backup_section_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.backup_interval_label)) },
+                supportingContent = { Text(backupIntervalLabel(uiState.backupIntervalHours)) },
+                leadingContent = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                modifier = Modifier.clickable { showBackupIntervalDialog = true }
+            )
+
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.backup_folder_label)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.backupTreeUri.isBlank()) stringResource(R.string.backup_choose_folder)
+                        else Uri.parse(uiState.backupTreeUri).lastPathSegment
+                            ?: uiState.backupTreeUri
+                    )
+                },
+                leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                modifier = Modifier.clickable { backupFolderLauncher.launch(null) }
+            )
+
+            ListItem(
+                headlineContent = {
+                    Text(stringResource(R.string.backup_retention_label, uiState.backupRetention))
+                },
+                leadingContent = { Icon(Icons.Default.History, contentDescription = null) },
+                modifier = Modifier.clickable { showBackupRetentionDialog = true }
+            )
+
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.backup_now)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.lastBackupAt == 0L) stringResource(R.string.backup_last_never)
+                        else stringResource(R.string.backup_last_at, formatQueueTime(uiState.lastBackupAt))
+                    )
+                },
+                leadingContent = { Icon(Icons.Default.Save, contentDescription = null) },
+                modifier = Modifier.clickable { viewModel.backupNow() }
+            )
+
             // Support bundle for bug reports: redacted diagnostic log as text.
             ListItem(
                 headlineContent = { Text(stringResource(R.string.settings_share_log)) },
@@ -666,6 +749,81 @@ fun SettingsScreen(
             }
         )
     }
+
+    // Backup interval (v1.8.0 Nr. 7): 0 cancels the periodic work.
+    if (showBackupIntervalDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupIntervalDialog = false },
+            title = { Text(stringResource(R.string.backup_interval_label)) },
+            text = {
+                Column {
+                    listOf(
+                        0 to R.string.backup_interval_off,
+                        24 to R.string.backup_interval_daily,
+                        168 to R.string.backup_interval_weekly,
+                        720 to R.string.backup_interval_monthly
+                    ).forEach { (hours, labelRes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setBackupInterval(hours)
+                                    showBackupIntervalDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.backupIntervalHours == hours,
+                                onClick = {
+                                    viewModel.setBackupInterval(hours)
+                                    showBackupIntervalDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(labelRes))
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    // Backup retention: how many files to keep before the worker prunes.
+    if (showBackupRetentionDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupRetentionDialog = false },
+            title = { Text(stringResource(R.string.backup_retention_label, uiState.backupRetention)) },
+            text = {
+                Column {
+                    listOf(3, 7, 14, 30).forEach { count ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setBackupRetention(count)
+                                    showBackupRetentionDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.backupRetention == count,
+                                onClick = {
+                                    viewModel.setBackupRetention(count)
+                                    showBackupRetentionDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.backup_retention_label, count))
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -813,6 +971,16 @@ private fun themeDisplayName(mode: ThemeMode): String = when (mode) {
     ThemeMode.OLED -> stringResource(R.string.settings_theme_oled)
     ThemeMode.E_INK -> stringResource(R.string.settings_theme_eink)
     ThemeMode.DOODLE -> stringResource(R.string.settings_theme_doodle)
+}
+
+/** Interval label; the three presets read cleaner than raw hour counts. */
+@Composable
+private fun backupIntervalLabel(hours: Int): String = when (hours) {
+    0 -> stringResource(R.string.backup_interval_off)
+    24 -> stringResource(R.string.backup_interval_daily)
+    168 -> stringResource(R.string.backup_interval_weekly)
+    720 -> stringResource(R.string.backup_interval_monthly)
+    else -> stringResource(R.string.backup_interval_hours, hours)
 }
 
 /** Formats an ISO timestamp as a short local date; falls back to the raw value. */

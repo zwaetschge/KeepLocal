@@ -6,8 +6,10 @@ import com.keeplocal.android.data.api.dto.ShareNoteDto
 import com.keeplocal.android.data.api.dto.toDomain
 import com.keeplocal.android.data.api.dto.toCreateDto
 import com.keeplocal.android.data.api.dto.toUpdateDto
+import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.SyncManager
 import com.keeplocal.android.data.local.dao.NoteDao
+import com.keeplocal.android.data.local.dao.NoteQueries
 import com.keeplocal.android.data.local.dao.PendingOperationDao
 import com.keeplocal.android.data.local.entity.OperationType
 import com.keeplocal.android.data.local.entity.PendingOperationEntity
@@ -15,13 +17,19 @@ import com.keeplocal.android.data.local.entity.toEntity
 import com.keeplocal.android.data.local.entity.toDomain as entityToDomain
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.repository.NoteRepository
+import com.keeplocal.android.reminder.ReminderScheduler
 import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.util.NoteImportParser
+import com.keeplocal.android.util.NoteShareFormatter
 import com.keeplocal.android.util.Result
 import com.keeplocal.android.util.ServerContract
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 
@@ -35,10 +43,18 @@ class NoteRepositoryImpl @Inject constructor(
     private val noteDao: NoteDao,
     private val pendingOperationDao: PendingOperationDao,
     private val syncManager: SyncManager,
+    private val settingsDataStore: SettingsDataStore,
+    private val reminderScheduler: ReminderScheduler,
     private val fileLogger: FileLogger
 ) : NoteRepository {
 
-    override fun getNotes(search: String?, tag: String?, archived: Boolean): Flow<Result<List<Note>>> = flow {
+    override fun getNotes(
+        search: String?,
+        tag: String?,
+        archived: Boolean,
+        sortMode: SortMode,
+        limit: Int?
+    ): Flow<Result<List<Note>>> = flow {
         try { syncManager.syncPendingOperations() } catch (_: Exception) {}
 
         try {
@@ -52,6 +68,7 @@ class NoteRepositoryImpl @Inject constructor(
                 val dtos = response.body()?.getNotesList() ?: emptyList()
                 val notes = dtos.map { it.toDomain() }
                 fileLogger.log("NoteRepo", "getNotes success: ${notes.size} notes")
+                settingsDataStore.setLastSyncAt(System.currentTimeMillis())
                 // Server rows always become the new optimistic-lock base.
                 val serverEntities = dtos.map { dto ->
                     dto.toDomain().toEntity().copy(baseUpdatedAt = dto.updatedAt)
@@ -82,8 +99,23 @@ class NoteRepositoryImpl @Inject constructor(
                             noteDao.insertNotes(pendingLocalNotes)
                         }
                     }
+                    // The rebuild replaced every cached reminder — re-plan all
+                    // alarms in one sweep (v1.8.0).
+                    try { reminderScheduler.rescheduleAll() } catch (_: Exception) {}
+                    // Room is the single display source for the plain list:
+                    // sorting and the paging window apply to fresh server data
+                    // and offline alike.
+                    emit(Result.Success(readCache(null, archived, sortMode, limit)))
+                } else {
+                    // Search/tag results keep the server's relevance ranking
+                    // (full-text index over ALL notes, not just the cache);
+                    // the hits are merged into Room so the offline fallback
+                    // knows them too. An explicitly chosen sort re-orders even
+                    // search results — MANUAL means "as delivered".
+                    noteDao.insertNotes(serverEntities)
+                    val display = if (sortMode == SortMode.MANUAL) notes else sortInMemory(notes, sortMode)
+                    emit(Result.Success(window(display, limit)))
                 }
-                emit(Result.Success(notes))
             } else {
                 val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { null }
                 fileLogger.error("NoteRepo", "getNotes failed: code=${response.code()} body=$body")
@@ -92,14 +124,9 @@ class NoteRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             fileLogger.error("NoteRepo", "getNotes exception, serving cache", e)
             try {
-                // first() (instead of collect) terminates this flow builder —
-                // collecting the Room flow forever kept the load job alive.
-                val cachedFlow = if (archived) noteDao.getArchivedNotes()
-                else if (!search.isNullOrBlank()) noteDao.searchNotes(search)
-                else noteDao.getAllNotes()
-                val cached = cachedFlow.first()
+                val cached = readCache(search, archived, sortMode, limit)
                 if (cached.isNotEmpty()) {
-                    emit(Result.Success(cached.map { it.entityToDomain() }))
+                    emit(Result.Success(cached))
                 } else {
                     emit(Result.Error(exceptionMessage(e)))
                 }
@@ -107,6 +134,29 @@ class NoteRepositoryImpl @Inject constructor(
                 emit(Result.Error(exceptionMessage(e)))
             }
         }
+    }
+
+    override fun getCachedNotes(
+        search: String?,
+        archived: Boolean,
+        sortMode: SortMode,
+        limit: Int?
+    ): Flow<Result<List<Note>>> = flow {
+        emit(Result.Success(readCache(search, archived, sortMode, limit)))
+    }
+
+    /**
+     * The display list out of Room, honouring sort mode and paging window.
+     * A blank search reads the whole section; a term narrows it with the same
+     * LIKE match the offline fallback always used.
+     */
+    private suspend fun readCache(search: String?, archived: Boolean, sortMode: SortMode, limit: Int?): List<Note> {
+        val query = when {
+            !search.isNullOrBlank() -> NoteQueries.searchNotes(search, sortMode, limit)
+            archived -> NoteQueries.archivedNotes(sortMode, limit)
+            else -> NoteQueries.liveNotes(sortMode, limit)
+        }
+        return noteDao.getNotesQuery(query).first().map { it.entityToDomain() }
     }
 
     override suspend fun getNote(id: String): Result<Note> {
@@ -138,6 +188,7 @@ class NoteRepositoryImpl @Inject constructor(
                 val created = dto.toDomain()
                 fileLogger.log("NoteRepo", "createNote success: id=${created.id}")
                 noteDao.insertNote(created.toEntity().copy(baseUpdatedAt = dto.updatedAt))
+                try { reminderScheduler.syncForNote(created.id) } catch (_: Exception) {}
                 Result.Success(created)
             } else {
                 val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { null }
@@ -157,6 +208,7 @@ class NoteRepositoryImpl @Inject constructor(
                 )
             )
             syncManager.onPendingOperationQueued()
+            try { reminderScheduler.syncForNote(offlineId) } catch (_: Exception) {}
             Result.Success(offlineNote)
         }
     }
@@ -174,6 +226,7 @@ class NoteRepositoryImpl @Inject constructor(
                 val updated = dto.toDomain()
                 fileLogger.log("NoteRepo", "updateNote success: id=${updated.id}")
                 noteDao.insertNote(updated.toEntity().copy(baseUpdatedAt = dto.updatedAt))
+                try { reminderScheduler.syncForNote(updated.id) } catch (_: Exception) {}
                 Result.Success(updated)
             } else {
                 val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { null }
@@ -193,11 +246,13 @@ class NoteRepositoryImpl @Inject constructor(
                 )
             )
             syncManager.onPendingOperationQueued()
+            try { reminderScheduler.syncForNote(note.id) } catch (_: Exception) {}
             Result.Success(note)
         }
     }
 
     override suspend fun deleteNote(id: String): Result<Unit> {
+        try { reminderScheduler.cancel(id) } catch (_: Exception) {}
         return try {
             val response = api.deleteNote(id)
             if (response.isSuccessful) {
@@ -237,7 +292,10 @@ class NoteRepositoryImpl @Inject constructor(
         val note = dto.toDomain()
         // Back among the living — the restored note re-enters the local cache
         // with the server's updatedAt as the optimistic-lock base.
-        runCatching { noteDao.insertNote(note.toEntity().copy(baseUpdatedAt = dto.updatedAt)) }
+        runCatching {
+            noteDao.insertNote(note.toEntity().copy(baseUpdatedAt = dto.updatedAt))
+            reminderScheduler.syncForNote(note.id)
+        }
         note
     }
 
@@ -384,6 +442,9 @@ class NoteRepositoryImpl @Inject constructor(
                 }
             }
             syncManager.onPendingOperationQueued()
+            // The delete cancelled this note's alarm — bring it back if the
+            // restored note still carries a future reminder.
+            try { reminderScheduler.syncForNote(note.id) } catch (_: Exception) {}
             Result.Success(Unit)
         } catch (e: Exception) {
             fileLogger.error("NoteRepo", "undoDelete failed", e)
@@ -462,6 +523,87 @@ class NoteRepositoryImpl @Inject constructor(
             }
         }
     }
+
+    override suspend fun importNotes(notes: List<NoteImportParser.ParsedNote>): Result<Int> = Result.catching {
+        if (notes.isEmpty()) throw Exception("Nothing to import")
+        val now = Instant.now()
+        var created = 0
+        var lastError: Exception? = null
+        for (parsed in notes) {
+            val draft = Note(
+                id = "",
+                title = parsed.title,
+                content = parsed.content,
+                color = NoteColor.fromHex(parsed.colorHex),
+                isPinned = parsed.isPinned,
+                isArchived = false, // created live; archived right after
+                isTodoList = parsed.isTodoList,
+                todoItems = parsed.todoItems,
+                tags = parsed.tags,
+                sharedWith = emptyList(), // sharing is account-bound, never copied
+                images = emptyList(), // files live on the server; a copy has none
+                owner = "",
+                position = 0,
+                createdAt = now,
+                updatedAt = now,
+                remindAt = parsed.remindAt
+            )
+            when (val result = createNote(draft)) {
+                is Result.Success -> {
+                    created++
+                    if (parsed.isArchived) {
+                        runCatching { toggleArchive(result.data.id) }
+                    }
+                }
+                is Result.Error -> lastError = Exception(result.message)
+            }
+        }
+        if (created == 0) {
+            throw lastError ?: Exception("Import failed")
+        }
+        fileLogger.log("NoteRepo", "importNotes: created $created/${notes.size} notes")
+        created
+    }
+
+    override suspend fun duplicateNote(noteId: String, copyLabel: String): Result<Note> = Result.catching {
+        val original = when (val cached = getNote(noteId)) {
+            is Result.Success -> cached.data
+            is Result.Error -> throw Exception(cached.message)
+        }
+        val now = Instant.now()
+        val copy = original.copy(
+            id = "",
+            title = NoteShareFormatter.duplicateTitle(original.title, copyLabel),
+            isPinned = false, // a duplicate starts un-pinned
+            sharedWith = emptyList(),
+            images = emptyList(), // attachments cannot be cloned through the API
+            createdAt = now,
+            updatedAt = now,
+            baseUpdatedAt = null // a new note has no lock base
+        )
+        when (val result = createNote(copy)) {
+            is Result.Success -> result.data
+            is Result.Error -> throw Exception(result.message)
+        }
+    }
+
+    /** In-memory ordering for server-delivered lists (search/tag results);
+     *  MANUAL is not mapped — the server ranking wins. */
+    private fun sortInMemory(notes: List<Note>, sortMode: SortMode): List<Note> = when (sortMode) {
+        SortMode.UPDATED -> notes.sortedWith(
+            compareByDescending<Note> { it.isPinned }.thenByDescending { it.updatedAt }
+        )
+        SortMode.CREATED -> notes.sortedWith(
+            compareByDescending<Note> { it.isPinned }.thenByDescending { it.createdAt }
+        )
+        SortMode.TITLE -> notes.sortedWith(
+            compareByDescending<Note> { it.isPinned }.thenBy { it.title.lowercase() }
+        )
+        SortMode.MANUAL -> notes
+    }
+
+    private fun window(notes: List<Note>, limit: Int?): List<Note> =
+        limit?.takeIf { it > 0 }?.let { notes.take(it) } ?: notes
 
     /** Surfaces the API's own validation text ("msg"/"error") instead of a raw status code. */
     private fun serverMessage(body: String?): String? {

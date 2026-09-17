@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -65,6 +67,26 @@ class SettingsDataStore @Inject constructor(
     val recentSearches: Flow<List<String>> = dataStore.data.map { prefs ->
         prefs[KEY_RECENT_SEARCHES]?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
     }
+
+    // --- v1.8.0: sort order, sync status, automatic backup ---
+
+    /** List sort order (SortMode.storageKey); MANUAL is the historical default. */
+    val sortMode: Flow<String> = dataStore.data.map { it[KEY_SORT_MODE] ?: "manual" }
+
+    /** Wall-clock millis of the last successful server sync (0 = never). */
+    val lastSyncAt: Flow<Long> = dataStore.data.map { it[KEY_LAST_SYNC_AT] ?: 0L }
+
+    /** Automatic backup interval in hours; 0 = off. */
+    val backupIntervalHours: Flow<Int> = dataStore.data.map { it[KEY_BACKUP_INTERVAL_HOURS] ?: 0 }
+
+    /** SAF tree URI of the user-picked backup folder (DocumentProvider). */
+    val backupTreeUri: Flow<String> = dataStore.data.map { it[KEY_BACKUP_TREE_URI] ?: "" }
+
+    /** How many backup files to keep in the folder; older ones are deleted. */
+    val backupRetention: Flow<Int> = dataStore.data.map { it[KEY_BACKUP_RETENTION] ?: 7 }
+
+    /** Wall-clock millis of the last successful automatic backup (0 = never). */
+    val lastBackupAt: Flow<Long> = dataStore.data.map { it[KEY_LAST_BACKUP_AT] ?: 0L }
 
     suspend fun setServerUrl(url: String) {
         dataStore.edit { it[KEY_SERVER_URL] = url }
@@ -129,6 +151,30 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { it.remove(KEY_RECENT_SEARCHES) }
     }
 
+    suspend fun setSortMode(storageKey: String) {
+        dataStore.edit { it[KEY_SORT_MODE] = storageKey }
+    }
+
+    suspend fun setLastSyncAt(epochMs: Long) {
+        dataStore.edit { it[KEY_LAST_SYNC_AT] = epochMs }
+    }
+
+    suspend fun setBackupIntervalHours(hours: Int) {
+        dataStore.edit { it[KEY_BACKUP_INTERVAL_HOURS] = hours }
+    }
+
+    suspend fun setBackupTreeUri(uri: String) {
+        dataStore.edit { it[KEY_BACKUP_TREE_URI] = uri }
+    }
+
+    suspend fun setBackupRetention(count: Int) {
+        dataStore.edit { it[KEY_BACKUP_RETENTION] = count }
+    }
+
+    suspend fun setLastBackupAt(epochMs: Long) {
+        dataStore.edit { it[KEY_LAST_BACKUP_AT] = epochMs }
+    }
+
     fun getServerUrlSync(): String? {
         return null // Use the Flow version instead
     }
@@ -150,5 +196,11 @@ class SettingsDataStore @Inject constructor(
         private val KEY_VOICE_TRANSCRIPTION = booleanPreferencesKey("voice_transcription")
         private val KEY_MATERIAL_YOU = booleanPreferencesKey("material_you")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
+        private val KEY_SORT_MODE = stringPreferencesKey("sort_mode")
+        private val KEY_LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        private val KEY_BACKUP_INTERVAL_HOURS = intPreferencesKey("backup_interval_hours")
+        private val KEY_BACKUP_TREE_URI = stringPreferencesKey("backup_tree_uri")
+        private val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
+        private val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
     }
 }

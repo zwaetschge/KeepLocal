@@ -37,7 +37,8 @@ fun NoteEntity.toDomain(): Note = Note(
     position = position,
     createdAt = Instant.ofEpochMilli(createdAt),
     updatedAt = Instant.ofEpochMilli(updatedAt),
-    baseUpdatedAt = baseUpdatedAt?.let { raw -> runCatching { Instant.parse(raw) }.getOrNull() }
+    baseUpdatedAt = baseUpdatedAt?.let { raw -> runCatching { Instant.parse(raw) }.getOrNull() },
+    remindAt = remindAtEpochMs?.let { Instant.ofEpochMilli(it) }
 )
 
 fun Note.toEntity(): NoteEntity = NoteEntity(
@@ -56,7 +57,8 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     position = position,
     createdAt = createdAt.toEpochMilli(),
     updatedAt = updatedAt.toEpochMilli(),
-    baseUpdatedAt = baseUpdatedAt?.toString()
+    baseUpdatedAt = baseUpdatedAt?.toString(),
+    remindAtEpochMs = remindAt?.toEpochMilli()
 )
 
 private fun parseTodoItems(json: String): List<TodoItem> {

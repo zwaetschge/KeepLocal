@@ -7,9 +7,11 @@ import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.SyncManager
 import com.keeplocal.android.data.local.SyncStatus
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.usecase.auth.GetCurrentUserUseCase
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
 import com.keeplocal.android.domain.usecase.notes.DeleteNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.DuplicateNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.GetNotesUseCase
 import com.keeplocal.android.domain.usecase.notes.ReorderNotesUseCase
 import com.keeplocal.android.domain.usecase.notes.ToggleArchiveUseCase
@@ -19,6 +21,7 @@ import com.keeplocal.android.domain.usecase.notes.UpdateNoteUseCase
 import com.keeplocal.android.util.IncomingIntents
 import com.keeplocal.android.util.Result
 import com.keeplocal.android.util.UiState
+import com.keeplocal.android.widget.NoteWidget
 import com.keeplocal.android.widget.PinnedNotesWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -77,7 +80,16 @@ data class NotesScreenState(
     /** One-shot "focus the search field" (launcher shortcut "Suche"). */
     val searchFocusRequest: Boolean = false,
     /** Recent search terms, most recent first (v1.7.0 design round). */
-    val recentSearches: List<String> = emptyList()
+    val recentSearches: List<String> = emptyList(),
+    // v1.8.0: sort mode + windowed loading for large libraries.
+    /** Active sort; MANUAL keeps the drag-reorder pinned/others layout. */
+    val sortMode: SortMode = SortMode.MANUAL,
+    /** How many notes the current window shows; grows via loadMore(). */
+    val listLimit: Int = NotesViewModel.PAGE_SIZE,
+    /** True when the cache likely holds more notes beyond the window. */
+    val hasMore: Boolean = false,
+    /** Wall-clock time of the last successful server sync (0 = never). */
+    val lastSyncAt: Long = 0L
 )
 
 @HiltViewModel
@@ -91,6 +103,7 @@ class NotesViewModel @Inject constructor(
     private val undoDeleteUseCase: UndoDeleteUseCase,
     private val getCurrentUserUseCase: GetCurrentUserUseCase,
     private val getFriendsUseCase: GetFriendsUseCase,
+    private val duplicateNoteUseCase: DuplicateNoteUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val syncManager: SyncManager,
     @ApplicationContext private val appContext: Context
@@ -136,6 +149,24 @@ class NotesViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.noteViewMode.collect { key ->
                 _uiState.update { it.copy(viewMode = NoteViewMode.fromKey(key)) }
+            }
+        }
+        // Sort mode (v1.8.0 Nr. 9): persisted per device; a change re-reads the
+        // window through the cache only — no server round trip needed.
+        viewModelScope.launch {
+            settingsDataStore.sortMode.collect { key ->
+                val mode = SortMode.fromStorageKey(key)
+                if (mode != _uiState.value.sortMode) {
+                    _uiState.update { it.copy(sortMode = mode) }
+                    startLoad(showLoading = false)
+                }
+            }
+        }
+        // "Zuletzt synchronisiert" (v1.8.0 Nr. 3): written by the repository
+        // and the background worker after every successful server sync.
+        viewModelScope.launch {
+            settingsDataStore.lastSyncAt.collect { at ->
+                _uiState.update { it.copy(lastSyncAt = at) }
             }
         }
         viewModelScope.launch {
@@ -187,7 +218,9 @@ class NotesViewModel @Inject constructor(
             getNotesUseCase(
                 search = state.searchQuery.ifBlank { null },
                 tag = state.selectedTag,
-                archived = state.showArchived
+                archived = state.showArchived,
+                sortMode = state.sortMode,
+                limit = state.listLimit
             ).collect { result ->
                 applyNotesResult(result)
             }
@@ -205,16 +238,59 @@ class NotesViewModel @Inject constructor(
                     else -> UiState.Success(data)
                 },
                 isRefreshing = false,
+                // Exactly one full page means there is probably more; tag
+                // views come from the server unwindowed, so they never page.
+                hasMore = it.selectedTag == null && (data?.size ?: 0) >= it.listLimit,
                 availableTags = data?.flatMap { note -> note.tags }?.distinct()?.sorted() ?: it.availableTags
             )
         }
-        // Pinned set/order may have changed — keep the home-screen widget
+        // Pinned set/order may have changed — keep the home-screen widgets
         // in step with what the user just saw.
         if (data != null) viewModelScope.launch { refreshWidget() }
     }
 
     private suspend fun refreshWidget() {
         runCatching { PinnedNotesWidget.refreshAll(appContext) }
+        runCatching { NoteWidget.refreshAll(appContext) }
+    }
+
+    /** Persists the sort choice (v1.8.0 Nr. 9); the collector re-reads the list. */
+    fun setSortMode(mode: SortMode) {
+        viewModelScope.launch { settingsDataStore.setSortMode(mode.storageKey) }
+    }
+
+    /**
+     * Grows the visible window by one page and re-reads it from Room (v1.8.0
+     * Nr. 4) — instant, no server round trip, and the DB flow keeps the
+     * window live for later edits.
+     */
+    fun loadMore() {
+        val state = _uiState.value
+        if (!state.hasMore) return
+        val newLimit = state.listLimit + PAGE_SIZE
+        _uiState.update { it.copy(listLimit = newLimit) }
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            getNotesUseCase.invokeCached(
+                search = state.searchQuery.ifBlank { null },
+                archived = state.showArchived,
+                sortMode = state.sortMode,
+                limit = newLimit
+            ).collect { result -> applyNotesResult(result) }
+        }
+    }
+
+    /**
+     * Duplicates a note (v1.8.0 Nr. 8): "(Kopie)" suffix, unpinned, shares
+     * stripped. Runs through the offline-capable create path.
+     */
+    fun duplicateNote(noteId: String, copyLabel: String) {
+        viewModelScope.launch {
+            when (val result = duplicateNoteUseCase(noteId, copyLabel)) {
+                is Result.Success -> loadNotes()
+                is Result.Error -> showSnackbar(result.message)
+            }
+        }
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -419,6 +495,11 @@ class NotesViewModel @Inject constructor(
 
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    companion object {
+        /** Notes fetched per window; "load more" grows the list by this. */
+        const val PAGE_SIZE = 60
     }
 
     private fun SyncStatus.toBanner(): SyncBanner = when {

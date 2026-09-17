@@ -349,4 +349,68 @@
     <string name="shortcut_trash">Trash</string>
     <string name="note_owner_badge">by %1$s</string>
     <string name="note_shared_badge">shared</string>
+
+    <!-- v1.8.0: Reminders -->
+    <string name="reminder_channel_name">Reminders</string>
+    <string name="reminder_channel_description">Notifications for note reminders</string>
+    <string name="reminder_fallback_title">Reminder</string>
+    <string name="reminder_snooze">Snooze 15 min</string>
+    <string name="reminder_done">Done</string>
+    <string name="reminder_set">Reminder set</string>
+    <string name="reminder_cleared">Reminder removed</string>
+    <string name="reminder_label">Reminder</string>
+    <string name="reminder_add">Add reminder</string>
+    <string name="reminder_time_title">When should we remind you?</string>
+    <string name="reminder_in_30min">In 30 minutes</string>
+    <string name="reminder_tomorrow_morning">Tomorrow, 8:00</string>
+    <string name="reminder_next_week">Next week</string>
+    <string name="reminder_custom">Pick date &amp; time</string>
+    <string name="reminder_remove">Remove reminder</string>
+
+    <!-- v1.8.0: Import / backup -->
+    <string name="import_title">Import backup</string>
+    <string name="import_description">Choose a KeepLocal JSON export. New copies of its notes are created — existing notes are never overwritten.</string>
+    <string name="import_pick_file">Choose JSON file</string>
+    <string name="import_action">Import</string>
+    <string name="import_success">%1$d notes imported</string>
+    <string name="import_failed">Import failed: %1$s</string>
+    <string name="import_read_failed">Could not read the selected file</string>
+    <string name="import_invalid_file">Not a KeepLocal backup file</string>
+    <string name="backup_section_title">Automatic backup</string>
+    <string name="backup_interval_label">Backup interval</string>
+    <string name="backup_interval_off">Off</string>
+    <string name="backup_interval_hours">Every %1$d hours</string>
+    <string name="backup_interval_daily">Daily</string>
+    <string name="backup_interval_weekly">Weekly</string>
+    <string name="backup_interval_monthly">Monthly</string>
+    <string name="backup_folder_label">Backup folder</string>
+    <string name="backup_choose_folder">Choose folder</string>
+    <string name="backup_retention_label">Keep last %1$d backups</string>
+    <string name="backup_now">Back up now</string>
+    <string name="backup_last_never">Never backed up</string>
+    <string name="backup_last_at">Last backup: %1$s</string>
+    <string name="backup_started">Backup started</string>
+    <string name="backup_success">Backup written</string>
+    <string name="backup_failed">Backup failed</string>
+
+    <!-- v1.8.0: Sort, sync status, checklist, share/duplicate -->
+    <string name="sort_label">Sort by</string>
+    <string name="sort_manual">Custom</string>
+    <string name="sort_updated">Last changed</string>
+    <string name="sort_created">Created</string>
+    <string name="sort_title_az">Title A–Z</string>
+    <string name="sync_last_prefix">Synced</string>
+    <string name="sync_last_never">not synced yet</string>
+    <string name="sync_just_now">just now</string>
+    <string name="sync_refresh">Refresh</string>
+    <string name="checklist_cleanup">Clean up</string>
+    <string name="checklist_cleanup_done">%1$d completed items removed</string>
+    <string name="action_share">Share</string>
+    <string name="action_duplicate">Duplicate</string>
+    <string name="duplicate_copy_label">Copy</string>
+
+    <!-- v1.8.0: Single-note widget -->
+    <string name="note_widget_description">Single note</string>
+    <string name="note_widget_config_title">Choose a note</string>
+    <string name="note_widget_empty">No note selected</string>
 </resources>
