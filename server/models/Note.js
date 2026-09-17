@@ -111,6 +111,14 @@ const noteSchema = new mongoose.Schema({
   order: {
     type: Number,
     default: 0
+  },
+  // Erinnerung (v1.8.0): Zeitpunkt, an den der Client erinnern soll. Der Server
+  // speichert und validiert nur — die Benachrichtigung plant jedes Gerät lokal
+  // (Android: AlarmManager), damit Erinnerungen auch offline und ohne
+  // Push-Infrastruktur feuern. `null` = keine Erinnerung.
+  remindAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
@@ -144,6 +152,13 @@ noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
 noteSchema.index({ 'images.filename': 1 });
 noteSchema.index({ 'images.thumbnailFilename': 1 });
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, order: -1, updatedAt: -1 }); // manuelle Reihenfolge
+// Erinnerungen: „was ist fällig"-Abfragen laufen pro Nutzer über dieses
+// partielle Feld; ohne den Filter würde der Index jede Notiz ohne remindAt
+// aufnehmen (also fast alle).
+noteSchema.index(
+  { userId: 1, remindAt: 1 },
+  { name: 'note_reminders', partialFilterExpression: { remindAt: { $type: 'date' } } }
+);
 noteSchema.index(
   { deletedAt: 1 },
   {

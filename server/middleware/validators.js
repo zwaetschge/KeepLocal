@@ -41,6 +41,12 @@ const noteValidationRules = {
       .isBoolean()
       .withMessage('isPinned muss ein Boolean sein'),
 
+    // Erinnerung (v1.8.0): null loescht sie, sonst ISO-8601-Datum/-Zeit.
+    body('remindAt')
+      .optional({ nullable: true })
+      .custom((value) => value === null || value instanceof Date || !Number.isNaN(Date.parse(value)))
+      .withMessage('remindAt muss ein Datum oder null sein'),
+
     body('tags')
       .optional()
       .isArray({ max: 50 })
@@ -144,6 +150,12 @@ const noteValidationRules = {
       .optional()
       .isBoolean()
       .withMessage('isPinned muss ein Boolean sein'),
+
+    // Erinnerung (v1.8.0): null loescht sie, sonst ISO-8601-Datum/-Zeit.
+    body('remindAt')
+      .optional({ nullable: true })
+      .custom((value) => value === null || value instanceof Date || !Number.isNaN(Date.parse(value)))
+      .withMessage('remindAt muss ein Datum oder null sein'),
 
     body('tags')
       .optional()
