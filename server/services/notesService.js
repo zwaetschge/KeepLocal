@@ -159,6 +159,24 @@ function validateNoteFields(noteData) {
     ));
     if (invalidPreview) throw clientError('Ungueltige Link-Vorschau');
   }
+
+  // Erinnerung: null löscht, sonst muss ein parse-faehiger Zeitpunkt sein.
+  // Vergangenheit ist erlaubt (Geraete-uhren gehen falsch, Import alter Daten)
+  // — der Client entscheidet, was mit einer faelligen Erinnerung passiert.
+  if (noteData.remindAt !== undefined && noteData.remindAt !== null) {
+    if (noteData.remindAt instanceof Date) {
+      if (Number.isNaN(noteData.remindAt.getTime())) throw clientError('Ungueltiger Erinnerungszeitpunkt');
+    } else if (typeof noteData.remindAt !== 'string' || Number.isNaN(Date.parse(noteData.remindAt))) {
+      throw clientError('Ungueltiger Erinnerungszeitpunkt');
+    }
+  }
+}
+
+/** remindAt normalisieren: gueltiger Date oder null (loescht die Erinnerung). */
+function normalizeRemindAt(value) {
+  if (value === undefined || value === null) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**
@@ -444,7 +462,7 @@ async function getEditableNoteById(noteId, userId) {
  */
 async function createNote(noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt } = noteData;
   const normalizedIsTodoList = isTodoList === true;
   const normalizedContent = normalizedIsTodoList ? '' : (typeof content === 'string' ? content.trim() : '');
   const normalizedTodoItems = normalizedIsTodoList && Array.isArray(todoItems) ? todoItems : [];
@@ -471,6 +489,7 @@ async function createNote(noteData, userId) {
     todoItems: normalizedTodoItems,
     linkPreviews: linkPreviews || [],
     order: nextOrder,
+    remindAt: normalizeRemindAt(remindAt),
     userId: userId
   });
 
@@ -587,7 +606,7 @@ async function reorderNotes(userId, orderedIds) {
  */
 async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt } = noteData;
 
   const note = await Note.findOne(noteEditQuery(noteId, userId));
   if (!note) {
@@ -637,6 +656,13 @@ async function updateNote(noteId, noteData, userId) {
 
   if (todoItems !== undefined || isTodoList !== undefined) {
     $set.todoItems = nextIsTodoList ? nextTodoItems : [];
+  }
+
+  // Erinnerung setzen oder loeschen (null). Explizit mit $set, damit
+  // normalizeRemindAt(undefined) hier nie ankommt — undefined wuerde das Feld
+  // unangetastet lassen, was genau dem entspricht, was der Client will.
+  if (remindAt !== undefined) {
+    $set.remindAt = normalizeRemindAt(remindAt);
   }
 
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
