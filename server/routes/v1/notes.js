@@ -400,7 +400,7 @@ router.put('/:id', async (req, res, next) => {
  *           type: string
  *           enum: ["true", "false"]
  *           default: "false"
- *         description: "true" löscht eine Notiz im Papierkorb endgültig (inkl. Bilder)
+ *         description: '"true" löscht eine Notiz im Papierkorb endgültig (inkl. Bilder)'
  *     responses:
  *       200:
  *         description: Ohne permanent in den Papierkorb verschoben (30 Tage), mit permanent=true endgültig gelöscht
