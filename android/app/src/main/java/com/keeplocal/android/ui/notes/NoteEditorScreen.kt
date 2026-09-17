@@ -2,6 +2,7 @@ package com.keeplocal.android.ui.notes
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -48,7 +49,17 @@ import com.keeplocal.android.ui.components.ImageViewerDialog
 import com.keeplocal.android.ui.components.LinkPreviewCard
 import com.keeplocal.android.ui.components.NoteColorUtil
 import com.keeplocal.android.ui.components.NoteImageGrid
+import com.keeplocal.android.util.LinkOpener
+import com.keeplocal.android.util.NoteLinkDetector
 import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Full-screen editor route (phone / tablet portrait). */
 @Composable
@@ -78,6 +89,7 @@ fun NoteEditorContent(
     val uiState by viewModel.uiState.collectAsState()
     var showColorPicker by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
+    var showReminderSheet by remember { mutableStateOf(false) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
 
@@ -102,6 +114,22 @@ fun NoteEditorContent(
         } else {
             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+
+    // Reminder notifications (v1.8.0 Nr. 2): POST_NOTIFICATIONS is asked for
+    // the moment the user actually wants a reminder, never on startup.
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    fun applyReminder(at: Instant?) {
+        if (at != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.setReminder(at)
     }
 
     LaunchedEffect(Unit) {
@@ -307,6 +335,43 @@ fun NoteEditorContent(
                 maxLines = 3
             )
 
+            // Reminder chip row (v1.8.0 Nr. 2): set time + one-tap remove.
+            val remindAt = uiState.remindAt
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            ) {
+                if (remindAt != null) {
+                    AssistChip(
+                        onClick = { showReminderSheet = true },
+                        label = {
+                            Text(stringResource(R.string.reminder_label) + " · " + formatReminderTime(remindAt))
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    )
+                    IconButton(
+                        onClick = { applyReminder(null) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.reminder_remove),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    AssistChip(
+                        onClick = { showReminderSheet = true },
+                        label = { Text(stringResource(R.string.reminder_add)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    )
+                }
+            }
+
             // Content or Todo list
             if (uiState.isTodoList) {
                 LazyColumn(
@@ -344,13 +409,23 @@ fun NoteEditorContent(
                         }
                     }
                     item {
-                        TextButton(
-                            onClick = viewModel::addTodoItem,
-                            modifier = Modifier.padding(start = 40.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.editor_add_todo_item))
+                        Row {
+                            TextButton(
+                                onClick = viewModel::addTodoItem,
+                                modifier = Modifier.padding(start = 40.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(stringResource(R.string.editor_add_todo_item))
+                            }
+                            // Clean up completed items (v1.8.0 Nr. 5).
+                            if (uiState.todoItems.any { it.isCompleted }) {
+                                TextButton(onClick = viewModel::cleanupTodoItems) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(stringResource(R.string.checklist_cleanup))
+                                }
+                            }
                         }
                     }
                 }
@@ -367,6 +442,40 @@ fun NoteEditorContent(
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
                     )
                 )
+                // Tappable links (v1.8.0 Nr. 6): URLs the text carries open in
+                // a Custom Tab. Links that already have a preview card don't
+                // need a chip — the card itself is tappable.
+                val previewedUrls = remember(uiState.linkPreviews) {
+                    uiState.linkPreviews.map { it.url }.toSet()
+                }
+                val bareLinks = remember(uiState.content, previewedUrls) {
+                    NoteLinkDetector.find(uiState.content)
+                        .filter { it.url !in previewedUrls }
+                        .take(4)
+                }
+                if (bareLinks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        bareLinks.forEach { link ->
+                            AssistChip(
+                                onClick = { LinkOpener.open(context, link.target) },
+                                label = { Text(linkHost(link.target)) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Language,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             // Image attachments (uploads render as placeholder cells)
@@ -540,7 +649,166 @@ fun NoteEditorContent(
             onDismiss = { viewerIndex = null }
         )
     }
+
+    // Reminder picker (v1.8.0 Nr. 2)
+    if (showReminderSheet) {
+        ReminderSheet(
+            current = uiState.remindAt,
+            onPick = { at ->
+                showReminderSheet = false
+                applyReminder(at)
+            },
+            onDismiss = { showReminderSheet = false }
+        )
+    }
 }
+
+/**
+ * Reminder picker (v1.8.0 Nr. 2): three quick presets, a custom date+time
+ * dialog, and — when a reminder is already set — a remove option. The chosen
+ * time is only stored; the alarm itself is planned once the note saves.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderSheet(
+    current: Instant?,
+    onPick: (Instant?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val now = remember { ZonedDateTime.now() }
+    var showCustomPicker by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            stringResource(R.string.reminder_time_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        )
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            listOf(
+                stringResource(R.string.reminder_in_30min) to now.plusMinutes(30),
+                stringResource(R.string.reminder_tomorrow_morning) to
+                    now.toLocalDate().plusDays(1).atTime(LocalTime.of(8, 0)).atZone(now.zone),
+                stringResource(R.string.reminder_next_week) to
+                    now.plusWeeks(1).withHour(8).withMinute(0).withSecond(0)
+            ).forEach { (label, at) ->
+                ListItem(
+                    headlineContent = { Text(label) },
+                    leadingContent = { Icon(Icons.Default.Alarm, contentDescription = null) },
+                    modifier = Modifier.clickable { onPick(at.toInstant()) }
+                )
+            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.reminder_custom)) },
+                leadingContent = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                modifier = Modifier.clickable { showCustomPicker = true }
+            )
+            if (current != null) {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            stringResource(R.string.reminder_remove),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    modifier = Modifier.clickable { onPick(null) }
+                )
+            }
+        }
+    }
+
+    if (showCustomPicker) {
+        CustomReminderPicker(
+            onPicked = { at ->
+                showCustomPicker = false
+                onPick(at)
+            },
+            onDismiss = { showCustomPicker = false }
+        )
+    }
+}
+
+/** Date first, then time — both in the device's clock and calendar. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomReminderPicker(
+    onPicked: (Instant) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pickedDate by remember { mutableStateOf<LocalDate?>(null) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = System.currentTimeMillis()
+    )
+    val timePickerState = rememberTimePickerState(is24Hour = true)
+
+    if (pickedDate == null) {
+        DatePickerDialog(
+            onDismissRequest = onDismiss,
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // DatePicker millis are UTC-midnight of the picked day.
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            pickedDate = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                        }
+                    },
+                    enabled = datePickerState.selectedDateMillis != null
+                ) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.reminder_custom)) },
+            text = { TimePicker(state = timePickerState) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val date = pickedDate
+                        if (date != null) {
+                            onPicked(
+                                date.atTime(LocalTime.of(timePickerState.hour, timePickerState.minute))
+                                    .atZone(ZoneId.systemDefault())
+                                    .toInstant()
+                            )
+                        }
+                    }
+                ) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+}
+
+/** "24.12.2026 08:00" in the device timezone. */
+private fun formatReminderTime(at: Instant): String = try {
+    DateTimeFormatter.ofPattern("d.M.yyyy HH:mm").withLocale(Locale.getDefault())
+        .format(at.atZone(ZoneId.systemDefault()))
+} catch (_: Exception) {
+    at.toString()
+}
+
+/** Short host label for a link chip ("example.com"). */
+private fun linkHost(url: String): String =
+    url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
+        .substringBefore('/')
+        .ifBlank { url }
 
 @Composable
 fun ShareNoteDialog(

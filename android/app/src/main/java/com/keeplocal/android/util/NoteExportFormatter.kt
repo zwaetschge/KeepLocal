@@ -99,6 +99,11 @@ object NoteExportFormatter {
         note.deletedAt?.let {
             append(",\"deletedAt\":\"").append(iso.format(it)).append('"')
         }
+        // Lossless backup (v1.8.0): the reminder survives an export/import round
+        // trip now that the server stores remindAt.
+        note.remindAt?.let {
+            append(",\"remindAt\":\"").append(iso.format(it)).append('"')
+        }
         if (note.images.isNotEmpty()) {
             append(",\"images\":[")
             note.images.forEachIndexed { index, image ->

@@ -2,12 +2,14 @@ package com.keeplocal.android.ui.settings
 
 import android.app.LocaleManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.LocaleList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.keeplocal.android.R
 import com.keeplocal.android.data.api.dto.ApiKeyDto
+import com.keeplocal.android.data.backup.BackupScheduler
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.TokenManager
 import com.keeplocal.android.data.local.dao.NoteDao
@@ -18,9 +20,11 @@ import com.keeplocal.android.data.sync.BackgroundSync
 import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.auth.ChangePasswordUseCase
 import com.keeplocal.android.domain.usecase.notes.ExportNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.ImportNotesUseCase
 import com.keeplocal.android.ui.notes.NoteViewMode
 import com.keeplocal.android.ui.theme.ThemeMode
 import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -71,6 +75,18 @@ data class SettingsUiState(
     val newlyCreatedApiKey: String? = null,
     /** Change-password request in flight (dialog keeps its button disabled). */
     val isChangingPassword: Boolean = false,
+
+    // v1.8.0: import + automatic backup.
+    /** JSON import in flight (SAF read + create loop). */
+    val isImporting: Boolean = false,
+    /** Backup interval in hours; 0 = off. */
+    val backupIntervalHours: Int = 0,
+    /** SAF tree uri of the backup folder; blank = none chosen yet. */
+    val backupTreeUri: String = "",
+    /** How many backup files to keep. */
+    val backupRetention: Int = 7,
+    /** Wall-clock of the last written backup; 0 = never. */
+    val lastBackupAt: Long = 0L,
     val message: String? = null
 )
 
@@ -85,6 +101,7 @@ class SettingsViewModel @Inject constructor(
     private val apiKeyRepository: ApiKeyRepository,
     private val changePasswordUseCase: ChangePasswordUseCase,
     private val exportNotesUseCase: ExportNotesUseCase,
+    private val importNotesUseCase: ImportNotesUseCase,
     private val fileLogger: FileLogger
 ) : ViewModel() {
 
@@ -100,6 +117,28 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        // Backup state as flows: lastBackupAt moves while the screen is open
+        // when a "back up now" worker finishes — one-shot reads would miss it.
+        viewModelScope.launch {
+            settingsDataStore.backupIntervalHours.collect { hours ->
+                _uiState.update { it.copy(backupIntervalHours = hours) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.backupTreeUri.collect { uri ->
+                _uiState.update { it.copy(backupTreeUri = uri) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.backupRetention.collect { count ->
+                _uiState.update { it.copy(backupRetention = count) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.lastBackupAt.collect { at ->
+                _uiState.update { it.copy(lastBackupAt = at) }
+            }
+        }
     }
 
     private fun loadSettings() {
@@ -286,6 +325,89 @@ class SettingsViewModel @Inject constructor(
             }
             loadPendingOps()
         }
+    }
+
+    // --- Import & automatic backup (v1.8.0 Nr. 1 + 7) ---
+
+    /**
+     * Reads a picked JSON export and creates every note in it as a new copy.
+     * Nothing is merged onto existing notes; offline the creates queue like
+     * any other edit.
+     */
+    fun importFromUri(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+            }
+            if (text == null) {
+                _uiState.update {
+                    it.copy(isImporting = false, message = context.getString(R.string.import_read_failed))
+                }
+                return@launch
+            }
+            when (val parsed = NoteImportParser.parse(text)) {
+                is NoteImportParser.Result.Invalid -> _uiState.update {
+                    it.copy(isImporting = false, message = context.getString(R.string.import_invalid_file))
+                }
+                is NoteImportParser.Result.Success -> {
+                    fileLogger.log("Settings", "importing ${parsed.notes.size} notes")
+                    when (val result = importNotesUseCase(parsed.notes)) {
+                        is Result.Success -> _uiState.update {
+                            it.copy(
+                                isImporting = false,
+                                message = context.getString(R.string.import_success, result.data)
+                            )
+                        }
+                        is Result.Error -> _uiState.update {
+                            it.copy(
+                                isImporting = false,
+                                message = context.getString(R.string.import_failed, result.message)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Interval hours; 0 cancels the periodic backup. */
+    fun setBackupInterval(hours: Int) {
+        _uiState.update { it.copy(backupIntervalHours = hours) }
+        viewModelScope.launch {
+            settingsDataStore.setBackupIntervalHours(hours)
+            runCatching { BackupScheduler.schedule(context, hours) }
+                .onFailure { fileLogger.error("Settings", "backup schedule failed", it) }
+        }
+    }
+
+    /**
+     * Remembers the picked SAF folder. The persistable grant outlives reboots,
+     * which is what makes unattended background backups legal.
+     */
+    fun setBackupFolder(uri: Uri) {
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }.onFailure { fileLogger.error("Settings", "persistable uri grant failed", it) }
+        _uiState.update { it.copy(backupTreeUri = uri.toString()) }
+        viewModelScope.launch { settingsDataStore.setBackupTreeUri(uri.toString()) }
+    }
+
+    fun setBackupRetention(count: Int) {
+        _uiState.update { it.copy(backupRetention = count) }
+        viewModelScope.launch { settingsDataStore.setBackupRetention(count) }
+    }
+
+    /** One-shot backup through WorkManager; result lands via lastBackupAt. */
+    fun backupNow() {
+        runCatching { BackupScheduler.runNow(context) }
+            .onFailure { fileLogger.error("Settings", "backup enqueue failed", it) }
+        _uiState.update { it.copy(message = context.getString(R.string.backup_started)) }
     }
 
     // --- Export (v1.6.0 Nr. 7) & diagnostics (Nr. 8) ---

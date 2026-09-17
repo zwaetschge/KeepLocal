@@ -10,6 +10,7 @@ import com.keeplocal.android.data.repository.ApiKeyRepository
 import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.auth.ChangePasswordUseCase
 import com.keeplocal.android.domain.usecase.notes.ExportNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.ImportNotesUseCase
 import com.keeplocal.android.util.FileLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -41,6 +42,7 @@ class SettingsViewModelTest {
     private lateinit var apiKeyRepository: ApiKeyRepository
     private lateinit var changePasswordUseCase: ChangePasswordUseCase
     private lateinit var exportNotesUseCase: ExportNotesUseCase
+    private lateinit var importNotesUseCase: ImportNotesUseCase
     private lateinit var fileLogger: FileLogger
     private lateinit var context: Context
 
@@ -58,6 +60,11 @@ class SettingsViewModelTest {
             every { noteViewMode } returns flowOf("grid")
             every { voiceTranscription } returns flowOf(true)
             every { materialYou } returns flowOf(false)
+            // v1.8.0 backup state; collected live by the view model.
+            every { backupIntervalHours } returns flowOf(0)
+            every { backupTreeUri } returns flowOf("")
+            every { backupRetention } returns flowOf(7)
+            every { lastBackupAt } returns flowOf(0L)
         }
         authRepository = mockk()
         tokenManager = mockk(relaxed = true)
@@ -66,6 +73,7 @@ class SettingsViewModelTest {
         apiKeyRepository = mockk()
         changePasswordUseCase = mockk()
         exportNotesUseCase = mockk()
+        importNotesUseCase = mockk()
         fileLogger = mockk(relaxed = true)
         // getString is only used to build user-facing messages. Matched with
         // concrete values: matchers on Android's vararg overload do not match
@@ -84,7 +92,7 @@ class SettingsViewModelTest {
         SettingsViewModel(
             context, settingsDataStore, authRepository, tokenManager, noteDao,
             pendingOperationDao, apiKeyRepository, changePasswordUseCase,
-            exportNotesUseCase, fileLogger
+            exportNotesUseCase, importNotesUseCase, fileLogger
         )
 
     @Test

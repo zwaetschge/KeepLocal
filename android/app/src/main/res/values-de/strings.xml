@@ -337,4 +337,68 @@
     <string name="shortcut_trash">Papierkorb</string>
     <string name="note_owner_badge">von %1$s</string>
     <string name="note_shared_badge">geteilt</string>
+
+    <!-- v1.8.0: Erinnerungen -->
+    <string name="reminder_channel_name">Erinnerungen</string>
+    <string name="reminder_channel_description">Benachrichtigungen für Notiz-Erinnerungen</string>
+    <string name="reminder_fallback_title">Erinnerung</string>
+    <string name="reminder_snooze">Später (15 Min.)</string>
+    <string name="reminder_done">Erledigt</string>
+    <string name="reminder_set">Erinnerung gesetzt</string>
+    <string name="reminder_cleared">Erinnerung entfernt</string>
+    <string name="reminder_label">Erinnerung</string>
+    <string name="reminder_add">Erinnerung hinzufügen</string>
+    <string name="reminder_time_title">Wann soll erinnert werden?</string>
+    <string name="reminder_in_30min">In 30 Minuten</string>
+    <string name="reminder_tomorrow_morning">Morgen, 8:00 Uhr</string>
+    <string name="reminder_next_week">Nächste Woche</string>
+    <string name="reminder_custom">Datum &amp; Uhrzeit wählen</string>
+    <string name="reminder_remove">Erinnerung entfernen</string>
+
+    <!-- v1.8.0: Import / Backup -->
+    <string name="import_title">Backup importieren</string>
+    <string name="import_description">Wähle einen KeepLocal-JSON-Export. Dessen Notizen werden als neue Kopien angelegt — bestehende Notizen werden nie überschrieben.</string>
+    <string name="import_pick_file">JSON-Datei wählen</string>
+    <string name="import_action">Importieren</string>
+    <string name="import_success">%1$d Notizen importiert</string>
+    <string name="import_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="import_read_failed">Datei konnte nicht gelesen werden</string>
+    <string name="import_invalid_file">Keine KeepLocal-Backup-Datei</string>
+    <string name="backup_section_title">Automatisches Backup</string>
+    <string name="backup_interval_label">Backup-Intervall</string>
+    <string name="backup_interval_off">Aus</string>
+    <string name="backup_interval_hours">Alle %1$d Stunden</string>
+    <string name="backup_interval_daily">Täglich</string>
+    <string name="backup_interval_weekly">Wöchentlich</string>
+    <string name="backup_interval_monthly">Monatlich</string>
+    <string name="backup_folder_label">Backup-Ordner</string>
+    <string name="backup_choose_folder">Ordner wählen</string>
+    <string name="backup_retention_label">Die letzten %1$d Backups behalten</string>
+    <string name="backup_now">Jetzt sichern</string>
+    <string name="backup_last_never">Noch nie gesichert</string>
+    <string name="backup_last_at">Letztes Backup: %1$s</string>
+    <string name="backup_started">Backup gestartet</string>
+    <string name="backup_success">Backup geschrieben</string>
+    <string name="backup_failed">Backup fehlgeschlagen</string>
+
+    <!-- v1.8.0: Sortierung, Sync-Status, Checkliste, Teilen/Duplizieren -->
+    <string name="sort_label">Sortieren nach</string>
+    <string name="sort_manual">Manuell</string>
+    <string name="sort_updated">Zuletzt geändert</string>
+    <string name="sort_created">Erstellt</string>
+    <string name="sort_title_az">Titel A–Z</string>
+    <string name="sync_last_prefix">Synchronisiert</string>
+    <string name="sync_last_never">noch nicht synchronisiert</string>
+    <string name="sync_just_now">gerade eben</string>
+    <string name="sync_refresh">Aktualisieren</string>
+    <string name="checklist_cleanup">Aufräumen</string>
+    <string name="checklist_cleanup_done">%1$d erledigte Einträge entfernt</string>
+    <string name="action_share">Teilen</string>
+    <string name="action_duplicate">Duplizieren</string>
+    <string name="duplicate_copy_label">Kopie</string>
+
+    <!-- v1.8.0: Einzelnotiz-Widget -->
+    <string name="note_widget_description">Einzelnotiz</string>
+    <string name="note_widget_config_title">Notiz wählen</string>
+    <string name="note_widget_empty">Keine Notiz gewählt</string>
 </resources>

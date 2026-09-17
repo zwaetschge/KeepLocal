@@ -1,5 +1,6 @@
 package com.keeplocal.android.data.local
 
+import androidx.sqlite.db.SupportSQLiteQuery
 import com.keeplocal.android.data.api.KeepLocalApi
 import com.keeplocal.android.data.api.dto.NoteDto
 import com.keeplocal.android.data.local.dao.NoteDao
@@ -244,6 +245,14 @@ private class FakeNoteDao : NoteDao {
 
     override fun searchNotes(query: String): Flow<List<NoteEntity>> =
         flow { emit(notes.values.filter { it.title.contains(query) || it.content.contains(query) }) }
+
+    /** Raw-SQL display query (sort modes + paging); the sync flow never reads it. */
+    override fun getNotesQuery(query: SupportSQLiteQuery): Flow<List<NoteEntity>> =
+        flow { emit(emptyList()) }
+
+    /** Reminder re-planning after sync; not exercised by these tests. */
+    override suspend fun getNotesWithUpcomingReminders(nowEpochMs: Long): List<NoteEntity> =
+        emptyList()
 
     override suspend fun getNoteById(id: String): NoteEntity? = notes[id]
 

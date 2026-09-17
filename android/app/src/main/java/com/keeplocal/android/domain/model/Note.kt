@@ -24,7 +24,11 @@ data class Note(
     val baseUpdatedAt: Instant? = null,
     // Set while the note sits in the 30-day server trash (null on live notes).
     // Only the trash screen reads it — trashed notes never enter the local cache.
-    val deletedAt: Instant? = null
+    val deletedAt: Instant? = null,
+    // Reminder (v1.8.0): server-side trigger time. The server only stores and
+    // validates it; each device schedules its own local notification
+    // (AlarmManager), so reminders fire offline and without push infrastructure.
+    val remindAt: Instant? = null
 )
 
 /**

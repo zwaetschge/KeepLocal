@@ -1,5 +1,6 @@
 package com.keeplocal.android.data.api.dto
 
+import com.keeplocal.android.data.api.NullableString
 import com.keeplocal.android.domain.model.*
 import java.time.Instant
 
@@ -19,7 +20,8 @@ fun NoteDto.toDomain(): Note = Note(
     position = position,
     createdAt = createdAt?.let { parseInstant(it) } ?: Instant.now(),
     updatedAt = updatedAt?.let { parseInstant(it) } ?: Instant.now(),
-    deletedAt = deletedAt?.let { parseInstant(it) }
+    deletedAt = deletedAt?.let { parseInstant(it) },
+    remindAt = remindAt?.let { parseInstantOrNull(it) }
 )
 
 fun TodoItemDto.toDomain(): TodoItem = TodoItem(
@@ -89,7 +91,8 @@ fun Note.toCreateDto(): CreateNoteDto = CreateNoteDto(
     isPinned = isPinned,
     isTodoList = isTodoList,
     todoItems = if (isTodoList) todoItems.map { it.toDto() } else null,
-    tags = tags.ifEmpty { null }
+    tags = tags.ifEmpty { null },
+    remindAt = remindAt?.toString()
 )
 
 fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
@@ -100,7 +103,9 @@ fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
     isTodoList = isTodoList,
     todoItems = if (isTodoList) todoItems.map { it.toDto() } else null,
     tags = tags,
-    position = position
+    position = position,
+    // Always sent (full-state semantics): null clears the server-side reminder.
+    remindAt = NullableString(remindAt?.toString())
 )
 
 fun TodoItem.toDto(): TodoItemDto = TodoItemDto(
@@ -117,3 +122,8 @@ private fun parseInstant(dateString: String): Instant {
         Instant.now()
     }
 }
+
+/** Strict parse for reminder times: an unparseable value means "no reminder"
+ *  (null), never a fabricated now() that would fire a bogus notification. */
+private fun parseInstantOrNull(dateString: String): Instant? =
+    runCatching { Instant.parse(dateString) }.getOrNull()

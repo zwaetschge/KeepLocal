@@ -27,6 +27,7 @@ import com.keeplocal.android.data.local.NoteDraft
 import com.keeplocal.android.data.local.NoteDraftStore
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.DraftTodoItem
+import com.keeplocal.android.util.ChecklistProgress
 import com.keeplocal.android.util.IncomingIntents
 import com.keeplocal.android.util.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -83,7 +84,9 @@ data class NoteEditorState(
     // off, the mic button is hidden rather than disabled.
     val showMic: Boolean = true,
     // Server version this edit started from (optimistic locking guard).
-    val baseUpdatedAt: Instant? = null
+    val baseUpdatedAt: Instant? = null,
+    /** Reminder time (v1.8.0 Nr. 2); null = no reminder. */
+    val remindAt: Instant? = null
 )
 
 private val URL_PATTERN = Regex("""https?://[^\s]+""")
@@ -275,6 +278,7 @@ class NoteEditorViewModel @Inject constructor(
                         sharedWith = note.sharedWith,
                         images = note.images,
                         baseUpdatedAt = note.baseUpdatedAt,
+                        remindAt = note.remindAt,
                         isLoading = false,
                         isNewNote = false
                     )
@@ -389,6 +393,26 @@ class NoteEditorViewModel @Inject constructor(
             }
         } else {
             _uiState.update { it.copy(isPinned = !it.isPinned, hasChanges = true) }
+        }
+    }
+
+    /**
+     * Sets or clears the reminder (v1.8.0 Nr. 2). Saved with the note; the
+     * repository re-plans the alarm as soon as the note lands.
+     */
+    fun setReminder(at: Instant?) {
+        _uiState.update { it.copy(remindAt = at, hasChanges = true) }
+    }
+
+    /**
+     * Drops completed and blank checklist items and renumbers the rest
+     * (v1.8.0 Nr. 5) — the "clean up" counterpart to ticking things off.
+     */
+    fun cleanupTodoItems() {
+        val state = _uiState.value
+        val cleaned = ChecklistProgress.cleanup(state.todoItems)
+        if (cleaned.size != state.todoItems.size) {
+            _uiState.update { it.copy(todoItems = cleaned, hasChanges = true) }
         }
     }
 
@@ -732,6 +756,7 @@ class NoteEditorViewModel @Inject constructor(
                 createdAt = now,
                 updatedAt = now,
                 baseUpdatedAt = state.baseUpdatedAt,
+                remindAt = state.remindAt,
                 // Keep attachments on offline saves — the server ignores this
                 // field but the local cache row is rebuilt from this note.
                 images = state.images

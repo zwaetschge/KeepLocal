@@ -2,11 +2,34 @@ package com.keeplocal.android.domain.repository
 
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.SortMode
+import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.Result
 import kotlinx.coroutines.flow.Flow
 
 interface NoteRepository {
-    fun getNotes(search: String? = null, tag: String? = null, archived: Boolean = false): Flow<Result<List<Note>>>
+    /**
+     * Current list view (v1.8.0): syncs the offline queue, refreshes the Room
+     * cache from the server, then reads the display list back from Room — so
+     * [sortMode] and [limit] (paging window; null = everything) apply equally
+     * to fresh server data and to the offline fallback.
+     */
+    fun getNotes(
+        search: String? = null,
+        tag: String? = null,
+        archived: Boolean = false,
+        sortMode: SortMode = SortMode.MANUAL,
+        limit: Int? = null
+    ): Flow<Result<List<Note>>>
+
+    /** Room-only view for cheap re-reads: sort switch, "load more", widget.
+     *  Never touches the network. */
+    fun getCachedNotes(
+        search: String? = null,
+        archived: Boolean = false,
+        sortMode: SortMode = SortMode.MANUAL,
+        limit: Int? = null
+    ): Flow<Result<List<Note>>>
     suspend fun getNote(id: String): Result<Note>
     suspend fun createNote(note: Note): Result<Note>
     suspend fun updateNote(note: Note): Result<Note>
@@ -51,4 +74,18 @@ interface NoteRepository {
      * exactly what a backup is for.
      */
     suspend fun getAllNotesForExport(): Result<List<Note>>
+
+    /**
+     * Import (v1.8.0 Nr. 1): creates every parsed export note as a NEW note
+     * (server copy) — existing notes are never touched. Runs through
+     * createNote, so it is offline-capable and queues like any other edit.
+     * Returns how many notes were created.
+     */
+    suspend fun importNotes(notes: List<NoteImportParser.ParsedNote>): Result<Int>
+
+    /**
+     * Duplicate (v1.8.0 Nr. 8): full copy of the note under a "(Kopie)" title,
+     * created like a new note (own id, reminders kept, sharing not copied).
+     */
+    suspend fun duplicateNote(noteId: String, copyLabel: String): Result<Note>
 }

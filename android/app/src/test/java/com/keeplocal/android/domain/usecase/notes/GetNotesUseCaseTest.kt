@@ -2,6 +2,7 @@ package com.keeplocal.android.domain.usecase.notes
 
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.util.Result
 import io.mockk.every
@@ -39,7 +40,7 @@ class GetNotesUseCaseTest {
 
     @Test
     fun `invoke delegates to repository`() = runTest {
-        every { noteRepository.getNotes(any(), any(), any()) } returns flowOf(Result.Success(testNotes))
+        every { noteRepository.getNotes(any(), any(), any(), any(), any()) } returns flowOf(Result.Success(testNotes))
 
         val result = useCase(search = "test", tag = "work", archived = false).first()
 
@@ -50,7 +51,7 @@ class GetNotesUseCaseTest {
 
     @Test
     fun `invoke with defaults passes null search and tag`() = runTest {
-        every { noteRepository.getNotes(null, null, false) } returns flowOf(Result.Success(testNotes))
+        every { noteRepository.getNotes(null, null, false, SortMode.MANUAL, null) } returns flowOf(Result.Success(testNotes))
 
         val result = useCase().first()
 
@@ -60,7 +61,7 @@ class GetNotesUseCaseTest {
 
     @Test
     fun `invoke passes archived flag`() = runTest {
-        every { noteRepository.getNotes(null, null, true) } returns flowOf(Result.Success(emptyList()))
+        every { noteRepository.getNotes(null, null, true, SortMode.MANUAL, null) } returns flowOf(Result.Success(emptyList()))
 
         val result = useCase(archived = true).first()
 
@@ -70,8 +71,29 @@ class GetNotesUseCaseTest {
     }
 
     @Test
+    fun `invoke passes sort mode and paging limit`() = runTest {
+        every { noteRepository.getNotes(null, null, false, SortMode.UPDATED, 60) } returns flowOf(Result.Success(testNotes))
+
+        val result = useCase(sortMode = SortMode.UPDATED, limit = 60).first()
+
+        assertTrue(result.isSuccess)
+        verify { noteRepository.getNotes(sortMode = SortMode.UPDATED, limit = 60) }
+    }
+
+    @Test
+    fun `invokeCached reads the Room-only path`() = runTest {
+        every { noteRepository.getCachedNotes(null, false, SortMode.TITLE, 30) } returns flowOf(Result.Success(testNotes))
+
+        val result = useCase.invokeCached(sortMode = SortMode.TITLE, limit = 30).first()
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 1) { noteRepository.getCachedNotes(any(), any(), any(), any()) }
+        verify(exactly = 0) { noteRepository.getNotes(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `error from repository is propagated`() = runTest {
-        every { noteRepository.getNotes(any(), any(), any()) } returns flowOf(Result.Error("Network error"))
+        every { noteRepository.getNotes(any(), any(), any(), any(), any()) } returns flowOf(Result.Error("Network error"))
 
         val result = useCase().first()
 

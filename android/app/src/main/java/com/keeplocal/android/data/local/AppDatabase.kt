@@ -12,7 +12,7 @@ import com.keeplocal.android.data.local.entity.PendingOperationEntity
 
 @Database(
     entities = [NoteEntity::class, PendingOperationEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -36,6 +36,17 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE notes ADD COLUMN imagesJson TEXT NOT NULL DEFAULT '[]'")
                 db.execSQL("ALTER TABLE notes ADD COLUMN baseUpdatedAt TEXT")
+            }
+        }
+
+        /**
+         * v4 adds `remindAtEpochMs` (reminder trigger time, null = none). The
+         * offline queue lives in the same database file, so this must be an
+         * in-place migration — never destructive.
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN remindAtEpochMs INTEGER")
             }
         }
     }

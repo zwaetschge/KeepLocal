@@ -13,8 +13,8 @@ android {
         applicationId = "com.keeplocal.android"
         minSdk = 33
         targetSdk = 34
-        versionCode = 23
-        versionName = "1.7.0"
+        versionCode = 24
+        versionName = "1.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -102,6 +102,11 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("androidx.hilt:hilt-work:1.1.0")
     ksp("androidx.hilt:hilt-compiler:1.1.0")
+
+    // SAF tree access for the automatic backup (v1.8.0)
+    implementation("androidx.documentfile:documentfile:1.0.1")
+    // Chrome Custom Tabs for links found in note content (v1.8.0).
+    implementation("androidx.browser:browser:1.8.0")
 
     // Glance (home-screen widget for pinned notes)
     implementation("androidx.glance:glance-appwidget:1.0.0")

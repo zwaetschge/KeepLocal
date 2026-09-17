@@ -1,5 +1,6 @@
 package com.keeplocal.android.data.api.dto
 
+import com.keeplocal.android.data.api.NullableString
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
@@ -111,7 +112,9 @@ data class NoteDto(
     @Json(name = "createdAt") val createdAt: String? = null,
     @Json(name = "updatedAt") val updatedAt: String? = null,
     // Set while the note sits in the 30-day trash; null on live notes.
-    @Json(name = "deletedAt") val deletedAt: String? = null
+    @Json(name = "deletedAt") val deletedAt: String? = null,
+    // Reminder trigger time (ISO 8601); null = no reminder.
+    @Json(name = "remindAt") val remindAt: String? = null
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
 }
@@ -159,7 +162,9 @@ data class CreateNoteDto(
     @Json(name = "isPinned") val isPinned: Boolean = false,
     @Json(name = "isTodoList") val isTodoList: Boolean = false,
     @Json(name = "todoItems") val todoItems: List<TodoItemDto>? = null,
-    @Json(name = "tags") val tags: List<String>? = null
+    @Json(name = "tags") val tags: List<String>? = null,
+    // Reminder for the new note; null is simply omitted (nothing to clear).
+    @Json(name = "remindAt") val remindAt: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -174,7 +179,11 @@ data class UpdateNoteDto(
     @Json(name = "position") val position: Int? = null,
     // Optimistic locking: the updatedAt of the version the edit started from.
     // Server answers 409 with the current note when it was changed meanwhile.
-    @Json(name = "baseUpdatedAt") val baseUpdatedAt: String? = null
+    @Json(name = "baseUpdatedAt") val baseUpdatedAt: String? = null,
+    // Reminder: the app always sends the full note state, so null here means
+    // "delete the reminder". Moshi omits plain nullable fields, hence the
+    // NullableString wrapper which writes an explicit JSON null.
+    @Json(name = "remindAt") val remindAt: NullableString? = null
 )
 
 @JsonClass(generateAdapter = true)
