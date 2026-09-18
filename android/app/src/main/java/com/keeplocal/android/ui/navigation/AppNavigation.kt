@@ -16,8 +16,10 @@ import com.keeplocal.android.ui.auth.SetupScreen
 import com.keeplocal.android.ui.friends.FriendsScreen
 import com.keeplocal.android.ui.notes.NoteEditorScreen
 import com.keeplocal.android.ui.notes.NotesScreen
+import com.keeplocal.android.ui.notes.UpcomingRemindersScreen
 import com.keeplocal.android.ui.trash.TrashScreen
 import com.keeplocal.android.ui.settings.SettingsScreen
+import com.keeplocal.android.ui.tags.TagScreen
 import com.keeplocal.android.util.IncomingIntents
 
 object Routes {
@@ -28,6 +30,8 @@ object Routes {
     const val TRASH = "trash"
     const val ADMIN = "admin"
     const val SETTINGS = "settings"
+    const val TAGS = "tags"
+    const val REMINDERS = "reminders"
 
     fun noteEditor(noteId: String? = null): String =
         if (noteId != null) "note_editor?noteId=$noteId" else "note_editor"
@@ -112,6 +116,12 @@ fun AppNavigation() {
                 onNavigateToTrash = {
                     navController.navigate(Routes.TRASH)
                 },
+                onNavigateToTags = {
+                    navController.navigate(Routes.TAGS)
+                },
+                onNavigateToReminders = {
+                    navController.navigate(Routes.REMINDERS)
+                },
                 onReLoginRequired = {
                     navController.navigate(Routes.SETUP) {
                         popUpTo(0) { inclusive = true }
@@ -150,6 +160,21 @@ fun AppNavigation() {
         composable(Routes.ADMIN) {
             AdminScreen(
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.TAGS) {
+            TagScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.REMINDERS) {
+            UpcomingRemindersScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenNote = { noteId ->
+                    navController.navigate(Routes.noteEditor(noteId))
+                }
             )
         }
 

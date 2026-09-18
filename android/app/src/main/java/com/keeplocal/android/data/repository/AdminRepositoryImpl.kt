@@ -52,6 +52,15 @@ class AdminRepositoryImpl @Inject constructor(
         if (!response.isSuccessful) throw Exception("Failed to toggle admin: ${response.code()}")
     }
 
+    override suspend fun createPasswordResetToken(id: String): Result<String> = Result.catching {
+        val response = api.createPasswordResetToken(id)
+        if (response.isSuccessful) {
+            response.body()?.resetToken ?: throw Exception("No token in response")
+        } else {
+            throw Exception("Failed to create reset token: ${response.code()}")
+        }
+    }
+
     override suspend fun getSettings(): Result<AdminSettings> = Result.catching {
         val response = api.getAdminSettings()
         if (response.isSuccessful) {

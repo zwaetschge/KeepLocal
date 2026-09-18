@@ -217,6 +217,22 @@ data class ChangePasswordDto(
     @Json(name = "newPassword") val newPassword: String
 )
 
+/** Body for POST /api/auth/reset-password — redeems an admin-issued one-time
+ *  token (15 min validity, no session required). */
+@JsonClass(generateAdapter = true)
+data class ResetPasswordDto(
+    @Json(name = "token") val token: String,
+    @Json(name = "newPassword") val newPassword: String
+)
+
+/** Response of POST /api/admin/users/:id/password-reset. The token is shown
+ *  once and never stored anywhere on the device. */
+@JsonClass(generateAdapter = true)
+data class PasswordResetTokenDto(
+    @Json(name = "resetToken") val resetToken: String,
+    @Json(name = "expiresAt") val expiresAt: String? = null
+)
+
 @JsonClass(generateAdapter = true)
 data class FriendDto(
     @Json(name = "_id") val mongoId: String = "",

@@ -18,6 +18,7 @@ import com.keeplocal.android.data.local.entity.toDomain as entityToDomain
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.reminder.ReminderScheduler
@@ -53,7 +54,8 @@ class NoteRepositoryImpl @Inject constructor(
         tag: String?,
         archived: Boolean,
         sortMode: SortMode,
-        limit: Int?
+        limit: Int?,
+        filter: NoteTypeFilter
     ): Flow<Result<List<Note>>> = flow {
         try { syncManager.syncPendingOperations() } catch (_: Exception) {}
 
@@ -105,15 +107,18 @@ class NoteRepositoryImpl @Inject constructor(
                     // Room is the single display source for the plain list:
                     // sorting and the paging window apply to fresh server data
                     // and offline alike.
-                    emit(Result.Success(readCache(null, archived, sortMode, limit)))
+                    emit(Result.Success(readCache(null, archived, sortMode, limit, filter)))
                 } else {
                     // Search/tag results keep the server's relevance ranking
                     // (full-text index over ALL notes, not just the cache);
                     // the hits are merged into Room so the offline fallback
                     // knows them too. An explicitly chosen sort re-orders even
-                    // search results — MANUAL means "as delivered".
+                    // search results — MANUAL means "as delivered". The type
+                    // chip is a client-side concern — the server has no such
+                    // filter — so it narrows the ranked hits in memory.
                     noteDao.insertNotes(serverEntities)
-                    val display = if (sortMode == SortMode.MANUAL) notes else sortInMemory(notes, sortMode)
+                    val filtered = if (filter == NoteTypeFilter.ALL) notes else notes.filter { filter.matches(it) }
+                    val display = if (sortMode == SortMode.MANUAL) filtered else sortInMemory(filtered, sortMode)
                     emit(Result.Success(window(display, limit)))
                 }
             } else {
@@ -124,7 +129,7 @@ class NoteRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             fileLogger.error("NoteRepo", "getNotes exception, serving cache", e)
             try {
-                val cached = readCache(search, archived, sortMode, limit)
+                val cached = readCache(search, archived, sortMode, limit, filter)
                 if (cached.isNotEmpty()) {
                     emit(Result.Success(cached))
                 } else {
@@ -140,21 +145,29 @@ class NoteRepositoryImpl @Inject constructor(
         search: String?,
         archived: Boolean,
         sortMode: SortMode,
-        limit: Int?
+        limit: Int?,
+        filter: NoteTypeFilter
     ): Flow<Result<List<Note>>> = flow {
-        emit(Result.Success(readCache(search, archived, sortMode, limit)))
+        emit(Result.Success(readCache(search, archived, sortMode, limit, filter)))
     }
 
     /**
      * The display list out of Room, honouring sort mode and paging window.
      * A blank search reads the whole section; a term narrows it with the same
-     * LIKE match the offline fallback always used.
+     * LIKE match the offline fallback always used. The type filter rides
+     * along in SQL (v1.9.0).
      */
-    private suspend fun readCache(search: String?, archived: Boolean, sortMode: SortMode, limit: Int?): List<Note> {
+    private suspend fun readCache(
+        search: String?,
+        archived: Boolean,
+        sortMode: SortMode,
+        limit: Int?,
+        filter: NoteTypeFilter = NoteTypeFilter.ALL
+    ): List<Note> {
         val query = when {
-            !search.isNullOrBlank() -> NoteQueries.searchNotes(search, sortMode, limit)
+            !search.isNullOrBlank() -> NoteQueries.searchNotes(search, sortMode, limit, filter)
             archived -> NoteQueries.archivedNotes(sortMode, limit)
-            else -> NoteQueries.liveNotes(sortMode, limit)
+            else -> NoteQueries.liveNotes(sortMode, limit, filter)
         }
         return noteDao.getNotesQuery(query).first().map { it.entityToDomain() }
     }
@@ -454,6 +467,12 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun getPinnedNotes(maxCount: Int): Result<List<Note>> = Result.catching {
         noteDao.getPinnedNotes(maxCount).map { it.entityToDomain() }
+    }
+
+    override suspend fun getUpcomingReminders(): Result<List<Note>> = Result.catching {
+        noteDao.getNotesWithUpcomingReminders(System.currentTimeMillis())
+            .map { it.entityToDomain() }
+            .sortedBy { it.remindAt }
     }
 
     override suspend fun unshareNote(noteId: String, userId: String): Result<Unit> = Result.catching {

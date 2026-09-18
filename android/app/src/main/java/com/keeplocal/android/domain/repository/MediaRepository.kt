@@ -45,6 +45,13 @@ interface MediaRepository {
      * like [resolveImageUrl]. Compose fallback for the cold-start window.
      */
     suspend fun awaitImageUrl(path: String?): String?
+
+    /**
+     * Downloads a server image into the cache dir (v1.9.0 image viewer) so it
+     * can be saved to the gallery or shared. One file per filename; a repeat
+     * download overwrites it. Online-only like every media operation.
+     */
+    suspend fun downloadImageToCache(path: String): Result<File>
 }
 
 /** Whisper transcription result for a recorded audio file. */

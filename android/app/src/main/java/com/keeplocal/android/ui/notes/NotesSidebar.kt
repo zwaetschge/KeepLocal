@@ -16,10 +16,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuOpen
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -67,10 +69,12 @@ fun NotesSidebarContent(
     onSelectNotes: () -> Unit,
     onSelectArchive: () -> Unit,
     onSelectTrash: () -> Unit = {},
+    onSelectReminders: () -> Unit = {},
     onSelectTag: (String) -> Unit,
     onNavigateToFriends: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToTags: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = LocalIsDarkTheme.current
@@ -138,6 +142,14 @@ fun NotesSidebarContent(
                 isDark = isDark,
                 onClick = onSelectTrash
             )
+            // v1.9.0 Nr. 5: everything with a reminder still ahead.
+            SidebarItem(
+                icon = { Icon(Icons.Default.Alarm, contentDescription = null) },
+                label = stringResource(R.string.upcoming_title),
+                isActive = false,
+                isDark = isDark,
+                onClick = onSelectReminders
+            )
 
             if (state.availableTags.isNotEmpty()) {
                 @Suppress("DEPRECATION")
@@ -160,6 +172,14 @@ fun NotesSidebarContent(
                         onClick = { onSelectTag(tag) }
                     )
                 }
+                // v1.9.0 Nr. 3: rename/merge/delete lives one tap behind the list.
+                SidebarItem(
+                    icon = { Icon(Icons.Default.Sell, contentDescription = null) },
+                    label = stringResource(R.string.tags_title),
+                    isActive = false,
+                    isDark = isDark,
+                    onClick = onNavigateToTags
+                )
             }
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -206,9 +226,11 @@ fun NotesSidebarRail(
     onSelectNotes: () -> Unit,
     onSelectArchive: () -> Unit,
     onSelectTrash: () -> Unit = {},
+    onSelectReminders: () -> Unit = {},
     onNavigateToFriends: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToTags: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     NavigationRail(
@@ -243,6 +265,18 @@ fun NotesSidebarRail(
             icon = Icons.Default.Delete,
             label = stringResource(R.string.nav_trash),
             onClick = onSelectTrash
+        )
+        RailItem(
+            selected = false,
+            icon = Icons.Default.Alarm,
+            label = stringResource(R.string.upcoming_title),
+            onClick = onSelectReminders
+        )
+        RailItem(
+            selected = false,
+            icon = Icons.Default.Sell,
+            label = stringResource(R.string.tags_title),
+            onClick = onNavigateToTags
         )
 
         Spacer(modifier = Modifier.weight(1f))

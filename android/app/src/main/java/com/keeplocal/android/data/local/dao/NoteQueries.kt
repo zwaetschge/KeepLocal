@@ -2,6 +2,7 @@ package com.keeplocal.android.data.local.dao
 
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 
 /**
@@ -9,6 +10,9 @@ import com.keeplocal.android.domain.model.SortMode
  * ORDER BY, so the fragments are chosen from a fixed set here and only the
  * search term and limit are bound as arguments. A null limit loads everything
  * (small libraries keep the old single-shot behaviour).
+ *
+ * v1.9.0: queries gained a [NoteTypeFilter] and the search tolerates a blank
+ * term — the type chips filter the plain list too, not just search results.
  */
 object NoteQueries {
 
@@ -22,9 +26,24 @@ object NoteQueries {
 
     private fun limitClause(limit: Int?): String = limit?.takeIf { it > 0 }?.let { " LIMIT $it" } ?: ""
 
-    fun liveNotes(sortMode: SortMode, limit: Int? = null): SupportSQLiteQuery =
+    /**
+     * Structural filter as SQL. All fragments are from this fixed set, so a
+     * filter value can never inject SQL. imagesJson defaults to '[]', making
+     * the inequality the cheapest "has images" test available without a
+     * JSON1 extension.
+     */
+    private fun filterClause(filter: NoteTypeFilter): String = when (filter) {
+        NoteTypeFilter.ALL -> ""
+        NoteTypeFilter.LISTS -> " AND isTodoList = 1"
+        NoteTypeFilter.TEXT -> " AND isTodoList = 0"
+        NoteTypeFilter.IMAGES -> " AND imagesJson != '[]'"
+        NoteTypeFilter.REMINDERS -> " AND remindAtEpochMs IS NOT NULL"
+        NoteTypeFilter.PINNED -> " AND isPinned = 1"
+    }
+
+    fun liveNotes(sortMode: SortMode, limit: Int? = null, filter: NoteTypeFilter = NoteTypeFilter.ALL): SupportSQLiteQuery =
         SimpleSQLiteQuery(
-            "SELECT * FROM notes WHERE isArchived = 0 ORDER BY ${orderBy(sortMode)}${limitClause(limit)}"
+            "SELECT * FROM notes WHERE isArchived = 0${filterClause(filter)} ORDER BY ${orderBy(sortMode)}${limitClause(limit)}"
         )
 
     fun archivedNotes(sortMode: SortMode, limit: Int? = null): SupportSQLiteQuery =
@@ -32,12 +51,22 @@ object NoteQueries {
             "SELECT * FROM notes WHERE isArchived = 1 ORDER BY ${orderBy(sortMode)}${limitClause(limit)}"
         )
 
-    fun searchNotes(term: String, sortMode: SortMode, limit: Int? = null): SupportSQLiteQuery =
-        SimpleSQLiteQuery(
-            "SELECT * FROM notes WHERE isArchived = 0 AND (" +
-                "title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%' OR " +
-                "todoItemsJson LIKE '%' || ? || '%' OR tagsJson LIKE '%' || ? || '%')" +
+    fun searchNotes(
+        term: String,
+        sortMode: SortMode,
+        limit: Int? = null,
+        filter: NoteTypeFilter = NoteTypeFilter.ALL
+    ): SupportSQLiteQuery {
+        // A blank term with an active filter stays useful: the chips then
+        // narrow the whole list instead of the search hits.
+        val match = if (term.isBlank()) "" else
+            " AND (title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%' OR " +
+                "todoItemsJson LIKE '%' || ? || '%' OR tagsJson LIKE '%' || ? || '%')"
+        val args = if (term.isBlank()) arrayOf() else arrayOf(term, term, term, term)
+        return SimpleSQLiteQuery(
+            "SELECT * FROM notes WHERE isArchived = 0$match${filterClause(filter)}" +
                 " ORDER BY ${orderBy(sortMode)}${limitClause(limit)}",
-            arrayOf(term, term, term, term)
+            args
         )
+    }
 }

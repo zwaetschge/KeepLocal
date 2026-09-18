@@ -342,7 +342,8 @@
     <string name="reminder_channel_name">Erinnerungen</string>
     <string name="reminder_channel_description">Benachrichtigungen für Notiz-Erinnerungen</string>
     <string name="reminder_fallback_title">Erinnerung</string>
-    <string name="reminder_snooze">Später (15 Min.)</string>
+    <string name="reminder_snooze_short">Später (5 Min.)</string>
+    <string name="reminder_snooze_hour">Später (1 Std.)</string>
     <string name="reminder_done">Erledigt</string>
     <string name="reminder_set">Erinnerung gesetzt</string>
     <string name="reminder_cleared">Erinnerung entfernt</string>
@@ -401,4 +402,69 @@
     <string name="note_widget_description">Einzelnotiz</string>
     <string name="note_widget_config_title">Notiz wählen</string>
     <string name="note_widget_empty">Keine Notiz gewählt</string>
+    <!-- v1.9.0: image viewer actions -->
+    <string name="viewer_share_image">Bild teilen</string>
+    <string name="viewer_save_image">In Galerie speichern</string>
+    <string name="viewer_saved">In Galerie gespeichert</string>
+    <string name="viewer_save_failed">Bild konnte nicht gespeichert werden</string>
+
+    <!-- v1.9.0: note as PDF -->
+    <string name="pdf_share">Als PDF teilen</string>
+    <string name="pdf_print">Drucken</string>
+    <string name="pdf_failed">PDF konnte nicht erstellt werden</string>
+
+    <!-- v1.9.0: search type filters -->
+    <string name="filter_all">Alle</string>
+    <string name="filter_lists">Listen</string>
+    <string name="filter_text">Notizen</string>
+    <string name="filter_images">Bilder</string>
+    <string name="filter_reminders">Erinnerungen</string>
+    <string name="filter_pinned">Angepinnt</string>
+    <string name="search_in_note">In Notiz suchen</string>
+    <string name="search_in_note_previous">Vorheriger Treffer</string>
+    <string name="search_in_note_next">Nächster Treffer</string>
+
+    <!-- v1.9.0: tag management -->
+    <string name="tags_title">Tags</string>
+    <string name="tags_empty">Noch keine Tags — füge Tags im Editor zu Notizen hinzu.</string>
+    <string name="tag_rename">Umbenennen</string>
+    <string name="tag_merge">Zusammenführen mit…</string>
+    <string name="tag_delete">Tag löschen</string>
+    <string name="tag_new_name">Neuer Name</string>
+    <string name="tag_merge_target">Ziel-Tag</string>
+    <string name="tag_rename_confirm">Umbenennen</string>
+    <string name="tag_merge_confirm">Zusammenführen</string>
+    <string name="tag_delete_confirm_title">Tag löschen?</string>
+    <string name="tag_delete_confirm_text">Der Tag wird von allen Notizen entfernt. Die Notizen bleiben erhalten.</string>
+    <string name="tag_renamed">%1$d Notiz(en) aktualisiert</string>
+    <string name="tag_notes_count">%1$d Notiz(en)</string>
+
+    <!-- v1.9.0: reminder overview -->
+    <string name="upcoming_title">Anstehende Erinnerungen</string>
+    <string name="upcoming_empty">Keine anstehenden Erinnerungen.</string>
+    <string name="upcoming_snooze_morning">Morgen 9 Uhr</string>
+
+    <!-- v1.9.0: login refresh -->
+    <string name="login_reset_password">Passwort vergessen?</string>
+    <string name="login_reset_title">Passwort zurücksetzen</string>
+    <string name="login_reset_token_hint">Reset-Token</string>
+    <string name="login_reset_new_password_hint">Neues Passwort</string>
+    <string name="login_reset_submit">Neues Passwort setzen</string>
+    <string name="login_reset_success">Passwort gesetzt — bitte einloggen.</string>
+    <string name="login_demo">Demo ausprobieren</string>
+
+    <!-- v1.9.0: Google Keep import -->
+    <string name="import_keep_title">Google Keep importieren</string>
+    <string name="import_keep_hint">Wähle die JSON-Dateien aus deinem Takeout (Takeout/Keep)</string>
+    <string name="import_keep_pick">Dateien auswählen</string>
+    <string name="import_keep_selected">%1$d Datei(en) ausgewählt</string>
+    <string name="import_keep_start">Importieren</string>
+    <string name="import_keep_done">%1$d Notiz(en) importiert, %2$d Datei(en) übersprungen</string>
+    <string name="import_keep_failed">Import fehlgeschlagen</string>
+
+    <!-- v1.9.0: admin password reset -->
+    <string name="admin_create_reset_token">Reset-Token erzeugen</string>
+    <string name="admin_reset_token_created">Token 15 Minuten gültig:</string>
+    <string name="admin_reset_token_failed">Token konnte nicht erzeugt werden</string>
+    <string name="cd_more_actions">Weitere Aktionen</string>
 </resources>

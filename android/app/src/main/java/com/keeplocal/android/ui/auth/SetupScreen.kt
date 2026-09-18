@@ -55,6 +55,19 @@ fun SetupScreen(
         viewModel.navigateToMain.collect { onNavigateToNotes() }
     }
 
+    // Token-based password reset (v1.9.0 Nr. 6).
+    if (uiState.showResetDialog) {
+        ResetPasswordDialog(
+            token = uiState.resetToken,
+            newPassword = uiState.resetNewPassword,
+            isLoading = uiState.isLoading,
+            onTokenChanged = viewModel::updateResetToken,
+            onPasswordChanged = viewModel::updateResetNewPassword,
+            onSubmit = viewModel::submitResetPassword,
+            onDismiss = viewModel::closeResetDialog
+        )
+    }
+
     if (uiState.showAutheliaWebView) {
         AutheliaWebView(
             serverUrl = uiState.serverUrl,
@@ -353,6 +366,18 @@ fun SetupScreen(
                         )
                     }
 
+                    // Token-based password reset (v1.9.0 Nr. 6): an admin
+                    // issues the token, the user redeems it here.
+                    if (!uiState.isRegisterMode) {
+                        TextButton(
+                            onClick = viewModel::openResetDialog,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isLoading
+                        ) {
+                            Text(stringResource(R.string.login_reset_password))
+                        }
+                    }
+
                     // OAuth: only providers the server has configured get a
                     // button (GET /api/auth/providers).
                     if (!uiState.isRegisterMode && (uiState.oauthProviders.google || uiState.oauthProviders.github)) {
@@ -381,6 +406,35 @@ fun SetupScreen(
                             }
                         }
                     }
+
+                    // Demo account (v1.9.0 Nr. 6): only when the server has it
+                    // enabled — same /api/auth/providers flag as OAuth.
+                    if (!uiState.isRegisterMode && uiState.oauthProviders.demo) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = viewModel::demoLogin,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isLoading
+                        ) {
+                            Text(stringResource(R.string.login_demo))
+                        }
+                    }
+                }
+            }
+
+            uiState.infoMessage?.let { info ->
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Text(
+                        text = info,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
 
@@ -403,6 +457,57 @@ fun SetupScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+/** Admin-issued one-time token + new password (v1.9.0 Nr. 6). */
+@Composable
+private fun ResetPasswordDialog(
+    token: String,
+    newPassword: String,
+    isLoading: Boolean,
+    onTokenChanged: (String) -> Unit,
+    onPasswordChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.login_reset_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = onTokenChanged,
+                    label = { Text(stringResource(R.string.login_reset_token_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = onPasswordChanged,
+                    label = { Text(stringResource(R.string.login_reset_new_password_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onSubmit() })
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onSubmit,
+                enabled = !isLoading && token.isNotBlank() && newPassword.length >= 8
+            ) { Text(stringResource(R.string.login_reset_submit)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
 }
 
 @Composable

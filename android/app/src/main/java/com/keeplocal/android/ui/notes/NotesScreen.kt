@@ -81,6 +81,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PermanentDrawerSheet
 import androidx.compose.material3.RadioButton
@@ -135,6 +136,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.keeplocal.android.R
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.ui.adaptive.LayoutMode
 import com.keeplocal.android.ui.adaptive.LocalAppWindowInfo
@@ -195,6 +197,8 @@ fun NotesScreen(
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToTrash: () -> Unit = {},
+    onNavigateToTags: () -> Unit = {},
+    onNavigateToReminders: () -> Unit = {},
     onReLoginRequired: () -> Unit = {},
     viewModel: NotesViewModel = hiltViewModel()
 ) {
@@ -212,6 +216,8 @@ fun NotesScreen(
             onNavigateToAdmin = onNavigateToAdmin,
             onNavigateToSettings = onNavigateToSettings,
             onNavigateToTrash = onNavigateToTrash,
+            onNavigateToTags = onNavigateToTags,
+            onNavigateToReminders = onNavigateToReminders,
             viewModel = viewModel
         )
     } else {
@@ -221,6 +227,8 @@ fun NotesScreen(
             onNavigateToAdmin = onNavigateToAdmin,
             onNavigateToSettings = onNavigateToSettings,
             onNavigateToTrash = onNavigateToTrash,
+            onNavigateToTags = onNavigateToTags,
+            onNavigateToReminders = onNavigateToReminders,
             viewModel = viewModel
         )
     }
@@ -237,6 +245,8 @@ private fun NotesSinglePaneLayout(
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToTrash: () -> Unit,
+    onNavigateToTags: () -> Unit,
+    onNavigateToReminders: () -> Unit,
     viewModel: NotesViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -265,6 +275,10 @@ private fun NotesSinglePaneLayout(
                 scope.launch { drawerState.close() }
                 onNavigateToTrash()
             },
+            onSelectReminders = {
+                scope.launch { drawerState.close() }
+                onNavigateToReminders()
+            },
             onSelectTag = { tag ->
                 viewModel.onTagSelected(if (uiState.selectedTag == tag) null else tag)
                 scope.launch { drawerState.close() }
@@ -280,6 +294,10 @@ private fun NotesSinglePaneLayout(
             onNavigateToSettings = {
                 scope.launch { drawerState.close() }
                 onNavigateToSettings()
+            },
+            onNavigateToTags = {
+                scope.launch { drawerState.close() }
+                onNavigateToTags()
             }
         )
     }
@@ -327,6 +345,8 @@ private fun NotesTwoPaneLayout(
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToTrash: () -> Unit,
+    onNavigateToTags: () -> Unit,
+    onNavigateToReminders: () -> Unit,
     viewModel: NotesViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -380,6 +400,7 @@ private fun NotesTwoPaneLayout(
                 viewModel.toggleArchiveView(true)
             }
             val onSelectTrash = { onNavigateToTrash() }
+            val onSelectReminders = { onNavigateToReminders() }
 
             if (sidebarExpanded) {
                 PermanentDrawerSheet(
@@ -393,12 +414,14 @@ private fun NotesTwoPaneLayout(
                         onSelectNotes = onSelectNotes,
                         onSelectArchive = onSelectArchive,
                         onSelectTrash = onSelectTrash,
+                        onSelectReminders = onSelectReminders,
                         onSelectTag = { tag ->
                             viewModel.onTagSelected(if (uiState.selectedTag == tag) null else tag)
                         },
                         onNavigateToFriends = onNavigateToFriends,
                         onNavigateToAdmin = onNavigateToAdmin,
-                        onNavigateToSettings = onNavigateToSettings
+                        onNavigateToSettings = onNavigateToSettings,
+                        onNavigateToTags = onNavigateToTags
                     )
                 }
             } else {
@@ -408,9 +431,11 @@ private fun NotesTwoPaneLayout(
                     onSelectNotes = onSelectNotes,
                     onSelectArchive = onSelectArchive,
                     onSelectTrash = onSelectTrash,
+                    onSelectReminders = onSelectReminders,
                     onNavigateToFriends = onNavigateToFriends,
                     onNavigateToAdmin = onNavigateToAdmin,
-                    onNavigateToSettings = onNavigateToSettings
+                    onNavigateToSettings = onNavigateToSettings,
+                    onNavigateToTags = onNavigateToTags
                 )
             }
 
@@ -532,6 +557,7 @@ private fun NotesPane(
     fun closeSearch() {
         showSearch = false
         if (uiState.searchQuery.isNotBlank()) viewModel.onSearchQueryChanged("")
+        if (uiState.typeFilter != NoteTypeFilter.ALL) viewModel.setTypeFilter(NoteTypeFilter.ALL)
     }
 
     // Launcher-shortcut "Suche": open the search row and drop the cursor in.
@@ -765,6 +791,26 @@ private fun NotesPane(
                         }
                         TextButton(onClick = viewModel::clearRecentSearches) {
                             Text(stringResource(R.string.clear))
+                        }
+                    }
+                }
+
+                // Type filter (v1.9.0 Nr. 7): chips while search is open —
+                // plain notes, lists, image notes, reminders, pinned.
+                if (showSearch) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        NoteTypeFilter.entries.forEach { filter ->
+                            FilterChip(
+                                selected = uiState.typeFilter == filter,
+                                onClick = { viewModel.setTypeFilter(filter) },
+                                label = { Text(stringResource(filter.labelRes)) }
+                            )
                         }
                     }
                 }

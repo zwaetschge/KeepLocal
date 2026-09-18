@@ -1,6 +1,7 @@
 package com.keeplocal.android.ui.notes
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -35,6 +36,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -44,14 +46,24 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.keeplocal.android.R
 import com.keeplocal.android.domain.model.Friend
 import com.keeplocal.android.domain.model.NoteColor
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.core.content.FileProvider
+import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.ui.components.ImageActions
 import com.keeplocal.android.ui.components.AudioRecordButton
 import com.keeplocal.android.ui.components.ImageViewerDialog
 import com.keeplocal.android.ui.components.LinkPreviewCard
 import com.keeplocal.android.ui.components.NoteColorUtil
 import com.keeplocal.android.ui.components.NoteImageGrid
+import com.keeplocal.android.ui.components.SearchHighlightTransformation
+import com.keeplocal.android.util.InNoteSearch
 import com.keeplocal.android.util.LinkOpener
 import com.keeplocal.android.util.NoteLinkDetector
+import com.keeplocal.android.util.PdfNoteRenderer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -90,8 +102,60 @@ fun NoteEditorContent(
     var showColorPicker by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
     var showReminderSheet by remember { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
+    // Find-in-note bar (v1.9.0 Nr. 7) — text notes only, checklists search
+    // their items on the list screen instead.
+    var showFindBar by remember(uiState.id) { mutableStateOf(false) }
+    var inNoteSearch by remember(uiState.id) { mutableStateOf(InNoteSearch.State()) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
+    // One scope for everything that leaves the composable tree: image
+    // save/share and the PDF export.
+    val viewerScope = rememberCoroutineScope()
+
+    fun shareAsPdf() {
+        val now = Instant.now()
+        val snapshot = Note(
+            id = uiState.id ?: "",
+            title = uiState.title,
+            content = uiState.content,
+            color = uiState.color,
+            isPinned = uiState.isPinned,
+            isArchived = false,
+            isTodoList = uiState.isTodoList,
+            todoItems = if (uiState.isTodoList) uiState.todoItems else emptyList(),
+            tags = uiState.tags,
+            sharedWith = uiState.sharedWith,
+            owner = "",
+            position = 0,
+            createdAt = uiState.baseUpdatedAt ?: now,
+            updatedAt = uiState.baseUpdatedAt ?: now,
+            baseUpdatedAt = uiState.baseUpdatedAt,
+            remindAt = uiState.remindAt,
+            images = uiState.images
+        )
+        viewerScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = PdfNoteRenderer.renderToCacheFile(context, snapshot)
+                    val uri = FileProvider.getUriForFile(
+                        context, context.packageName + ".fileprovider", file
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(
+                        Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }.isSuccess
+            }
+            if (!ok) {
+                Toast.makeText(context, context.getString(R.string.pdf_failed), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // Photo picker needs no permission; up to 5 items per session. The
     // per-note limit (25) is enforced by the ViewModel.
@@ -210,6 +274,36 @@ fun NoteEditorContent(
                     }
                     IconButton(onClick = { showColorPicker = true }) {
                         Icon(Icons.Default.Palette, contentDescription = stringResource(R.string.editor_color))
+                    }
+                    // Overflow (v1.9.0): find-in-note + share-as-PDF, so the
+                    // icon row stays put even as the actions grow.
+                    Box {
+                        IconButton(onClick = { showOverflow = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_actions))
+                        }
+                        DropdownMenu(
+                            expanded = showOverflow,
+                            onDismissRequest = { showOverflow = false }
+                        ) {
+                            if (!uiState.isTodoList) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.search_in_note)) },
+                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                    onClick = {
+                                        showOverflow = false
+                                        showFindBar = true
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.pdf_share)) },
+                                leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
+                                onClick = {
+                                    showOverflow = false
+                                    shareAsPdf()
+                                }
+                            )
+                        }
                     }
                     IconButton(onClick = viewModel::save, enabled = !uiState.isSaving) {
                         if (uiState.isSaving) {
@@ -372,6 +466,59 @@ fun NoteEditorContent(
                 }
             }
 
+            // Find-in-note bar (v1.9.0 Nr. 7): counter + wrap-around step
+            // buttons; the hits themselves are painted into the content field.
+            if (showFindBar && !uiState.isTodoList) {
+                val hitCount = InNoteSearch.hits(uiState.content, inNoteSearch).size
+                val counter = InNoteSearch.counter(uiState.content, inNoteSearch)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = inNoteSearch.query,
+                        onValueChange = { inNoteSearch = InNoteSearch.onQueryChanged(inNoteSearch, it) },
+                        placeholder = { Text(stringResource(R.string.search_in_note)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Text(
+                        "${counter.first}/${counter.second}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = { inNoteSearch = InNoteSearch.previous(uiState.content, inNoteSearch) },
+                        enabled = hitCount > 0
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = stringResource(R.string.search_in_note_previous)
+                        )
+                    }
+                    IconButton(
+                        onClick = { inNoteSearch = InNoteSearch.next(uiState.content, inNoteSearch) },
+                        enabled = hitCount > 0
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.search_in_note_next)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            showFindBar = false
+                            inNoteSearch = InNoteSearch.close()
+                        }
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_close))
+                    }
+                }
+            }
+
             // Content or Todo list
             if (uiState.isTodoList) {
                 LazyColumn(
@@ -440,7 +587,15 @@ fun NoteEditorContent(
                         unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
-                    )
+                    ),
+                    visualTransformation = if (inNoteSearch.isActive) {
+                        SearchHighlightTransformation(
+                            InNoteSearch.hits(uiState.content, inNoteSearch),
+                            InNoteSearch.currentRange(uiState.content, inNoteSearch)
+                        )
+                    } else {
+                        VisualTransformation.None
+                    }
                 )
                 // Tappable links (v1.8.0 Nr. 6): URLs the text carries open in
                 // a Custom Tab. Links that already have a preview card don't
@@ -646,7 +801,25 @@ fun NoteEditorContent(
         ImageViewerDialog(
             images = uiState.images,
             initialIndex = index,
-            onDismiss = { viewerIndex = null }
+            onDismiss = { viewerIndex = null },
+            onSaveImage = { image ->
+                viewerScope.launch {
+                    val ok = ImageActions.saveToGallery(context, image)
+                    Toast.makeText(
+                        context,
+                        context.getString(if (ok) R.string.viewer_saved else R.string.viewer_save_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onShareImage = { image ->
+                viewerScope.launch {
+                    val ok = ImageActions.share(context, image)
+                    if (!ok) Toast.makeText(
+                        context, context.getString(R.string.viewer_save_failed), Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         )
     }
 

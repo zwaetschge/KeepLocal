@@ -5,6 +5,7 @@ import com.keeplocal.android.data.api.SessionCookieJar
 import com.keeplocal.android.data.api.dto.ChangePasswordDto
 import com.keeplocal.android.data.api.dto.LoginRequestDto
 import com.keeplocal.android.data.api.dto.RegisterRequestDto
+import com.keeplocal.android.data.api.dto.ResetPasswordDto
 import com.keeplocal.android.data.api.dto.UpdateAiFeaturesDto
 import com.keeplocal.android.data.api.dto.UpdatePreferencesDto
 import com.keeplocal.android.data.api.dto.UserPreferencesDto
@@ -287,6 +288,51 @@ class AuthRepositoryImpl @Inject constructor(
             }
             fileLogger.log("AuthRepo", "changePassword success")
         }
+
+    override suspend fun resetPassword(token: String, newPassword: String): Result<Unit> =
+        Result.catching {
+            val csrfResult = getCsrfToken()
+            if (csrfResult.isError) {
+                throw Exception("Failed to get CSRF token: ${(csrfResult as Result.Error).message}")
+            }
+            fileLogger.log("AuthRepo", "resetPassword: calling api")
+            val response = api.resetPassword(ResetPasswordDto(token, newPassword))
+            if (!response.isSuccessful) {
+                val body = try { response.errorBody()?.string()?.take(300) } catch (_: Exception) { null }
+                fileLogger.error("AuthRepo", "resetPassword failed: code=${response.code()}")
+                throw Exception(serverMessage(body) ?: "Passwort-Reset fehlgeschlagen (HTTP ${response.code()})")
+            }
+            // Every session died with the old password — the demo of that is
+            // this client's own state, so clear it like logout would.
+            _authState.value = AuthState.Unauthenticated
+            fileLogger.log("AuthRepo", "resetPassword success")
+        }
+
+    override suspend fun demoLogin(): Result<User> = Result.catching {
+        val csrfResult = getCsrfToken()
+        if (csrfResult.isError) {
+            throw Exception("Failed to get CSRF token: ${(csrfResult as Result.Error).message}")
+        }
+        fileLogger.log("AuthRepo", "demoLogin: calling api")
+        val response = api.demoLogin()
+        fileLogger.log("AuthRepo", "demoLogin response: code=${response.code()}")
+        if (response.isSuccessful) {
+            val authResponse = response.body() ?: throw Exception("Empty response")
+            authResponse.token?.let { tokenManager.saveJwtToken(it) }
+            val user = authResponse.user?.toDomain() ?: throw Exception("No user data")
+            _authState.value = AuthState.Authenticated(user)
+            applyServerPreferences(authResponse.user?.preferences)
+            user
+        } else {
+            val code = response.code()
+            val body = try { response.errorBody()?.string()?.take(300) } catch (_: Exception) { null }
+            fileLogger.error("AuthRepo", "demoLogin failed: code=$code")
+            if (code == 404) {
+                throw Exception("Demo ist auf diesem Server nicht aktiviert")
+            }
+            throw Exception(serverMessage(body) ?: "Demo-Login fehlgeschlagen (HTTP $code)")
+        }
+    }
 
     override fun getServerUrl(): String? = null
 

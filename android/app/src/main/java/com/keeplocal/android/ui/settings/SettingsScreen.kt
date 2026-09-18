@@ -79,10 +79,15 @@ fun SettingsScreen(
         ActivityResultContracts.CreateDocument("text/markdown")
     ) { uri -> uri?.let { viewModel.writeExport(it, ExportNotesUseCase.Format.MARKDOWN) } }
 
-    // JSON import (v1.8.0 Nr. 1) and the backup target folder (Nr. 7).
+    // JSON import (v1.8.0 Nr. 1), Google Keep import (v1.9.0 Nr. 1) and the
+    // backup target folder (Nr. 7).
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importFromUri(it) } }
+
+    val importKeepLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> viewModel.importKeepFromUris(uris) }
 
     val backupFolderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -431,6 +436,28 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.clickable(enabled = !uiState.isImporting) {
                     importLauncher.launch(arrayOf("application/json"))
+                }
+            )
+
+            // Google Keep import (v1.9.0 Nr. 1): multi-select of the Takeout
+            // JSON files; non-Keep files are skipped and reported.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.import_keep_title)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.isImporting) stringResource(R.string.loading)
+                        else stringResource(R.string.import_keep_hint)
+                    )
+                },
+                leadingContent = {
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.MoveUp, contentDescription = null)
+                    }
+                },
+                modifier = Modifier.clickable(enabled = !uiState.isImporting) {
+                    importKeepLauncher.launch(arrayOf("application/json"))
                 }
             )
 

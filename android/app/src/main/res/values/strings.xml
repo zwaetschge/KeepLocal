@@ -354,7 +354,8 @@
     <string name="reminder_channel_name">Reminders</string>
     <string name="reminder_channel_description">Notifications for note reminders</string>
     <string name="reminder_fallback_title">Reminder</string>
-    <string name="reminder_snooze">Snooze 15 min</string>
+    <string name="reminder_snooze_short">Snooze 5 min</string>
+    <string name="reminder_snooze_hour">Snooze 1 h</string>
     <string name="reminder_done">Done</string>
     <string name="reminder_set">Reminder set</string>
     <string name="reminder_cleared">Reminder removed</string>
@@ -413,4 +414,69 @@
     <string name="note_widget_description">Single note</string>
     <string name="note_widget_config_title">Choose a note</string>
     <string name="note_widget_empty">No note selected</string>
+    <!-- v1.9.0: image viewer actions -->
+    <string name="viewer_share_image">Share image</string>
+    <string name="viewer_save_image">Save to gallery</string>
+    <string name="viewer_saved">Saved to gallery</string>
+    <string name="viewer_save_failed">Could not save the image</string>
+
+    <!-- v1.9.0: note as PDF -->
+    <string name="pdf_share">Share as PDF</string>
+    <string name="pdf_print">Print</string>
+    <string name="pdf_failed">Could not create the PDF</string>
+
+    <!-- v1.9.0: search type filters -->
+    <string name="filter_all">All</string>
+    <string name="filter_lists">Lists</string>
+    <string name="filter_text">Notes</string>
+    <string name="filter_images">Images</string>
+    <string name="filter_reminders">Reminders</string>
+    <string name="filter_pinned">Pinned</string>
+    <string name="search_in_note">Find in note</string>
+    <string name="search_in_note_previous">Previous hit</string>
+    <string name="search_in_note_next">Next hit</string>
+
+    <!-- v1.9.0: tag management -->
+    <string name="tags_title">Tags</string>
+    <string name="tags_empty">No tags yet — add tags to notes in the editor.</string>
+    <string name="tag_rename">Rename</string>
+    <string name="tag_merge">Merge into…</string>
+    <string name="tag_delete">Delete tag</string>
+    <string name="tag_new_name">New name</string>
+    <string name="tag_merge_target">Target tag</string>
+    <string name="tag_rename_confirm">Rename</string>
+    <string name="tag_merge_confirm">Merge</string>
+    <string name="tag_delete_confirm_title">Delete tag?</string>
+    <string name="tag_delete_confirm_text">The tag is removed from all notes. The notes themselves stay.</string>
+    <string name="tag_renamed">%1$d note(s) updated</string>
+    <string name="tag_notes_count">%1$d note(s)</string>
+
+    <!-- v1.9.0: reminder overview -->
+    <string name="upcoming_title">Upcoming reminders</string>
+    <string name="upcoming_empty">No upcoming reminders.</string>
+    <string name="upcoming_snooze_morning">Tomorrow 9 am</string>
+
+    <!-- v1.9.0: login refresh -->
+    <string name="login_reset_password">Forgot password?</string>
+    <string name="login_reset_title">Reset password</string>
+    <string name="login_reset_token_hint">Reset token</string>
+    <string name="login_reset_new_password_hint">New password</string>
+    <string name="login_reset_submit">Set new password</string>
+    <string name="login_reset_success">Password set — please log in.</string>
+    <string name="login_demo">Try demo</string>
+
+    <!-- v1.9.0: Google Keep import -->
+    <string name="import_keep_title">Import Google Keep</string>
+    <string name="import_keep_hint">Select the JSON files from your Takeout (Takeout/Keep)</string>
+    <string name="import_keep_pick">Choose files</string>
+    <string name="import_keep_selected">%1$d file(s) selected</string>
+    <string name="import_keep_start">Import</string>
+    <string name="import_keep_done">%1$d note(s) imported, %2$d file(s) skipped</string>
+    <string name="import_keep_failed">Import failed</string>
+
+    <!-- v1.9.0: admin password reset -->
+    <string name="admin_create_reset_token">Create reset token</string>
+    <string name="admin_reset_token_created">Token valid 15 minutes:</string>
+    <string name="admin_reset_token_failed">Could not create the token</string>
+    <string name="cd_more_actions">More actions</string>
 </resources>

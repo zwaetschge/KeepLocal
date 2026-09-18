@@ -39,6 +39,16 @@ interface KeepLocalApi {
     @POST("api/auth/change-password")
     suspend fun changePassword(@Body request: ChangePasswordDto): Response<Unit>
 
+    // Redeems an admin-issued one-time token (15 min validity). Works without
+    // a session — that is the point: the login is lost with the password.
+    @POST("api/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordDto): Response<Unit>
+
+    // Public demo account session. 404 when the server runs without
+    // DEMO_MODE — the login screen keeps the button and explains it.
+    @POST("api/auth/demo")
+    suspend fun demoLogin(): Response<AuthResponseDto>
+
     // Notes
     @GET("api/notes")
     suspend fun getNotes(
@@ -157,6 +167,11 @@ interface KeepLocalApi {
 
     @POST("api/admin/users/{id}/toggle-admin")
     suspend fun toggleAdmin(@Path("id") id: String): Response<Unit>
+
+    // Issues a one-time password-reset token for another user (15 min).
+    // The token is returned exactly once — show + copy, never persist.
+    @POST("api/admin/users/{id}/password-reset")
+    suspend fun createPasswordResetToken(@Path("id") id: String): Response<PasswordResetTokenDto>
 
     @GET("api/admin/settings")
     suspend fun getAdminSettings(): Response<AdminSettingsDto>

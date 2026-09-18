@@ -98,7 +98,20 @@ class ReminderScheduler @Inject constructor(
     }
 
     companion object {
-        /** Snooze shift of the notification's action button (15 minutes). */
-        const val SNOOZE_MILLIS = 15L * 60_000
+        /** Snooze choices (v1.9.0): notification actions 5 min / 1 hour, the
+         *  reminder overview additionally offers "tomorrow morning". */
+        const val SNOOZE_SHORT_MILLIS = 5L * 60_000
+        const val SNOOZE_HOUR_MILLIS = 60L * 60_000
+
+        /** Tomorrow 09:00 local time — a snooze that survives the night. */
+        fun nextMorningMillis(nowMillis: Long = System.currentTimeMillis()): Long =
+            java.util.Calendar.getInstance().apply {
+                timeInMillis = nowMillis
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                set(java.util.Calendar.HOUR_OF_DAY, 9)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }.timeInMillis
     }
 }

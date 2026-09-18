@@ -5,7 +5,7 @@ das Web-UI (`client/`). Er spricht die identische REST-API — inklusive
 Offline-Queue, Bildkompression vor Upload, Hintergrund-Sync und
 Karten-Farbsystem mit WCAG-geprüften Kontrasten.
 
-**Aktueller Stand: v1.7.0 (versionCode 23).**
+**Aktueller Stand: v1.9.0 (versionCode 25).**
 
 ## Bauen
 
@@ -14,7 +14,7 @@ Voraussetzungen: JDK 17, Android SDK (compileSdk 34, minSdk 33).
 ```bash
 cd android
 ./gradlew assembleDebug      # APK: app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest  # 180 Unit-Tests
+./gradlew testDebugUnitTest  # 245 Unit-Tests
 ```
 
 `assembleDebug` hängt automatisch an `testDebugUnitTest` — kaputte Tests
@@ -33,7 +33,7 @@ CSRF-Verhalten entsprechen dem Web-Client.
 | Architektur | Hilt, MVVM, Room-Cache, Retrofit/OkHttp/Moshi, WorkManager-Hintergrund-Sync |
 | Offline | Sync-Queue mit Retry + Konfliktbehandlung (409 → lokale Kopie), Draft-Autosave, Offline-Suche |
 | Design | 5 Themes (Light/Dark/OLED/E-Ink/Doodle), Material-You-Schalter, per-Karten-Ink mit Kontrast-Tests |
-| Extras | Glance-Widget für angepinnte Notizen, Quick-Settings-Tile, App-Shortcuts, Share-Target, Export (JSON/Markdown) |
+| Extras | Glance-Widgets (resize-fähig), Quick-Settings-Tile, App-Shortcuts, Share-Target, Export (JSON/Markdown), Google-Keep-Import (Takeout), Tag-Verwaltung (Umbenennen/Zusammenführen/Löschen), Erinnerungs-Übersicht mit Snooze, Notiz→PDF, In-Notiz-Suche, Passwort-Reset per Admin-Token + Demo-Login |
 
 ## Struktur
 
