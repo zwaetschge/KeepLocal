@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -130,6 +131,12 @@ fun AdminScreen(
                                         Text("Admin", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
+                                IconButton(onClick = { viewModel.createResetToken(user) }) {
+                                    Icon(
+                                        Icons.Default.Key,
+                                        contentDescription = stringResource(R.string.admin_create_reset_token)
+                                    )
+                                }
                                 IconButton(onClick = { viewModel.toggleAdmin(user.id) }) {
                                     Icon(Icons.Default.Shield, contentDescription = stringResource(R.string.admin_toggle_admin))
                                 }
@@ -142,6 +149,36 @@ fun AdminScreen(
                 }
             }
         }
+    }
+
+    // One-time reset token (v1.9.0 Nr. 6): select-all-able text, because the
+    // token has to travel to the user through another channel.
+    uiState.resetToken?.let { reset ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissResetToken,
+            title = { Text(stringResource(R.string.admin_create_reset_token)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.admin_reset_token_created))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = reset.username,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SelectionContainer {
+                        Text(
+                            reset.token,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissResetToken) { Text(stringResource(R.string.ok)) }
+            }
+        )
     }
 
     if (uiState.showCreateUserDialog) {

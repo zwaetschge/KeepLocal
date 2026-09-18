@@ -20,6 +20,8 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.SizeMode
+import androidx.glance.LocalSize
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
@@ -33,6 +35,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.DpSize
 import com.keeplocal.android.R
 import com.keeplocal.android.data.local.dao.NoteDao
 import com.keeplocal.android.data.local.entity.toDomain
@@ -51,8 +54,14 @@ import dagger.hilt.components.SingletonComponent
  * screen in its own color, straight from the Room cache — checklists render
  * as done/open markers. The note is picked once in [NoteWidgetConfigActivity]
  * and remembered per widget instance; tapping the body opens the note.
+ *
+ * Widget 2.0 (v1.9.0 Nr. 9): sizeMode Responsive — the content re-composes
+ * for the nearest supported size, so a 2x2 cell shows a title snippet while
+ * a 4x4 shows most of the note. No more fixed layout that wastes a big cell.
  */
 class NoteWidget : GlanceAppWidget() {
+
+    override val sizeMode = SizeMode.Responsive(SUPPORTED_SIZES)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val note = runCatching {
@@ -71,6 +80,21 @@ class NoteWidget : GlanceAppWidget() {
 
     @Composable
     private fun NoteWidgetContent(note: Note?, isNight: Boolean) {
+        // Responsive layout: LocalSize carries the breakpoint the launcher
+        // picked for this cell, not the exact pixel size.
+        val size = LocalSize.current
+        val titleLines = if (size.width < MEDIUM_WIDTH) 1 else 2
+        val checklistShown = when {
+            size.width < MEDIUM_WIDTH -> 3
+            size.width < LARGE_WIDTH -> 5
+            else -> 9
+        }
+        val contentLines = when {
+            size.width < MEDIUM_WIDTH -> 3
+            size.width < LARGE_WIDTH -> 8
+            else -> 16
+        }
+        val titleSize = if (size.width < MEDIUM_WIDTH) 13.sp else 14.sp
         val cardColor = if (note != null) {
             NoteColorUtil.getColor(note.color, isNight)
         } else {
@@ -110,14 +134,14 @@ class NoteWidget : GlanceAppWidget() {
                         text = note.title.ifBlank { note.content.take(30) }.ifBlank { "•" },
                         style = TextStyle(
                             color = ColorProvider(ink.onCard),
-                            fontSize = 14.sp,
+                            fontSize = titleSize,
                             fontWeight = FontWeight.Bold
                         ),
-                        maxLines = 2
+                        maxLines = titleLines
                     )
                     if (note.isTodoList) {
                         Spacer(modifier = GlanceModifier.height(6.dp))
-                        note.todoItems.take(5).forEach { item ->
+                        note.todoItems.take(checklistShown).forEach { item ->
                             Text(
                                 text = (if (item.isCompleted) "✓ " else "☐ ") + item.text,
                                 style = TextStyle(
@@ -129,9 +153,9 @@ class NoteWidget : GlanceAppWidget() {
                                 maxLines = 1
                             )
                         }
-                        if (note.todoItems.size > 5) {
+                        if (note.todoItems.size > checklistShown) {
                             Text(
-                                text = "+${note.todoItems.size - 5}",
+                                text = "+${note.todoItems.size - checklistShown}",
                                 style = TextStyle(color = ColorProvider(ink.onCardVariant), fontSize = 11.sp)
                             )
                         }
@@ -140,7 +164,7 @@ class NoteWidget : GlanceAppWidget() {
                         Text(
                             text = note.content,
                             style = TextStyle(color = ColorProvider(ink.onCard), fontSize = 12.sp),
-                            maxLines = 8
+                            maxLines = contentLines
                         )
                     }
                 }
@@ -150,6 +174,15 @@ class NoteWidget : GlanceAppWidget() {
 
     companion object {
         private const val PREFS = "note_widgets"
+
+        /** Responsive breakpoints: ~2x2, ~3x3 and large (4x4+) cells. */
+        val SUPPORTED_SIZES = setOf(
+            DpSize(180.dp, 110.dp),
+            DpSize(250.dp, 180.dp),
+            DpSize(320.dp, 260.dp)
+        )
+        val MEDIUM_WIDTH = 250.dp
+        val LARGE_WIDTH = 320.dp
 
         internal fun prefs(context: Context): SharedPreferences =
             context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

@@ -210,6 +210,24 @@ class MediaRepositoryImpl @Inject constructor(
         return resolveImageUrl(path)
     }
 
+    override suspend fun downloadImageToCache(path: String): Result<File> = Result.catching {
+        val absolute = awaitImageUrl(path) ?: throw IOException("Server-URL nicht bekannt")
+        val target = File(
+            File(context.cacheDir, "shared").apply { mkdirs() },
+            "image-" + path.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "")
+        )
+        withContext(Dispatchers.IO) {
+            val request = okhttp3.Request.Builder().url(absolute).build()
+            mediaCallFactory.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Download fehlgeschlagen (HTTP ${response.code})")
+                response.body?.byteStream()?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IOException("Leere Antwort")
+            }
+        }
+        target
+    }
+
     // --- helpers ---
 
     /** Best-effort: keep the Room cache in sync so list previews show new

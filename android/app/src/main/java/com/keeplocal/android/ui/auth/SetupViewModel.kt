@@ -48,7 +48,13 @@ data class SetupUiState(
     val isAuthenticated: Boolean = false,
     val currentUser: User? = null,
     val isRegisterMode: Boolean = false,
-    val rememberCredentials: Boolean = false
+    val rememberCredentials: Boolean = false,
+    // v1.9.0 Nr. 6: token-based password reset + demo account.
+    val showResetDialog: Boolean = false,
+    val resetToken: String = "",
+    val resetNewPassword: String = "",
+    /** Non-error feedback ("Passwort gesetzt — bitte einloggen."). */
+    val infoMessage: String? = null
 )
 
 enum class ConnectionStatus { UNKNOWN, TESTING, CONNECTED, ERROR }
@@ -150,11 +156,95 @@ class SetupViewModel @Inject constructor(
     }
 
     fun updatePassword(password: String) {
-        _uiState.update { it.copy(password = password, errorMessage = null) }
+        _uiState.update { it.copy(password = password, errorMessage = null, infoMessage = null) }
     }
 
     fun updateConfirmPassword(password: String) {
         _uiState.update { it.copy(confirmPassword = password, errorMessage = null) }
+    }
+
+    fun openResetDialog() {
+        _uiState.update {
+            it.copy(showResetDialog = true, resetToken = "", resetNewPassword = "", errorMessage = null, infoMessage = null)
+        }
+    }
+
+    fun closeResetDialog() {
+        _uiState.update { it.copy(showResetDialog = false) }
+    }
+
+    fun updateResetToken(token: String) {
+        _uiState.update { it.copy(resetToken = token, errorMessage = null) }
+    }
+
+    fun updateResetNewPassword(password: String) {
+        _uiState.update { it.copy(resetNewPassword = password, errorMessage = null) }
+    }
+
+    /** Redeems an admin-issued one-time token (15 min) for a new password. */
+    fun submitResetPassword() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            if (state.resetToken.isBlank() || state.resetNewPassword.length < 8) {
+                _uiState.update { it.copy(errorMessage = context.getString(R.string.auth_password_too_short)) }
+                return@launch
+            }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            val result = authRepository.resetPassword(state.resetToken.trim(), state.resetNewPassword)
+            if (result.isSuccess) {
+                fileLogger.log("SetupVM", "Password reset via token succeeded")
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        showResetDialog = false,
+                        resetToken = "",
+                        resetNewPassword = "",
+                        infoMessage = context.getString(R.string.login_reset_success)
+                    )
+                }
+            } else {
+                val detail = (result as? com.keeplocal.android.util.Result.Error)?.message
+                fileLogger.error("SetupVM", "Password reset failed: $detail")
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = context.getString(R.string.auth_login_failed_detail, detail ?: "")
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Demo account (v1.9.0 Nr. 6): server creates/reuses the demo user and
+     * hands back a session. Nothing is persisted — "Remember credentials"
+     * stays untouched.
+     */
+    fun demoLogin() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            val result = authRepository.demoLogin()
+            val user = result.getOrNull()
+            if (result.isSuccess && user != null) {
+                fileLogger.log("SetupVM", "Demo login success: userId=${user.id}")
+                settingsDataStore.setServerUrl(_uiState.value.serverUrl)
+                _uiState.update { it.copy(isLoading = false, isAuthenticated = true, currentUser = user) }
+                _navigateToMain.emit(Unit)
+            } else {
+                val detail = (result as? com.keeplocal.android.util.Result.Error)?.message
+                fileLogger.error("SetupVM", "Demo login failed: $detail")
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = context.getString(R.string.auth_login_failed_detail, detail ?: "")
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissInfoMessage() {
+        _uiState.update { it.copy(infoMessage = null) }
     }
 
     fun setRegisterMode(register: Boolean) {

@@ -13,8 +13,8 @@ android {
         applicationId = "com.keeplocal.android"
         minSdk = 33
         targetSdk = 34
-        versionCode = 24
-        versionName = "1.8.0"
+        versionCode = 25
+        versionName = "1.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -109,8 +109,8 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
 
     // Glance (home-screen widget for pinned notes)
-    implementation("androidx.glance:glance-appwidget:1.0.0")
-    implementation("androidx.glance:glance-material3:1.0.0")
+    implementation("androidx.glance:glance-appwidget:1.1.0")
+    implementation("androidx.glance:glance-material3:1.1.0")
 
     // Retrofit + OkHttp + Moshi
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

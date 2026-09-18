@@ -7,6 +7,7 @@ import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.SyncManager
 import com.keeplocal.android.data.local.SyncStatus
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.usecase.auth.GetCurrentUserUseCase
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
@@ -59,6 +60,8 @@ sealed interface SyncBanner {
 data class NotesScreenState(
     val notes: UiState<List<Note>> = UiState.Loading,
     val searchQuery: String = "",
+    /** Type restriction while searching (v1.9.0 Nr. 7); ALL = no clause. */
+    val typeFilter: NoteTypeFilter = NoteTypeFilter.ALL,
     val selectedTag: String? = null,
     val showArchived: Boolean = false,
     val selectedNoteIds: Set<String> = emptySet(),
@@ -220,7 +223,8 @@ class NotesViewModel @Inject constructor(
                 tag = state.selectedTag,
                 archived = state.showArchived,
                 sortMode = state.sortMode,
-                limit = state.listLimit
+                limit = state.listLimit,
+                filter = state.typeFilter
             ).collect { result ->
                 applyNotesResult(result)
             }
@@ -275,7 +279,8 @@ class NotesViewModel @Inject constructor(
                 search = state.searchQuery.ifBlank { null },
                 archived = state.showArchived,
                 sortMode = state.sortMode,
-                limit = newLimit
+                limit = newLimit,
+                filter = state.typeFilter
             ).collect { result -> applyNotesResult(result) }
         }
     }
@@ -315,6 +320,13 @@ class NotesViewModel @Inject constructor(
 
     fun onTagSelected(tag: String?) {
         _uiState.update { it.copy(selectedTag = tag) }
+        loadNotes()
+    }
+
+    /** Restricts the visible list to one note type (v1.9.0 Nr. 7). */
+    fun setTypeFilter(filter: NoteTypeFilter) {
+        if (_uiState.value.typeFilter == filter) return
+        _uiState.update { it.copy(typeFilter = filter) }
         loadNotes()
     }
 

@@ -21,9 +21,10 @@ import javax.inject.Inject
 
 /**
  * Fires when a reminder alarm goes off: shows the notification, or handles its
- * snooze action by re-planning the alarm 15 minutes out. Tapping the
- * notification opens the note (MainActivity reads EXTRA_NOTE_ID); "Done"
- * merely dismisses — the reminder stays on the note until the user removes it.
+ * snooze actions (5 minutes / 1 hour, v1.9.0) by re-planning the alarm.
+ * Tapping the notification opens the note (MainActivity reads EXTRA_NOTE_ID);
+ * "Done" merely dismisses — the reminder stays on the note until the user
+ * removes it.
  */
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
@@ -36,11 +37,16 @@ class ReminderReceiver : BroadcastReceiver() {
         when (intent.action) {
             ACTION_SNOOZE -> {
                 val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+                val delay = if (intent.hasExtra(EXTRA_SNOOZE_DELAY)) {
+                    intent.getLongExtra(EXTRA_SNOOZE_DELAY, ReminderScheduler.SNOOZE_SHORT_MILLIS)
+                } else {
+                    ReminderScheduler.SNOOZE_SHORT_MILLIS
+                }
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         reminderScheduler.scheduleAt(
-                            noteId, title, System.currentTimeMillis() + ReminderScheduler.SNOOZE_MILLIS
+                            noteId, title, System.currentTimeMillis() + delay
                         )
                         NotificationManagerCompat.from(context).cancel(noteId.hashCode())
                     } finally {
@@ -84,8 +90,13 @@ class ReminderReceiver : BroadcastReceiver() {
             .setContentIntent(openNote)
             .addAction(
                 0,
-                context.getString(R.string.reminder_snooze),
-                broadcast(context, noteId, title, ACTION_SNOOZE)
+                context.getString(R.string.reminder_snooze_short),
+                broadcast(context, noteId, title, ACTION_SNOOZE, ReminderScheduler.SNOOZE_SHORT_MILLIS)
+            )
+            .addAction(
+                0,
+                context.getString(R.string.reminder_snooze_hour),
+                broadcast(context, noteId, title, ACTION_SNOOZE, ReminderScheduler.SNOOZE_HOUR_MILLIS)
             )
             .addAction(
                 0,
@@ -102,14 +113,21 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun broadcast(context: Context, noteId: String, title: String, action: String): PendingIntent =
+    private fun broadcast(
+        context: Context,
+        noteId: String,
+        title: String,
+        action: String,
+        snoozeDelayMillis: Long? = null
+    ): PendingIntent =
         PendingIntent.getBroadcast(
             context,
-            noteId.hashCode() + action.hashCode(),
+            noteId.hashCode() + action.hashCode() + (snoozeDelayMillis ?: 0L).hashCode(),
             Intent(context, ReminderReceiver::class.java).apply {
                 this.action = action
                 putExtra(EXTRA_NOTE_ID, noteId)
                 putExtra(EXTRA_TITLE, title)
+                snoozeDelayMillis?.let { putExtra(EXTRA_SNOOZE_DELAY, it) }
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -131,5 +149,6 @@ class ReminderReceiver : BroadcastReceiver() {
         const val ACTION_DISMISS = "com.keeplocal.android.reminder.DISMISS"
         const val EXTRA_NOTE_ID = "note_id"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_SNOOZE_DELAY = "snooze_delay_millis"
     }
 }

@@ -41,4 +41,16 @@ interface AuthRepository {
      * server bumps the session version, which invalidates all other sessions.
      */
     suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit>
+    /**
+     * Redeems an admin-issued one-time token for a new password
+     * (POST /api/auth/reset-password, 15 min validity, no session needed).
+     * On success every existing session is gone — the next step is a login.
+     */
+    suspend fun resetPassword(token: String, newPassword: String): Result<Unit>
+    /**
+     * Starts a session on the public demo account (POST /api/auth/demo).
+     * Servers without DEMO_MODE answer 404 — surface that as a clear
+     * message instead of a generic login failure.
+     */
+    suspend fun demoLogin(): Result<User>
 }

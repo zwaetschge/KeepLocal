@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -19,6 +20,8 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.SizeMode
+import androidx.glance.LocalSize
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
@@ -45,8 +48,15 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
-/** Up to four pinned notes, straight from the local Room cache. */
+/**
+ * Up to four pinned notes, straight from the local Room cache.
+ *
+ * Widget 2.0 (v1.9.0 Nr. 9): sizeMode Responsive — small cells show two
+ * tight rows, medium the classic four, large up to six with preview lines.
+ */
 class PinnedNotesWidget : GlanceAppWidget() {
+
+    override val sizeMode = SizeMode.Responsive(SUPPORTED_SIZES)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val notes = runCatching {
@@ -67,6 +77,14 @@ class PinnedNotesWidget : GlanceAppWidget() {
         // Card-style restyle (v1.7.0 Nr. 10): each pinned note renders as a
         // mini note card in its own color, with the same per-card ink the app
         // uses (contentColorsFor keeps text readable on every palette tone).
+        // v1.9.0: how many cards/preview lines fit depends on the cell size.
+        val size = LocalSize.current
+        val shown = when {
+            size.width < MEDIUM_WIDTH -> notes.take(2)
+            size.width < LARGE_WIDTH -> notes.take(4)
+            else -> notes.take(6)
+        }
+        val withPreview = size.width >= MEDIUM_WIDTH
         val paper = if (isNight) Color(0xFF1C1C1E) else Color(0xFFFAF7F2)
         val headerInk = if (isNight) Color(0xFFD8A196) else Color(0xFF8A5A4B)
         val emptyInk = if (isNight) Color(0xFF9A938D) else Color(0xFF9C8B82)
@@ -86,13 +104,13 @@ class PinnedNotesWidget : GlanceAppWidget() {
                 )
             }
             Spacer(modifier = GlanceModifier.height(8.dp))
-            if (notes.isEmpty()) {
+            if (shown.isEmpty()) {
                 Text(
                     text = "—",
                     style = TextStyle(color = ColorProvider(emptyInk), fontSize = 13.sp)
                 )
             } else {
-                notes.forEachIndexed { index, note ->
+                shown.forEachIndexed { index, note ->
                     if (index > 0) Spacer(modifier = GlanceModifier.height(4.dp))
                     val cardColor = NoteColorUtil.getColor(note.color, isNight)
                     val ink = contentColorsFor(cardColor)
@@ -110,7 +128,7 @@ class PinnedNotesWidget : GlanceAppWidget() {
                             ),
                             maxLines = 1
                         )
-                        if (note.title.isNotBlank() && note.content.isNotBlank()) {
+                        if (withPreview && note.title.isNotBlank() && note.content.isNotBlank()) {
                             Text(
                                 text = note.content,
                                 style = TextStyle(color = ColorProvider(ink.onCardVariant), fontSize = 11.sp),
@@ -124,7 +142,16 @@ class PinnedNotesWidget : GlanceAppWidget() {
     }
 
     companion object {
-        private const val MAX_NOTES = 4
+        private const val MAX_NOTES = 6
+
+        /** Responsive breakpoints, mirroring [NoteWidget.SUPPORTED_SIZES]. */
+        val SUPPORTED_SIZES = setOf(
+            DpSize(180.dp, 110.dp),
+            DpSize(250.dp, 180.dp),
+            DpSize(320.dp, 260.dp)
+        )
+        val MEDIUM_WIDTH = 250.dp
+        val LARGE_WIDTH = 320.dp
 
         /** Refreshes every placed instance; safe to call from workers/VMs. */
         suspend fun refreshAll(context: Context) {

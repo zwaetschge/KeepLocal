@@ -21,6 +21,7 @@ import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.auth.ChangePasswordUseCase
 import com.keeplocal.android.domain.usecase.notes.ExportNotesUseCase
 import com.keeplocal.android.domain.usecase.notes.ImportNotesUseCase
+import com.keeplocal.android.util.GoogleKeepImportParser
 import com.keeplocal.android.ui.notes.NoteViewMode
 import com.keeplocal.android.ui.theme.ThemeMode
 import com.keeplocal.android.util.FileLogger
@@ -368,6 +369,49 @@ class SettingsViewModel @Inject constructor(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * Google Keep import (v1.9.0 Nr. 1): the user picks the JSON files from
+     * their Takeout (Takeout/Keep — one file per note). Files that are not
+     * Keep notes are counted as skipped, everything else becomes a new note
+     * through the same offline-capable path as the JSON import.
+     */
+    fun importKeepFromUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            val jsons = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }.getOrNull()
+                }
+            }
+            if (jsons.isEmpty()) {
+                _uiState.update {
+                    it.copy(isImporting = false, message = context.getString(R.string.import_read_failed))
+                }
+                return@launch
+            }
+            val parsed = jsons.mapNotNull { GoogleKeepImportParser.parseFile(it) }.flatten()
+            val skipped = jsons.size - jsons.count { !GoogleKeepImportParser.parseFile(it).isNullOrEmpty() }
+            fileLogger.log("Settings", "Keep import: ${parsed.size} notes from ${jsons.size} files, $skipped skipped")
+            when (val result = importNotesUseCase(parsed)) {
+                is Result.Success -> _uiState.update {
+                    it.copy(
+                        isImporting = false,
+                        message = context.getString(R.string.import_keep_done, result.data, skipped)
+                    )
+                }
+                is Result.Error -> _uiState.update {
+                    it.copy(
+                        isImporting = false,
+                        message = context.getString(R.string.import_keep_failed)
+                    )
                 }
             }
         }

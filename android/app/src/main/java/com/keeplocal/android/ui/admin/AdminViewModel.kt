@@ -1,18 +1,24 @@
 package com.keeplocal.android.ui.admin
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.keeplocal.android.R
 import com.keeplocal.android.domain.model.AdminSettings
 import com.keeplocal.android.domain.model.AdminStats
 import com.keeplocal.android.domain.model.User
 import com.keeplocal.android.domain.repository.AdminRepository
 import com.keeplocal.android.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** Reset token freshly minted for a user — shown once, then gone. */
+data class ResetTokenResult(val username: String, val token: String)
 
 data class AdminUiState(
     val stats: UiState<AdminStats> = UiState.Loading,
@@ -21,11 +27,13 @@ data class AdminUiState(
     val showCreateUserDialog: Boolean = false,
     val newUsername: String = "",
     val newPassword: String = "",
+    val resetToken: ResetTokenResult? = null,
     val message: String? = null
 )
 
 @HiltViewModel
 class AdminViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val adminRepository: AdminRepository
 ) : ViewModel() {
 
@@ -112,6 +120,24 @@ class AdminViewModel @Inject constructor(
                 loadUsers()
             }
         }
+    }
+
+    /** Mints a one-time reset token and shows it in a dialog (v1.9.0 Nr. 6). */
+    fun createResetToken(user: User) {
+        viewModelScope.launch {
+            val result = adminRepository.createPasswordResetToken(user.id)
+            val token = result.getOrNull()
+            if (token != null) {
+                _uiState.update { it.copy(resetToken = ResetTokenResult(user.username, token)) }
+            } else {
+                val error = (result as? com.keeplocal.android.util.Result.Error)?.message
+                _uiState.update { it.copy(message = error ?: context.getString(R.string.admin_reset_token_failed)) }
+            }
+        }
+    }
+
+    fun dismissResetToken() {
+        _uiState.update { it.copy(resetToken = null) }
     }
 
     fun deleteUser(id: String) {

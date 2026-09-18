@@ -2,6 +2,7 @@ package com.keeplocal.android.domain.repository
 
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.Result
@@ -12,14 +13,17 @@ interface NoteRepository {
      * Current list view (v1.8.0): syncs the offline queue, refreshes the Room
      * cache from the server, then reads the display list back from Room — so
      * [sortMode] and [limit] (paging window; null = everything) apply equally
-     * to fresh server data and to the offline fallback.
+     * to fresh server data and to the offline fallback. [filter] (v1.9.0)
+     * narrows the result to a structural type; unlike the server-side search
+     * it is applied locally, in SQL, so it also works offline.
      */
     fun getNotes(
         search: String? = null,
         tag: String? = null,
         archived: Boolean = false,
         sortMode: SortMode = SortMode.MANUAL,
-        limit: Int? = null
+        limit: Int? = null,
+        filter: NoteTypeFilter = NoteTypeFilter.ALL
     ): Flow<Result<List<Note>>>
 
     /** Room-only view for cheap re-reads: sort switch, "load more", widget.
@@ -28,7 +32,8 @@ interface NoteRepository {
         search: String? = null,
         archived: Boolean = false,
         sortMode: SortMode = SortMode.MANUAL,
-        limit: Int? = null
+        limit: Int? = null,
+        filter: NoteTypeFilter = NoteTypeFilter.ALL
     ): Flow<Result<List<Note>>>
     suspend fun getNote(id: String): Result<Note>
     suspend fun createNote(note: Note): Result<Note>
@@ -62,6 +67,12 @@ interface NoteRepository {
     suspend fun undoDelete(note: Note): Result<Unit>
     /** Pinned notes for the home-screen widget. */
     suspend fun getPinnedNotes(maxCount: Int): Result<List<Note>>
+    /**
+     * Live notes whose reminder lies in the future, soonest first — the
+     * "upcoming" overview (v1.9.0 Nr. 5). Local cache only: reminders are
+     * device-scheduled anyway, so this works offline by construction.
+     */
+    suspend fun getUpcomingReminders(): Result<List<Note>>
     suspend fun shareNote(noteId: String, userId: String): Result<Unit>
     suspend fun unshareNote(noteId: String, userId: String): Result<Unit>
     suspend fun getLinkPreview(url: String): Result<LinkPreview>
