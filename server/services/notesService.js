@@ -517,6 +517,8 @@ async function nextTopOrder(userId, isPinned) {
 }
 
 const MAX_REORDER_IDS = 200;
+/** Obergrenze für order: int32-sicher, weit jenseits jeder realen Notizanzahl. */
+const MAX_ORDER_VALUE = 2147483647;
 
 /**
  * Persist a manual order (drag & drop).
@@ -606,7 +608,15 @@ async function reorderNotes(userId, orderedIds) {
  */
 async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order } = noteData;
+
+  // Manuelle Reihenfolge: Vor diesem Fix wurde ein mitgeschicktes `order`
+  // stillschweigend verworfen (nicht destrukturiert) — Sync-Scripts hatten
+  // keine Chance, eine Position ohne Sammel-Reorder zu setzen. Validiert vor
+  // dem DB-Lesen, damit ein kaputtes `order` nicht als 404 durchgeht.
+  if (order !== undefined && (!Number.isInteger(order) || order < 0 || order > MAX_ORDER_VALUE)) {
+    throw clientError(`order muss eine ganze Zahl zwischen 0 und ${MAX_ORDER_VALUE} sein`);
+  }
 
   const note = await Note.findOne(noteEditQuery(noteId, userId));
   if (!note) {
@@ -663,6 +673,13 @@ async function updateNote(noteId, noteData, userId) {
   // unangetastet lassen, was genau dem entspricht, was der Client will.
   if (remindAt !== undefined) {
     $set.remindAt = normalizeRemindAt(remindAt);
+  }
+
+  // Manuelle Reihenfolge per Einzel-Update (Validierung oben, vor dem Lesen).
+  // Beim Anlegen bleibt es dabei, dass der Server selbst an die Spitze des
+  // Abschnitts sortiert (nextTopOrder-Invariante in createNote).
+  if (order !== undefined) {
+    $set.order = order;
   }
 
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?

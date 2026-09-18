@@ -246,3 +246,64 @@ test('PATCH /api/notes/reorder persists the order and validates the payload', as
     assert.equal(badId.status, 400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// order per Einzel-Update (PUT): Vor dem Fix wurde ein mitgeschicktes `order`
+// stillschweigend verworfen — Dritte konnten eine Position nur über den
+// Sammel-Reorder setzen.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mock für den bedingten Schreibpfad von updateNote: findOne liest den Stand,
+ * findOneAndUpdate schreibt mit updatedAt-Precondition (Muster wie in
+ * optimisticLocking.test.js).
+ */
+function updatableModel({ writes = [] } = {}) {
+  const stored = {
+    title: 'Titel', content: 'Inhalt', color: '#ffffff', isPinned: false,
+    tags: [], isTodoList: false, todoItems: [], linkPreviews: [],
+    order: 4, updatedAt: new Date('2026-09-06T10:00:00.000Z')
+  };
+  return {
+    writes,
+    findOne: async () => stored,
+    findOneAndUpdate: async (query, update, options) => {
+      writes.push({ query, update, options });
+      return { ...stored, ...update.$set };
+    }
+  };
+}
+
+test('update with order persists the position (order 0 resets manual sort)', async () => {
+  const model = updatableModel();
+  const service = loadService(model);
+
+  await service.updateNote(IDS[0], { order: 12 }, OWNER_ID);
+  assert.equal(model.writes[0].update.$set.order, 12, 'order lands in $set');
+
+  model.writes.length = 0;
+  await service.updateNote(IDS[0], { order: 0 }, OWNER_ID);
+  assert.equal(model.writes[0].update.$set.order, 0, 'order 0 = zurück auf "nie manuell sortiert"');
+});
+
+test('update without order leaves the field untouched', async () => {
+  const model = updatableModel();
+  const service = loadService(model);
+
+  await service.updateNote(IDS[0], { title: 'Neu' }, OWNER_ID);
+
+  assert.equal('order' in model.writes[0].update.$set, false, 'no order key without a sent order');
+});
+
+test('invalid order values are rejected before any database read', async () => {
+  for (const bad of [-1, 1.5, '3', 2147483648, null]) {
+    const model = updatableModel();
+    const service = loadService(model);
+    await assert.rejects(
+      service.updateNote(IDS[0], { order: bad }, OWNER_ID),
+      (error) => error.statusCode === 400,
+      `order=${JSON.stringify(bad)} muss als 400 abgewiesen werden`
+    );
+    assert.equal(model.writes.length, 0, `order=${JSON.stringify(bad)}: kein Schreibversuch`);
+  }
+});

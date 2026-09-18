@@ -61,6 +61,15 @@ const { httpStatus } = require('../../constants');
  *                 type: string
  *               thumbnailUrl:
  *                 type: string
+ *         order:
+ *           type: integer
+ *           description: Manuelle Position im Abschnitt (angeheftet/sonstige) — höher = weiter oben; 0 = nie manuell sortiert, dann entscheidet updatedAt.
+ *           example: 3
+ *         remindAt:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *           description: Erinnerungszeitpunkt; null = keine Erinnerung.
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -103,6 +112,15 @@ const { httpStatus } = require('../../constants');
  *                 type: boolean
  *               order:
  *                 type: number
+ *         order:
+ *           type: integer
+ *           minimum: 0
+ *           description: Manuelle Position setzen (nur Update — beim Anlegen vergibt der Server selbst einen Platz an der Spitze des Abschnitts). 0 setzt auf "nie manuell sortiert" zurück.
+ *         remindAt:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *           description: Erinnerung setzen; null löscht sie.
  *     ApiResponse:
  *       type: object
  *       properties:
