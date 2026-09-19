@@ -119,6 +119,22 @@ const noteSchema = new mongoose.Schema({
   remindAt: {
     type: Date,
     default: null
+  },
+  // Baum (v1.10.0): Trilium-artige Verschachtelung — jede Notiz kann Kinder
+  // haben, ein „Ordner" ist einfach eine Notiz mit Kindern. `null` = Wurzel.
+  // Eltern muss demselben Benutzer gehören und darf nur eine eigene, nicht
+  // gelöschte Notiz sein (Zyklus-Schutz im Service). Beim Löschen wandern die
+  // Kinder eine Ebene hoch statt mit in den Papierkorb.
+  parentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Note',
+    default: null
+  },
+  // Code-/Monospace-Notiz (v1.10.0): Inhalt wird im Editor und in der
+  // Karten-Vorschau monospace gesetzt. Reines Anzeige-Flag, kein Highlighting.
+  isCode: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true // Erstellt automatisch createdAt und updatedAt
@@ -141,6 +157,14 @@ noteSchema.index(
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, createdAt: -1 }); // Compound index für Benutzer-Notizen
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, updatedAt: -1 }); // list sort order (recency)
 noteSchema.index({ userId: 1, tags: 1 }); // Index für Tag-Suche pro Benutzer
+// Baum: Kinder-abfragen (Baum-Panel, Reparenting beim Löschen) laufen über
+// dieses Feld; deletedAt mit drin, damit der Papierkorb-Pfad denselben Index
+// nutzt. Bewusst sparse-artig über das partial-Filter: fast alle Notizen
+// haben parentId null.
+noteSchema.index(
+  { userId: 1, parentId: 1 },
+  { name: 'note_tree', partialFilterExpression: { parentId: { $type: 'objectId' } } }
+);
 noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
 // Bildauslieferung: middleware/secureFileServe.js sucht die Notiz zu jeder
 // /uploads/images/*-Anfrage über genau diese beiden Array-Felder. Ohne Index

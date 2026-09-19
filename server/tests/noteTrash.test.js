@@ -91,7 +91,9 @@ test('restore clears deletedAt and purge only accepts trashed notes', async () =
     findOneAndDelete: async (query) => {
       seen.push({ op: 'delete', query });
       return { _id: NOTE_ID, images: [] };
-    }
+    },
+    // Baum (v1.10.0): purge reparentet die Kinder des Knotens.
+    updateMany: async () => ({ modifiedCount: 0 })
   });
 
   await service.restoreNote(NOTE_ID, OWNER_ID);
@@ -111,13 +113,15 @@ test('purge removes the image files, soft delete does not', async () => {
   fs.writeFileSync(path.join(uploadsDir, gone), 'x');
 
   const softService = loadService({
-    findOneAndUpdate: async () => ({ _id: NOTE_ID, images: [{ filename: keep }], deletedAt: new Date() })
+    findOneAndUpdate: async () => ({ _id: NOTE_ID, images: [{ filename: keep }], deletedAt: new Date() }),
+    updateMany: async () => ({ modifiedCount: 0 })
   });
   await softService.deleteNote(NOTE_ID, OWNER_ID);
   assert.equal(fs.existsSync(path.join(uploadsDir, keep)), true, 'soft delete must keep files');
 
   const purgeService = loadService({
-    findOneAndDelete: async () => ({ _id: NOTE_ID, images: [{ filename: gone }] })
+    findOneAndDelete: async () => ({ _id: NOTE_ID, images: [{ filename: gone }] }),
+    updateMany: async () => ({ modifiedCount: 0 })
   });
   await purgeService.purgeNote(NOTE_ID, OWNER_ID);
   assert.equal(fs.existsSync(path.join(uploadsDir, gone)), false, 'purge removes files');
@@ -133,7 +137,8 @@ test('emptying the trash removes documents and their files', async () => {
   const seen = [];
   const service = loadService({
     find: () => ({ select: async () => [{ _id: NOTE_ID, images: [{ filename }] }] }),
-    deleteMany: async (query) => { seen.push(query); return { deletedCount: 1 }; }
+    deleteMany: async (query) => { seen.push(query); return { deletedCount: 1 }; },
+    updateMany: async () => ({ modifiedCount: 0 })
   });
 
   const removed = await service.emptyTrash(OWNER_ID);

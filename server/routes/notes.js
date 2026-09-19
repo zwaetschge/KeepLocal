@@ -157,6 +157,37 @@ async function requireEditableNote(req, res, next) {
   }
 }
 
+// Baum-Panel (v1.10.0): Muss VOR /:id registriert sein, sonst frisst der
+// Param-Route-Match „tree" als Notiz-ID.
+
+/**
+ * GET /api/notes/tree - Leichte Baum-Übersicht (id, parentId, title, Flags)
+ * für Sidebar-/Schubladen-Bäume, ohne Inhalte und Bilder.
+ */
+router.get('/tree', async (req, res, next) => {
+  try {
+    const tree = await notesService.getNoteTree(req.user._id);
+    res.json(tree);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/notes/export/markdown - Gesamter Baum als Markdown-ZIP (Round-trip
+ * zum Trilium-/Ordner-Import, zugleich lesbares Backup).
+ */
+router.get('/export/markdown', async (req, res, next) => {
+  try {
+    const archive = await notesService.buildMarkdownExport(req.user._id);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="keeplocal-export.zip"');
+    res.end(archive);
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * GET /api/notes - Get all notes with optional filtering and pagination
  */

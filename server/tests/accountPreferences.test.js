@@ -109,7 +109,10 @@ test('PUT /api/auth/preferences stores whitelisted fields with dotted paths', as
       theme: 'oled',
       language: 'en',
       aiFeatures: { voiceTranscription: true },
-      transcriptionLanguage: 'de'
+      transcriptionLanguage: 'de',
+      tagColors: {},
+      savedSearches: [],
+      journalFolderId: null
     });
     assert.deepEqual(state.updates[0].update.$set, {
       'preferences.theme': 'oled',
@@ -192,7 +195,10 @@ test('GET /api/auth/me reports preferences with safe defaults', async () => {
       theme: 'light',
       language: null,
       aiFeatures: { voiceTranscription: false },
-      transcriptionLanguage: 'auto'
+      transcriptionLanguage: 'auto',
+      tagColors: {},
+      savedSearches: [],
+      journalFolderId: null
     });
     assert.equal(body.user.password, undefined);
     assert.equal(body.user.sessionVersion, undefined);
@@ -209,4 +215,133 @@ test('the user model stores preferences as a typed subdocument', () => {
   assert.match(source, /enum: \['de', 'en', null\]/);
   assert.match(source, /voiceTranscription: \{/);
   assert.match(source, /transcriptionLanguage: \{/);
+  assert.match(source, /tagColors: \{/);
+  assert.match(source, /savedSearches: \[/);
+  assert.match(source, /journalFolderId: \{/);
+});
+
+// v1.10.0: Tag-Farben, gespeicherte Suchen und Journal-Wurzel — dieselbe
+// Whitelist-Disziplin wie Theme/Sprache: unbekannte Werte fliegen raus bzw.
+// werden abgelehnt, bevor etwas die Datenbank erreicht.
+
+test('PUT /api/auth/preferences stores tag colors from the card palette', async () => {
+  const { router, state } = loadRouter(baseUser(undefined));
+
+  await withServer(router, async base => {
+    const { status, body } = await put(base, generateToken(USER_ID, 0), {
+      tagColors: { arbeit: '#f28b82', 'Rezepte-süß': '#aecbfa' }
+    });
+
+    assert.equal(status, 200, JSON.stringify(body));
+    assert.deepEqual(body.preferences.tagColors, { arbeit: '#f28b82', 'Rezepte-süß': '#aecbfa' });
+    assert.deepEqual(state.updates[0].update.$set, {
+      'preferences.tagColors': { arbeit: '#f28b82', 'Rezepte-süß': '#aecbfa' }
+    });
+  });
+});
+
+test('PUT /api/auth/preferences rejects invalid tag colors', async () => {
+  const { router, state } = loadRouter(baseUser(undefined));
+
+  await withServer(router, async base => {
+    const token = generateToken(USER_ID, 0);
+    const cases = [
+      [{ tagColors: { arbeit: '#ff0000' } }, 'Farbe außerhalb der Karten-Palette'],
+      [{ tagColors: { arbeit: 'red' } }, 'kein Hex'],
+      [{ tagColors: { 'bad tag!': '#f28b82' } }, 'Tag-Zeichen outside the tag pattern'],
+      [{ tagColors: null }, 'null statt Objekt'],
+      [{ tagColors: [] }, 'Array statt Objekt'],
+      [{ tagColors: Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`tag${i}`, '#f28b82'])) }, '>200 Eintraege']
+    ];
+    for (const [payload, why] of cases) {
+      const { status } = await put(base, token, payload);
+      assert.equal(status, 400, `${why} -> ${status}`);
+    }
+    assert.equal(state.updates.length, 0, 'nothing may be written for invalid payloads');
+  });
+});
+
+test('PUT /api/auth/preferences stores saved searches as a normalized list', async () => {
+  const { router, state } = loadRouter(baseUser(undefined));
+
+  await withServer(router, async base => {
+    const { status, body } = await put(base, generateToken(USER_ID, 0), {
+      savedSearches: [
+        { id: 'work', name: '  Arbeit  ', query: 'meeting', typeFilter: 'lists', tag: 'job' },
+        { id: 'pins', name: 'Angeheftet' }
+      ]
+    });
+
+    assert.equal(status, 200, JSON.stringify(body));
+    assert.deepEqual(body.preferences.savedSearches, [
+      { id: 'work', name: 'Arbeit', query: 'meeting', typeFilter: 'lists', tag: 'job' },
+      { id: 'pins', name: 'Angeheftet', query: '', typeFilter: 'all', tag: '' }
+    ]);
+    assert.equal(state.updates[0].update.$set['preferences.savedSearches'][0].name, 'Arbeit');
+  });
+});
+
+test('PUT /api/auth/preferences rejects invalid saved searches', async () => {
+  const { router, state } = loadRouter(baseUser(undefined));
+
+  await withServer(router, async base => {
+    const token = generateToken(USER_ID, 0);
+    const cases = [
+      [{ savedSearches: 'work' }, 'kein Array'],
+      [{ savedSearches: [{ id: 'a', name: 'A' }, { id: 'a', name: 'B' }] }, 'doppelte ID'],
+      [{ savedSearches: [{ name: 'Ohne ID' }] }, 'id fehlt'],
+      [{ savedSearches: [{ id: 'a b', name: 'A' }] }, 'id mit Leerzeichen'],
+      [{ savedSearches: [{ id: 'a' }] }, 'name fehlt'],
+      [{ savedSearches: [{ id: 'a', name: 'x'.repeat(51) }] }, 'name zu lang'],
+      [{ savedSearches: [{ id: 'a', name: 'A', typeFilter: 'videos' }] }, 'unbekannter Filter'],
+      [{ savedSearches: [{ id: 'a', name: 'A', query: 'x'.repeat(201) }] }, 'query zu lang'],
+      [{ savedSearches: Array.from({ length: 21 }, (_, i) => ({ id: `s${i}`, name: `S${i}` })) }, '>20 Eintraege']
+    ];
+    for (const [payload, why] of cases) {
+      const { status } = await put(base, token, payload);
+      assert.equal(status, 400, `${why} -> ${status}`);
+    }
+    assert.equal(state.updates.length, 0, 'nothing may be written for invalid payloads');
+  });
+});
+
+test('PUT /api/auth/preferences stores the journal root id and accepts null', async () => {
+  const { router, state } = loadRouter(baseUser({ journalFolderId: '507f1f77bcf86cd799439011' }));
+
+  await withServer(router, async base => {
+    const token = generateToken(USER_ID, 0);
+    const keep = await put(base, token, { journalFolderId: '507f1f77bcf86cd799439012' });
+    assert.equal(keep.status, 200, JSON.stringify(keep.body));
+    assert.equal(keep.body.preferences.journalFolderId, '507f1f77bcf86cd799439012');
+
+    const clear = await put(base, token, { journalFolderId: null });
+    assert.equal(clear.status, 200);
+    assert.equal(clear.body.preferences.journalFolderId, null);
+
+    const bad = await put(base, token, { journalFolderId: 'not-an-id' });
+    assert.equal(bad.status, 400);
+    assert.equal(state.updates.length, 2);
+  });
+});
+
+test('GET /api/auth/me reports saved searches and tag colors back to other devices', async () => {
+  const { router } = loadRouter(baseUser({
+    tagColors: { arbeit: '#f28b82' },
+    savedSearches: [{ _id: 'ignored', id: 'work', name: 'Arbeit', query: '', typeFilter: 'all', tag: '' }],
+    journalFolderId: '507f1f77bcf86cd799439011'
+  }));
+
+  await withServer(router, async base => {
+    const response = await fetch(`${base}/me`, {
+      headers: { cookie: `kl_session=${generateToken(USER_ID, 0)}` }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.user.preferences.tagColors, { arbeit: '#f28b82' });
+    assert.deepEqual(body.user.preferences.savedSearches, [
+      { id: 'work', name: 'Arbeit', query: '', typeFilter: 'all', tag: '' }
+    ], 'subdocument internals wie _id duerfen nicht serialisiert werden');
+    assert.equal(body.user.preferences.journalFolderId, '507f1f77bcf86cd799439011');
+  });
 });

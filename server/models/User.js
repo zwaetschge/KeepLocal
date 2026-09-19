@@ -95,6 +95,50 @@ const userSchema = new mongoose.Schema({
       type: String,
       default: 'auto',
       maxlength: 20
+    },
+    // Tag-Farben (v1.10.0): Map tagName -> Hex aus der Karten-Palette. Mixed,
+    // weil der Schluessel ein freier Tag-Name ist; die Route validiert beide
+    // Seiten und kappt die Menge.
+    tagColors: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    },
+    // Gespeicherte Suchen (v1.10.0): als smarte Ordner im Baum-Panel. Liegen im
+    // Konto statt im Geraet, damit sie ueberall gleich sind.
+    savedSearches: [{
+      id: {
+        type: String,
+        required: true,
+        maxlength: 40
+      },
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 50
+      },
+      query: {
+        type: String,
+        default: '',
+        maxlength: 200
+      },
+      typeFilter: {
+        type: String,
+        enum: ['all', 'lists', 'text', 'images', 'reminders', 'pinned'],
+        default: 'all'
+      },
+      tag: {
+        type: String,
+        default: '',
+        maxlength: 50
+      }
+    }],
+    // Journal (v1.10.0): Wurzel-Knoten der Tages-Notizen. null = Journal noch
+    // nie benutzt; der Client legt den Ordner beim ersten „Heute" an.
+    journalFolderId: {
+      type: String,
+      default: null,
+      maxlength: 24
     }
   },
   friends: [{

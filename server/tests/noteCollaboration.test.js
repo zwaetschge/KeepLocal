@@ -75,7 +75,9 @@ test('a collaborator can toggle the pin of a shared note', async () => {
 test('delete and archive stay owner-only and respect the trash', async () => {
   const writes = [];
   const service = loadService({
-    findOneAndUpdate: async (query, update) => { writes.push({ query, update }); return storedNote({ images: [] }); }
+    findOneAndUpdate: async (query, update) => { writes.push({ query, update }); return storedNote({ images: [] }); },
+    // Baum (v1.10.0): deleteNote reparentet die Kinder des Knotens.
+    updateMany: async () => ({ modifiedCount: 0 })
   });
 
   await service.deleteNote(NOTE_ID, OWNER_ID);
