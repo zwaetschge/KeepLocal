@@ -60,6 +60,18 @@ interface KeepLocalApi {
         @Query("limit") limit: Int? = null
     ): Response<NotesResponseDto>
 
+    // Tree (v1.10.0): light sidebar projection; the client nests the flat
+    // list itself. Registered before /{id} on the server, so no escaping
+    // needed for the literal path segment.
+    @GET("api/notes/tree")
+    suspend fun getNoteTree(): Response<List<NoteTreeNodeDto>>
+
+    // Markdown export (v1.10.0): the whole tree as a ZIP built server-side
+    // (folders become _index.md directories) — streamed, not buffered.
+    @Streaming
+    @GET("api/notes/export/markdown")
+    suspend fun exportMarkdown(): Response<okhttp3.ResponseBody>
+
     @GET("api/notes/{id}")
     suspend fun getNote(@Path("id") id: String): Response<NoteDto>
 

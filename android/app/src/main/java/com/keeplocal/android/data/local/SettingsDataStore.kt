@@ -9,9 +9,12 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.keeplocal.android.domain.model.SavedSearch
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -87,6 +90,53 @@ class SettingsDataStore @Inject constructor(
 
     /** Wall-clock millis of the last successful automatic backup (0 = never). */
     val lastBackupAt: Flow<Long> = dataStore.data.map { it[KEY_LAST_BACKUP_AT] ?: 0L }
+
+    // --- v1.10.0: tag colors, saved searches, journal folder ---
+
+    /**
+     * Tag colors (tag name -> palette hex), synced with the account (server
+     * key `preferences.tagColors`). Stored as one JSON object string because
+     * preferences have no map type.
+     */
+    val tagColors: Flow<Map<String, String>> = dataStore.data.map { prefs ->
+        prefs[KEY_TAG_COLORS]?.let { raw ->
+            runCatching {
+                val json = JSONObject(raw)
+                buildMap { json.keys().forEach { key -> put(key, json.optString(key)) } }
+            }.getOrNull()
+        } ?: emptyMap()
+    }
+
+    /**
+     * Saved searches / smart folders, synced with the account (server key
+     * `preferences.savedSearches`). One JSON array string in the server's
+     * subdocument shape.
+     */
+    val savedSearches: Flow<List<SavedSearch>> = dataStore.data.map { prefs ->
+        prefs[KEY_SAVED_SEARCHES]?.let { raw ->
+            runCatching {
+                val array = JSONArray(raw)
+                List(array.length()) { i ->
+                    val entry = array.optJSONObject(i) ?: return@List null
+                    SavedSearch(
+                        id = entry.optString("id"),
+                        name = entry.optString("name"),
+                        query = entry.optString("query"),
+                        typeFilter = entry.optString("typeFilter").ifEmpty { "all" },
+                        tag = entry.optString("tag")
+                    )
+                }.filterNotNull()
+            }.getOrNull()
+        } ?: emptyList()
+    }
+
+    /**
+     * Root note of the journal ("Heute"-Notizen land inside it); null = the
+     * root level of the tree. Synced with the account.
+     */
+    val journalFolderId: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[KEY_JOURNAL_FOLDER_ID]?.takeIf { it.isNotBlank() }
+    }
 
     suspend fun setServerUrl(url: String) {
         dataStore.edit { it[KEY_SERVER_URL] = url }
@@ -175,6 +225,35 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { it[KEY_LAST_BACKUP_AT] = epochMs }
     }
 
+    // --- v1.10.0 setters ---
+
+    suspend fun setTagColors(colors: Map<String, String>) {
+        val json = JSONObject()
+        colors.forEach { (tag, hex) -> json.put(tag, hex) }
+        dataStore.edit { it[KEY_TAG_COLORS] = json.toString() }
+    }
+
+    suspend fun setSavedSearches(searches: List<SavedSearch>) {
+        val json = JSONArray()
+        searches.forEach { search ->
+            json.put(
+                JSONObject()
+                    .put("id", search.id)
+                    .put("name", search.name)
+                    .put("query", search.query)
+                    .put("typeFilter", search.typeFilter)
+                    .put("tag", search.tag)
+            )
+        }
+        dataStore.edit { it[KEY_SAVED_SEARCHES] = json.toString() }
+    }
+
+    suspend fun setJournalFolderId(folderId: String?) {
+        dataStore.edit {
+            if (folderId.isNullOrBlank()) it.remove(KEY_JOURNAL_FOLDER_ID) else it[KEY_JOURNAL_FOLDER_ID] = folderId
+        }
+    }
+
     fun getServerUrlSync(): String? {
         return null // Use the Flow version instead
     }
@@ -202,5 +281,8 @@ class SettingsDataStore @Inject constructor(
         private val KEY_BACKUP_TREE_URI = stringPreferencesKey("backup_tree_uri")
         private val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
         private val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+        private val KEY_TAG_COLORS = stringPreferencesKey("tag_colors")
+        private val KEY_SAVED_SEARCHES = stringPreferencesKey("saved_searches")
+        private val KEY_JOURNAL_FOLDER_ID = stringPreferencesKey("journal_folder_id")
     }
 }

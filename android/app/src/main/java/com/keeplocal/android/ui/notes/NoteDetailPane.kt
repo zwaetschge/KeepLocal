@@ -32,6 +32,7 @@ import com.keeplocal.android.R
 fun NoteDetailPane(
     request: EditorRequest?,
     onClose: () -> Unit,
+    onOpenNote: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -41,11 +42,17 @@ fun NoteDetailPane(
             val viewModelKey = "editor-${request.noteId ?: "new"}-${request.serial}"
             key(viewModelKey) {
                 val viewModel: NoteEditorViewModel = hiltViewModel(key = viewModelKey)
-                LaunchedEffect(viewModelKey) { viewModel.bindNoteId(request.noteId) }
+                LaunchedEffect(viewModelKey) {
+                    viewModel.bindNoteId(request.noteId)
+                    // A brand-new note started inside a folder (v1.10.0).
+                    if (request.noteId == null) viewModel.bindParentId(request.parentId)
+                }
                 NoteEditorContent(
                     viewModel = viewModel,
                     onNavigateBack = onClose,
-                    isEmbedded = true
+                    isEmbedded = true,
+                    // Wiki links / backlinks (v1.10.0) swap the pane's note.
+                    onOpenNote = onOpenNote
                 )
             }
         }

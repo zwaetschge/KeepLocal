@@ -9,11 +9,15 @@ import com.keeplocal.android.data.local.SyncStatus
 import com.keeplocal.android.domain.model.Friend
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.NoteTreeNode
 import com.keeplocal.android.domain.usecase.auth.GetCurrentUserUseCase
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
 import com.keeplocal.android.domain.usecase.notes.DeleteNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.DuplicateNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.FindOrCreateTodayNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
 import com.keeplocal.android.domain.usecase.notes.GetNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.MoveNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.ReorderNotesUseCase
 import com.keeplocal.android.domain.usecase.notes.ToggleArchiveUseCase
 import com.keeplocal.android.domain.usecase.notes.TogglePinUseCase
@@ -60,6 +64,9 @@ class NotesViewModelTest {
     private lateinit var getCurrentUserUseCase: GetCurrentUserUseCase
     private lateinit var getFriendsUseCase: GetFriendsUseCase
     private lateinit var duplicateNoteUseCase: DuplicateNoteUseCase
+    private lateinit var getNoteTreeUseCase: GetNoteTreeUseCase
+    private lateinit var moveNoteUseCase: MoveNoteUseCase
+    private lateinit var findOrCreateTodayNoteUseCase: FindOrCreateTodayNoteUseCase
     private lateinit var settingsDataStore: SettingsDataStore
     private lateinit var syncManager: SyncManager
     private lateinit var appContext: Context
@@ -94,6 +101,12 @@ class NotesViewModelTest {
         getCurrentUserUseCase = mockk()
         getFriendsUseCase = mockk()
         duplicateNoteUseCase = mockk()
+        // v1.10.0 tree/move/journal plumbing; the empty tree keeps the
+        // sidebar state at defaults.
+        getNoteTreeUseCase = mockk()
+        coEvery { getNoteTreeUseCase() } returns Result.Success(emptyList())
+        moveNoteUseCase = mockk()
+        findOrCreateTodayNoteUseCase = mockk()
         coEvery { getCurrentUserUseCase() } returns Result.Error("no session")
         coEvery { getFriendsUseCase() } returns Result.Success(emptyList<Friend>())
         settingsDataStore = mockk(relaxed = true) {
@@ -101,6 +114,8 @@ class NotesViewModelTest {
             // Flows must be real: collecting a relaxed-mock Flow throws.
             every { sortMode } returns flowOf("manual")
             every { lastSyncAt } returns flowOf(0L)
+            every { tagColors } returns flowOf(emptyMap())
+            every { savedSearches } returns flowOf(emptyList())
         }
         syncManager = mockk {
             every { syncStatus } returns MutableStateFlow(SyncStatus())
@@ -116,8 +131,8 @@ class NotesViewModelTest {
     }
 
     private fun createViewModel(): NotesViewModel {
-        every { getNotesUseCase(any(), any(), any(), any(), any()) } returns flowOf(Result.Success(testNotes))
-        return NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, settingsDataStore, syncManager, appContext)
+        every { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) } returns flowOf(Result.Success(testNotes))
+        return NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, getNoteTreeUseCase, moveNoteUseCase, findOrCreateTodayNoteUseCase, settingsDataStore, syncManager, appContext)
     }
 
     @Test
@@ -132,8 +147,8 @@ class NotesViewModelTest {
 
     @Test
     fun `init shows empty state when no notes`() = runTest {
-        every { getNotesUseCase(any(), any(), any(), any(), any()) } returns flowOf(Result.Success(emptyList()))
-        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, settingsDataStore, syncManager, appContext)
+        every { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) } returns flowOf(Result.Success(emptyList()))
+        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, getNoteTreeUseCase, moveNoteUseCase, findOrCreateTodayNoteUseCase, settingsDataStore, syncManager, appContext)
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.notes is UiState.Empty)
@@ -141,8 +156,8 @@ class NotesViewModelTest {
 
     @Test
     fun `init shows error state on failure`() = runTest {
-        every { getNotesUseCase(any(), any(), any(), any(), any()) } returns flowOf(Result.Error("Network error"))
-        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, settingsDataStore, syncManager, appContext)
+        every { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) } returns flowOf(Result.Error("Network error"))
+        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, getNoteTreeUseCase, moveNoteUseCase, findOrCreateTodayNoteUseCase, settingsDataStore, syncManager, appContext)
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.notes is UiState.Error)
@@ -161,13 +176,13 @@ class NotesViewModelTest {
     @Test
     fun `rapid search input debounces into a single reload`() = runTest {
         val queries = mutableListOf<String?>()
-        every { getNotesUseCase(any(), any(), any(), any(), any()) } answers {
+        every { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) } answers {
             queries.add(firstArg())
             flowOf(Result.Success(testNotes))
         }
         // Constructed directly: createViewModel() would overwrite the
         // recording stub above with its default flowOf stub.
-        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, settingsDataStore, syncManager, appContext)
+        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, getNoteTreeUseCase, moveNoteUseCase, findOrCreateTodayNoteUseCase, settingsDataStore, syncManager, appContext)
         advanceUntilIdle()
         assertEquals(listOf<String?>(null), queries)
 
@@ -189,7 +204,7 @@ class NotesViewModelTest {
     @Test
     fun `stale load jobs are cancelled when a new one starts`() = runTest {
         var active = 0
-        every { getNotesUseCase(any(), any(), any(), any(), any()) } answers {
+        every { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) } answers {
             flow<Result<List<Note>>> {
                 active++
                 try {
@@ -201,7 +216,7 @@ class NotesViewModelTest {
         }
         // Constructed directly, as above: the recording stub must survive
         // until the view model starts collecting.
-        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, settingsDataStore, syncManager, appContext)
+        val viewModel = NotesViewModel(getNotesUseCase, togglePinUseCase, toggleArchiveUseCase, deleteNoteUseCase, updateNoteUseCase, reorderNotesUseCase, undoDeleteUseCase, getCurrentUserUseCase, getFriendsUseCase, duplicateNoteUseCase, getNoteTreeUseCase, moveNoteUseCase, findOrCreateTodayNoteUseCase, settingsDataStore, syncManager, appContext)
         advanceUntilIdle()
         assertEquals(1, active)
 
@@ -262,7 +277,7 @@ class NotesViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { syncManager.syncPendingOperations() }
-        verify(atLeast = 2) { getNotesUseCase(any(), any(), any(), any(), any()) }
+        verify(atLeast = 2) { getNotesUseCase(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -324,6 +339,21 @@ class NotesViewModelTest {
 
         val tags = viewModel.uiState.value.availableTags
         assertEquals(listOf("personal", "work"), tags)
+    }
+
+    @Test
+    fun `available tags follow the whole tree`() = runTest {
+        // v1.10.0: the sidebar lists the library's tags, not just the page.
+        coEvery { getNoteTreeUseCase() } returns Result.Success(
+            listOf(
+                NoteTreeNode(testNotes[0], 0, emptyList()),
+                NoteTreeNode(testNotes[1], 0, emptyList())
+            )
+        )
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(listOf("personal", "work"), viewModel.uiState.value.availableTags)
     }
 
     @Test

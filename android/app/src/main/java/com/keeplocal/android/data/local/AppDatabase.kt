@@ -12,7 +12,7 @@ import com.keeplocal.android.data.local.entity.PendingOperationEntity
 
 @Database(
     entities = [NoteEntity::class, PendingOperationEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -47,6 +47,18 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE notes ADD COLUMN remindAtEpochMs INTEGER")
+            }
+        }
+
+        /**
+         * v5 adds the tree (v1.10.0): `parentId` (parent note id, null = root)
+         * and `isCode` (monospace rendering). Two additive columns; existing
+         * rows become root-level text notes, which is what they were before.
+         */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN parentId TEXT")
+                db.execSQL("ALTER TABLE notes ADD COLUMN isCode INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

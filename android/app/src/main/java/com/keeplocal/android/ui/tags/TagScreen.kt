@@ -1,6 +1,10 @@
 package com.keeplocal.android.ui.tags
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,12 +13,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.MergeType
@@ -43,11 +50,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.keeplocal.android.R
+import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.ui.notes.tagChipColor
 import com.keeplocal.android.util.UiState
 
 /**
@@ -131,11 +141,27 @@ fun TagScreen(
                             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Label,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            // Color dot (v1.10.0): tap opens the palette; a
+                            // plain label icon marks "no color".
+                            val dot = remember(overview.tag, uiState.tagColors) {
+                                tagChipColor(uiState.tagColors[overview.tag])
+                            }
+                            IconButton(onClick = { viewModel.openColorPicker(overview.tag) }) {
+                                if (dot != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(CircleShape)
+                                            .background(dot)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Label,
+                                        contentDescription = stringResource(R.string.tag_set_color),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -244,6 +270,105 @@ fun TagScreen(
             }
         )
         TagDialog.None -> Unit
+    }
+
+    // Color palette (v1.10.0): the note card colors double as tag colors —
+    // one shared palette across web and app.
+    uiState.colorPickerFor?.let { tag ->
+        TagColorPickerDialog(
+            tag = tag,
+            currentHex = uiState.tagColors[tag],
+            onPick = { hex ->
+                viewModel.setTagColor(tag, hex)
+                viewModel.closeColorPicker()
+            },
+            onClear = {
+                viewModel.setTagColor(tag, null)
+                viewModel.closeColorPicker()
+            },
+            onDismiss = viewModel::closeColorPicker
+        )
+    }
+}
+
+/** The 12 note-card colors plus "no color" (v1.10.0). */
+@Composable
+private fun TagColorPickerDialog(
+    tag: String,
+    currentHex: String?,
+    onPick: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tag_set_color) + " · " + tag) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    NoteColor.entries.take(6).forEach { color ->
+                        TagColorSwatch(
+                            hex = color.hex,
+                            selected = color.hex == currentHex,
+                            onClick = { onPick(color.hex) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    NoteColor.entries.drop(6).forEach { color ->
+                        TagColorSwatch(
+                            hex = color.hex,
+                            selected = color.hex == currentHex,
+                            onClick = { onPick(color.hex) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (currentHex != null) {
+                    TextButton(onClick = onClear) {
+                        Text(stringResource(R.string.tag_remove_color))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) }
+        }
+    )
+}
+
+@Composable
+private fun TagColorSwatch(
+    hex: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val color = remember(hex) { tagChipColor(hex) } ?: return
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(color)
+            .then(
+                if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                else Modifier
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.6f)
+            )
+        }
     }
 }
 

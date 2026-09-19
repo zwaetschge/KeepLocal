@@ -44,7 +44,24 @@ data class UserPreferencesDto(
     @Json(name = "theme") val theme: String? = null,
     @Json(name = "language") val language: String? = null,
     @Json(name = "aiFeatures") val aiFeatures: AiFeaturesDto? = null,
-    @Json(name = "transcriptionLanguage") val transcriptionLanguage: String? = null
+    @Json(name = "transcriptionLanguage") val transcriptionLanguage: String? = null,
+    // v1.10.0: tag colors (tag name -> hex from the note palette), saved
+    // searches (smart folders) and the journal root note id — all synced
+    // through the account so every device sees the same set.
+    @Json(name = "tagColors") val tagColors: Map<String, String>? = null,
+    @Json(name = "savedSearches") val savedSearches: List<SavedSearchDto>? = null,
+    @Json(name = "journalFolderId") val journalFolderId: String? = null
+)
+
+/** One smart folder: a search pinned into the tree panel (server subdocument
+ *  without the mongoose _id — the server strips it before sending). */
+@JsonClass(generateAdapter = true)
+data class SavedSearchDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "name") val name: String,
+    @Json(name = "query") val query: String = "",
+    @Json(name = "typeFilter") val typeFilter: String = "all",
+    @Json(name = "tag") val tag: String = ""
 )
 
 @JsonClass(generateAdapter = true)
@@ -59,7 +76,13 @@ data class UpdatePreferencesDto(
     @Json(name = "theme") val theme: String? = null,
     @Json(name = "language") val language: String? = null,
     @Json(name = "transcriptionLanguage") val transcriptionLanguage: String? = null,
-    @Json(name = "aiFeatures") val aiFeatures: UpdateAiFeaturesDto? = null
+    @Json(name = "aiFeatures") val aiFeatures: UpdateAiFeaturesDto? = null,
+    // v1.10.0: null (absent) leaves each key untouched on the server, matching
+    // the partial-update contract above. journalFolderId wraps NullableString:
+    // an explicit JSON null is the only way to clear the journal root.
+    @Json(name = "tagColors") val tagColors: Map<String, String>? = null,
+    @Json(name = "savedSearches") val savedSearches: List<SavedSearchDto>? = null,
+    @Json(name = "journalFolderId") val journalFolderId: NullableString? = null
 )
 
 /** AI feature switches inside the preferences body; mirrors AiFeaturesDto. */
@@ -114,10 +137,30 @@ data class NoteDto(
     // Set while the note sits in the 30-day trash; null on live notes.
     @Json(name = "deletedAt") val deletedAt: String? = null,
     // Reminder trigger time (ISO 8601); null = no reminder.
-    @Json(name = "remindAt") val remindAt: String? = null
+    @Json(name = "remindAt") val remindAt: String? = null,
+    // Tree (v1.10.0): parent note id; null = root level.
+    @Json(name = "parentId") val parentId: String? = null,
+    // Code note (v1.10.0): render content monospaced.
+    @Json(name = "isCode") val isCode: Boolean = false
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
 }
+
+/** Entry of GET /api/notes/tree — the light sidebar projection without
+ *  content or images; the client nests the flat list itself. */
+@JsonClass(generateAdapter = true)
+data class NoteTreeNodeDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "parentId") val parentId: String? = null,
+    @Json(name = "title") val title: String = "",
+    @Json(name = "order") val order: Int = 0,
+    @Json(name = "isPinned") val isPinned: Boolean = false,
+    @Json(name = "isCode") val isCode: Boolean = false,
+    @Json(name = "isArchived") val isArchived: Boolean = false,
+    @Json(name = "isTodoList") val isTodoList: Boolean = false,
+    @Json(name = "remindAt") val remindAt: String? = null,
+    @Json(name = "updatedAt") val updatedAt: String? = null
+)
 
 @JsonClass(generateAdapter = true)
 data class NoteImageDto(
@@ -164,7 +207,10 @@ data class CreateNoteDto(
     @Json(name = "todoItems") val todoItems: List<TodoItemDto>? = null,
     @Json(name = "tags") val tags: List<String>? = null,
     // Reminder for the new note; null is simply omitted (nothing to clear).
-    @Json(name = "remindAt") val remindAt: String? = null
+    @Json(name = "remindAt") val remindAt: String? = null,
+    // Tree (v1.10.0): create the note inside a folder note.
+    @Json(name = "parentId") val parentId: String? = null,
+    @Json(name = "isCode") val isCode: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -183,7 +229,11 @@ data class UpdateNoteDto(
     // Reminder: the app always sends the full note state, so null here means
     // "delete the reminder". Moshi omits plain nullable fields, hence the
     // NullableString wrapper which writes an explicit JSON null.
-    @Json(name = "remindAt") val remindAt: NullableString? = null
+    @Json(name = "remindAt") val remindAt: NullableString? = null,
+    // Tree (v1.10.0): same full-state semantics — an explicit JSON null moves
+    // the note back to the root level, absent would leave it untouched.
+    @Json(name = "parentId") val parentId: NullableString? = null,
+    @Json(name = "isCode") val isCode: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)

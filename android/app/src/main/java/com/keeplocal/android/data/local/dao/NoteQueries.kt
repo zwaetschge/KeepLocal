@@ -2,6 +2,7 @@ package com.keeplocal.android.data.local.dao
 
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import com.keeplocal.android.domain.model.FolderScope
 import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
 
@@ -13,6 +14,9 @@ import com.keeplocal.android.domain.model.SortMode
  *
  * v1.9.0: queries gained a [NoteTypeFilter] and the search tolerates a blank
  * term — the type chips filter the plain list too, not just search results.
+ *
+ * v1.10.0: queries gained a [FolderScope] — the tree panel narrows the card
+ * grid to one node (or the root level) without a second query family.
  */
 object NoteQueries {
 
@@ -41,10 +45,29 @@ object NoteQueries {
         NoteTypeFilter.PINNED -> " AND isPinned = 1"
     }
 
-    fun liveNotes(sortMode: SortMode, limit: Int? = null, filter: NoteTypeFilter = NoteTypeFilter.ALL): SupportSQLiteQuery =
-        SimpleSQLiteQuery(
-            "SELECT * FROM notes WHERE isArchived = 0${filterClause(filter)} ORDER BY ${orderBy(sortMode)}${limitClause(limit)}"
+    /**
+     * Folder scope (v1.10.0) as SQL plus its bound argument. `IS` (not `=`)
+     * so the ROOT variant correctly matches NULL with a bound null — SQLite
+     * treats `parentId IS NULL` as true while `parentId = NULL` never is.
+     */
+    private fun folderClause(scope: FolderScope): Pair<String, Array<Any?>> = when (scope) {
+        FolderScope.All -> "" to arrayOf()
+        FolderScope.Root -> " AND parentId IS ?" to arrayOf(null)
+        is FolderScope.Node -> " AND parentId IS ?" to arrayOf(scope.id)
+    }
+
+    fun liveNotes(
+        sortMode: SortMode,
+        limit: Int? = null,
+        filter: NoteTypeFilter = NoteTypeFilter.ALL,
+        scope: FolderScope = FolderScope.All
+    ): SupportSQLiteQuery {
+        val (folder, folderArgs) = folderClause(scope)
+        return SimpleSQLiteQuery(
+            "SELECT * FROM notes WHERE isArchived = 0${filterClause(filter)}$folder ORDER BY ${orderBy(sortMode)}${limitClause(limit)}",
+            folderArgs
         )
+    }
 
     fun archivedNotes(sortMode: SortMode, limit: Int? = null): SupportSQLiteQuery =
         SimpleSQLiteQuery(
@@ -55,18 +78,23 @@ object NoteQueries {
         term: String,
         sortMode: SortMode,
         limit: Int? = null,
-        filter: NoteTypeFilter = NoteTypeFilter.ALL
+        filter: NoteTypeFilter = NoteTypeFilter.ALL,
+        scope: FolderScope = FolderScope.All
     ): SupportSQLiteQuery {
         // A blank term with an active filter stays useful: the chips then
         // narrow the whole list instead of the search hits.
         val match = if (term.isBlank()) "" else
             " AND (title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%' OR " +
                 "todoItemsJson LIKE '%' || ? || '%' OR tagsJson LIKE '%' || ? || '%')"
-        val args = if (term.isBlank()) arrayOf() else arrayOf(term, term, term, term)
+        val matchArgs: Array<Any?> = if (term.isBlank()) arrayOf() else arrayOf(term, term, term, term)
+        val (folder, folderArgs) = folderClause(scope)
+        // Array + Array is ambiguous in Kotlin; concatenating via lists keeps
+        // the bound order (search term first, folder id after) explicit.
+        val boundArgs: Array<Any?> = (matchArgs.toList() + folderArgs.toList()).toTypedArray()
         return SimpleSQLiteQuery(
-            "SELECT * FROM notes WHERE isArchived = 0$match${filterClause(filter)}" +
+            "SELECT * FROM notes WHERE isArchived = 0$match${filterClause(filter)}$folder" +
                 " ORDER BY ${orderBy(sortMode)}${limitClause(limit)}",
-            args
+            boundArgs
         )
     }
 }

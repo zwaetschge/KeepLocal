@@ -28,7 +28,14 @@ data class Note(
     // Reminder (v1.8.0): server-side trigger time. The server only stores and
     // validates it; each device schedules its own local notification
     // (AlarmManager), so reminders fire offline and without push infrastructure.
-    val remindAt: Instant? = null
+    val remindAt: Instant? = null,
+    // Tree (v1.10.0): parent note id; null = root level. A note with children
+    // doubles as a folder — there is no separate folder type, mirroring the
+    // server's single-parent model. Single-parent by design this round; clones
+    // would need a join table on both ends.
+    val parentId: String? = null,
+    // Code note (v1.10.0): render content monospaced instead of the paper font.
+    val isCode: Boolean = false
 )
 
 /**

@@ -2,6 +2,7 @@ package com.keeplocal.android.domain.repository
 
 import com.keeplocal.android.domain.model.AuthState
 import com.keeplocal.android.domain.model.OAuthProviders
+import com.keeplocal.android.domain.model.SavedSearch
 import com.keeplocal.android.domain.model.User
 import com.keeplocal.android.util.Result
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,22 @@ interface AuthRepository {
         transcriptionLanguage: String? = null,
         voiceTranscription: Boolean? = null
     ): Result<Unit>
+    /**
+     * Pushes the account-wide tag colors (v1.10.0, same endpoint): tag name
+     * to palette hex. The map is sent whole — removing a color means pushing
+     * the map without it.
+     */
+    suspend fun pushTagColors(colors: Map<String, String>): Result<Unit>
+    /**
+     * Pushes the account-wide saved searches / smart folders (v1.10.0). The
+     * list is sent whole, same whole-state contract as the tag colors.
+     */
+    suspend fun pushSavedSearches(searches: List<SavedSearch>): Result<Unit>
+    /**
+     * Sets or clears the journal root note (v1.10.0): null moves future
+     * "Heute"-Notizen back to the tree's root level.
+     */
+    suspend fun pushJournalFolderId(folderId: String?): Result<Unit>
     fun saveAutheliaCookies(cookies: String)
     fun getServerUrl(): String?
     suspend fun setServerUrl(url: String)

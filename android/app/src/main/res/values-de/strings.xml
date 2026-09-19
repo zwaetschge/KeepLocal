@@ -467,4 +467,33 @@
     <string name="admin_reset_token_created">Token 15 Minuten gültig:</string>
     <string name="admin_reset_token_failed">Token konnte nicht erzeugt werden</string>
     <string name="cd_more_actions">Weitere Aktionen</string>
+
+    <!-- v1.10.0: Notiz-Baum, Journal, Tag-Farben, Markdown-Im-/Export -->
+    <string name="nav_today">Heute</string>
+    <string name="sidebar_folders">Ordner</string>
+    <string name="sidebar_saved_searches">Gespeicherte Suchen</string>
+    <string name="cd_toggle_folder">Ordner aus- oder einklappen</string>
+    <string name="editor_untitled">Ohne Titel</string>
+    <string name="editor_code_mode">Monospace-Codeansicht</string>
+    <string name="editor_backlinks">Erwähnt in</string>
+    <string name="action_move">Verschieben</string>
+    <string name="move_picker_title">In Ordner verschieben</string>
+    <string name="move_to_root">Hauptebene</string>
+    <string name="move_no_folders">Noch keine Ordner — Notizen mit Unter-notizen werden zu Ordnern</string>
+    <string name="cd_move_selection">Auswahl in einen Ordner verschieben</string>
+    <string name="folder_empty_title">Dieser Ordner ist leer</string>
+    <string name="folder_empty_subtitle">Starte hier die erste Notiz</string>
+    <string name="folder_empty_create">Neue Notiz</string>
+    <string name="tag_set_color">Tag-Farbe</string>
+    <string name="tag_remove_color">Farbe entfernen</string>
+    <string name="import_markdown_title">Trilium-/Markdown-Ordner importieren</string>
+    <string name="import_markdown_hint">Ordner mit .md-Dateien wählen — der Baum wird zu Ordner-Notizen</string>
+    <string name="import_markdown_done">%1$d Notiz(en) importiert</string>
+    <string name="import_markdown_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="export_zip_title">Als Markdown-ZIP exportieren</string>
+    <string name="export_zip_hint">Der ganze Baum als Ordner mit .md-Dateien, wieder importierbar</string>
+    <string name="export_markdown_done">ZIP geschrieben (%1$d Bytes)</string>
+    <string name="export_markdown_failed">Export fehlgeschlagen: %1$s</string>
+    <string name="journal_folder_label">Journal-Ordner</string>
+    <string name="journal_folder_root">Hauptebene</string>
 </resources>

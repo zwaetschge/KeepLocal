@@ -16,9 +16,12 @@ import com.keeplocal.android.domain.model.TodoItem
 import com.keeplocal.android.domain.model.TranscriptionException
 import com.keeplocal.android.domain.repository.MediaLimits
 import com.keeplocal.android.domain.repository.MediaRepository
+import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
 import com.keeplocal.android.domain.usecase.notes.CreateNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.GetBacklinksUseCase
 import com.keeplocal.android.domain.usecase.notes.GetLinkPreviewUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
 import com.keeplocal.android.domain.usecase.notes.GetNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.ShareNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.TogglePinUseCase
@@ -86,10 +89,31 @@ data class NoteEditorState(
     // Server version this edit started from (optimistic locking guard).
     val baseUpdatedAt: Instant? = null,
     /** Reminder time (v1.8.0 Nr. 2); null = no reminder. */
-    val remindAt: Instant? = null
+    val remindAt: Instant? = null,
+    // Code note (v1.10.0): content renders monospaced.
+    val isCode: Boolean = false,
+    // Tree (v1.10.0): parent folder for a brand-new note; null = root level.
+    val parentId: String? = null,
+    // Tag colors + autocomplete (v1.10.0): per-account palette and the tags
+    // known from the cached library.
+    val tagColors: Map<String, String> = emptyMap(),
+    val tagSuggestions: List<String> = emptyList(),
+    // Wiki links (v1.10.0): [[Ziel]] chips in this note plus who links here.
+    val wikiLinks: List<EditorWikiLink> = emptyList(),
+    val backlinks: List<Note> = emptyList()
 )
 
+/**
+ * One `[[Ziel]]` occurrence in the content. [noteId] is null when no live
+ * note carries that exact title — the chip then shows as unresolvable.
+ */
+data class EditorWikiLink(val target: String, val noteId: String?)
+
 private val URL_PATTERN = Regex("""https?://[^\s]+""")
+
+// Wiki link syntax (v1.10.0): [[Ziel]] anywhere in the content.
+private val WIKI_LINK = Regex("""\[\[([^\[\]]+)\]\]""")
+private const val MAX_WIKI_LINKS = 20
 
 // Errors shown in the editor snackbar clear themselves after this delay —
 // NoteEditorScreen's Snackbar has no auto-dismiss of its own.
@@ -116,6 +140,9 @@ class NoteEditorViewModel @Inject constructor(
     private val getFriendsUseCase: GetFriendsUseCase,
     private val togglePinUseCase: TogglePinUseCase,
     private val getLinkPreviewUseCase: GetLinkPreviewUseCase,
+    private val getNoteTreeUseCase: GetNoteTreeUseCase,
+    private val getBacklinksUseCase: GetBacklinksUseCase,
+    private val noteRepository: NoteRepository,
     private val mediaRepository: MediaRepository,
     private val settingsDataStore: SettingsDataStore,
     private val noteDraftStore: NoteDraftStore,
@@ -133,6 +160,15 @@ class NoteEditorViewModel @Inject constructor(
     private var errorClearJob: Job? = null
     private val fetchedUrls = mutableSetOf<String>()
     private var isBound = false
+
+    // Folder the new note is created in (v1.10.0); only meaningful while the
+    // editor is on a brand-new note. Two-pane hosts pass it via bindParentId.
+    private var initialParentId: String? = savedStateHandle["parentId"]
+
+    // Tag vocabulary for the autocomplete (v1.10.0), loaded once from the cache.
+    private var tagVocabulary: Set<String> = emptySet()
+
+    private var wikiLinkJob: Job? = null
 
     // --- dictation state (MediaRecorder is released eagerly on clear) ---
     private var mediaRecorder: MediaRecorder? = null
@@ -160,8 +196,31 @@ class NoteEditorViewModel @Inject constructor(
                 viewModelScope.launch { restoreDraftIfMatching(null) }
             }
         }
+        if (initialParentId != null && noteId == null) {
+            _uiState.update { it.copy(parentId = initialParentId) }
+        }
         observeVoiceTranscription()
         observeDraftAutosave()
+        observeTagColors()
+        loadTagVocabulary()
+    }
+
+    /** Per-account tag colors (v1.10.0) tint the editor's tag chips. */
+    private fun observeTagColors() {
+        viewModelScope.launch {
+            settingsDataStore.tagColors.collect { colors ->
+                _uiState.update { it.copy(tagColors = colors) }
+            }
+        }
+    }
+
+    /** Autocomplete source: every tag in the cached library, loaded once. */
+    private fun loadTagVocabulary() {
+        viewModelScope.launch {
+            val tree = getNoteTreeUseCase().getOrNull() ?: return@launch
+            tagVocabulary = tree.flatMap { it.flatten() }
+                .flatMapTo(mutableSetOf()) { it.note.tags }
+        }
     }
 
     /** Mic visibility follows the account-wide dictation switch. */
@@ -193,6 +252,8 @@ class NoteEditorViewModel @Inject constructor(
                             isTodoList = state.isTodoList,
                             todoItems = state.todoItems.map { DraftTodoItem(it.text, it.isCompleted) },
                             tags = state.tags,
+                            isCode = state.isCode,
+                            parentId = state.parentId,
                             savedAt = System.currentTimeMillis()
                         )
                     )
@@ -226,6 +287,8 @@ class NoteEditorViewModel @Inject constructor(
                     emptyList()
                 },
                 tags = draft.tags,
+                isCode = draft.isCode,
+                parentId = if (draft.noteId == null) draft.parentId else state.parentId,
                 hasChanges = true,
                 // TODO-STR: string resource (editor_draft_restored)
                 mediaHint = "Entwurf wiederhergestellt"
@@ -279,12 +342,16 @@ class NoteEditorViewModel @Inject constructor(
                         images = note.images,
                         baseUpdatedAt = note.baseUpdatedAt,
                         remindAt = note.remindAt,
+                        isCode = note.isCode,
+                        parentId = note.parentId,
                         isLoading = false,
                         isNewNote = false
                     )
                 }
                 // Detect existing URLs and fetch previews
                 detectAndFetchPreviews(note.content)
+                refreshWikiLinks(note.content)
+                refreshBacklinks()
                 // A draft surviving from a killed session beats the stored note.
                 restoreDraftIfMatching(note.id)
             } else {
@@ -332,6 +399,8 @@ class NoteEditorViewModel @Inject constructor(
 
     fun updateTitle(title: String) {
         _uiState.update { it.copy(title = title, hasChanges = true, mediaHint = null) }
+        // The title is the wiki-link address — "Erwähnt in" tracks it live.
+        refreshBacklinks()
     }
 
     fun updateContent(content: String) {
@@ -343,6 +412,70 @@ class NoteEditorViewModel @Inject constructor(
                 delay(1000)
                 detectAndFetchPreviews(content)
             }
+        }
+        // Wiki link chips (v1.10.0) follow the text with the same pause.
+        wikiLinkJob?.cancel()
+        wikiLinkJob = viewModelScope.launch {
+            delay(800)
+            refreshWikiLinks(content)
+        }
+    }
+
+    /**
+     * Resolves every `[[Ziel]]` in [content] against the Room cache. A note's
+     * title is its address — exact, case-insensitive, blanks trimmed.
+     */
+    private suspend fun refreshWikiLinks(content: String) {
+        val targets = WIKI_LINK.findAll(content)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_WIKI_LINKS)
+            .toList()
+        if (targets.isEmpty()) {
+            _uiState.update { it.copy(wikiLinks = emptyList()) }
+            return
+        }
+        val links = targets.map { target ->
+            val hit = noteRepository.findByExactTitle(target).getOrNull()
+                ?.firstOrNull { it.id != _uiState.value.id }
+            EditorWikiLink(target = target, noteId = hit?.id)
+        }
+        _uiState.update { it.copy(wikiLinks = links) }
+    }
+
+    /**
+     * "Erwähnt in" (v1.10.0): notes whose content links here by title. Runs
+     * on load and on title edits — the link address changed with it.
+     */
+    private fun refreshBacklinks() {
+        val state = _uiState.value
+        if (state.isNewNote || state.title.isBlank()) {
+            if (_uiState.value.backlinks.isNotEmpty()) {
+                _uiState.update { it.copy(backlinks = emptyList()) }
+            }
+            return
+        }
+        viewModelScope.launch {
+            val backlinks = getBacklinksUseCase(state.title, state.id ?: "").getOrNull() ?: emptyList()
+            _uiState.update { if (it.id == state.id) it.copy(backlinks = backlinks) else it }
+        }
+    }
+
+    /** Code note toggle (v1.10.0): monospaced content, no link magic. */
+    fun toggleCode() {
+        _uiState.update { it.copy(isCode = !it.isCode, hasChanges = true) }
+    }
+
+    /**
+     * Folder for a brand-new note (v1.10.0) — the two-pane variant of the
+     * parentId navigation argument. Only honoured before the first bind.
+     */
+    fun bindParentId(parentId: String?) {
+        if (isBound && _uiState.value.id != null) return
+        initialParentId = parentId
+        if (_uiState.value.isNewNote) {
+            _uiState.update { it.copy(parentId = parentId) }
         }
     }
 
@@ -467,7 +600,22 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     fun updateTagInput(input: String) {
-        _uiState.update { it.copy(tagInput = input) }
+        val suggestions = if (input.isBlank()) emptyList() else {
+            val needle = input.trim().lowercase()
+            tagVocabulary
+                .filter { it != input.trim() && it.lowercase().contains(needle) }
+                .sorted()
+                .take(5)
+        }
+        _uiState.update { it.copy(tagInput = input, tagSuggestions = suggestions) }
+    }
+
+    fun applyTagSuggestion(tag: String) {
+        if (tag.isNotBlank() && tag !in _uiState.value.tags) {
+            _uiState.update { it.copy(tags = it.tags + tag, tagInput = "", tagSuggestions = emptyList(), hasChanges = true) }
+        } else {
+            _uiState.update { it.copy(tagInput = "", tagSuggestions = emptyList()) }
+        }
     }
 
     fun addTag() {
@@ -757,6 +905,8 @@ class NoteEditorViewModel @Inject constructor(
                 updatedAt = now,
                 baseUpdatedAt = state.baseUpdatedAt,
                 remindAt = state.remindAt,
+                isCode = state.isCode,
+                parentId = state.parentId,
                 // Keep attachments on offline saves — the server ignores this
                 // field but the local cache row is rebuilt from this note.
                 images = state.images

@@ -33,6 +33,10 @@ data class NoteDraft(
     @Json(name = "isTodoList") val isTodoList: Boolean = false,
     @Json(name = "todoItems") val todoItems: List<DraftTodoItem> = emptyList(),
     @Json(name = "tags") val tags: List<String> = emptyList(),
+    // v1.10.0: both survive process death so a code note or a note started
+    // inside a folder doesn't lose its shape on restore.
+    @Json(name = "isCode") val isCode: Boolean = false,
+    @Json(name = "parentId") val parentId: String? = null,
     @Json(name = "savedAt") val savedAt: Long = 0L
 ) {
     companion object {

@@ -306,6 +306,29 @@ private class FakeNoteDao : NoteDao {
         notes.entries.removeAll { it.key !in keep }
         return before - notes.size
     }
+
+    // Tree queries (v1.10.0); the sync flow only touches reassignParentId —
+    // a CREATE that comes back with a server id must drag its children along.
+    override fun getNotesInFolder(parentId: String?): Flow<List<NoteEntity>> =
+        flow { emit(notes.values.filter { it.parentId == parentId && !it.isArchived }) }
+
+    override suspend fun getDirectChildIds(parentId: String?): List<String> =
+        notes.values.filter { it.parentId == parentId && !it.isArchived }.map { it.id }
+
+    override suspend fun getAllLiveNotesSync(): List<NoteEntity> =
+        notes.values.filter { !it.isArchived }
+
+    override suspend fun findByExactTitle(title: String): List<NoteEntity> =
+        notes.values.filter { it.title.equals(title, ignoreCase = true) && !it.isArchived }
+
+    override suspend fun findBacklinks(excludeId: String, pattern: String): List<NoteEntity> =
+        notes.values.filter { it.id != excludeId && !it.isArchived && it.content.contains("[[") }
+
+    override suspend fun reassignParentId(oldParentId: String, newParentId: String) {
+        notes.values.filter { it.parentId == oldParentId }.forEach {
+            notes[it.id] = it.copy(parentId = newParentId)
+        }
+    }
 }
 
 /** In-memory PendingOperationDao mirroring the queue semantics (insert order = createdAt). */
