@@ -2,6 +2,8 @@ package com.keeplocal.android.ui.tags
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.keeplocal.android.data.local.SettingsDataStore
+import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.tags.DeleteTagUseCase
 import com.keeplocal.android.domain.usecase.tags.GetTagsUseCase
 import com.keeplocal.android.domain.usecase.tags.MergeTagsUseCase
@@ -32,7 +34,11 @@ data class TagsUiState(
     val mergeTarget: String = "",
     /** Count of notes touched by the last action, for the snackbar. */
     val affectedCount: Int? = null,
-    val isWorking: Boolean = false
+    val isWorking: Boolean = false,
+    /** Tag palette (v1.10.0): tag name → hex; synced via the account prefs. */
+    val tagColors: Map<String, String> = emptyMap(),
+    /** Tag whose color palette dialog is open; null = closed. */
+    val colorPickerFor: String? = null
 )
 
 @HiltViewModel
@@ -40,7 +46,9 @@ class TagViewModel @Inject constructor(
     private val getTagsUseCase: GetTagsUseCase,
     private val renameTagUseCase: RenameTagUseCase,
     private val mergeTagsUseCase: MergeTagsUseCase,
-    private val deleteTagUseCase: DeleteTagUseCase
+    private val deleteTagUseCase: DeleteTagUseCase,
+    private val settingsDataStore: SettingsDataStore,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TagsUiState())
@@ -57,6 +65,35 @@ class TagViewModel @Inject constructor(
 
     init {
         load()
+        viewModelScope.launch {
+            settingsDataStore.tagColors.collect { colors ->
+                _uiState.update { it.copy(tagColors = colors) }
+            }
+        }
+    }
+
+    /** Opens the palette for [tag] (v1.10.0). */
+    fun openColorPicker(tag: String) {
+        _uiState.update { it.copy(colorPickerFor = tag) }
+    }
+
+    fun closeColorPicker() {
+        _uiState.update { it.copy(colorPickerFor = null) }
+    }
+
+    /**
+     * Sets or clears (null) a tag's color. Optimistically stored, then pushed
+     * through the preferences endpoint; a failed push keeps the local pick —
+     * the colors are cosmetic, not worth blocking on.
+     */
+    fun setTagColor(tag: String, hex: String?) {
+        val updated = _uiState.value.tagColors.toMutableMap()
+        if (hex == null) updated.remove(tag) else updated[tag] = hex
+        _uiState.update { it.copy(tagColors = updated) }
+        viewModelScope.launch {
+            settingsDataStore.setTagColors(updated)
+            authRepository.pushTagColors(updated)
+        }
     }
 
     fun load() {

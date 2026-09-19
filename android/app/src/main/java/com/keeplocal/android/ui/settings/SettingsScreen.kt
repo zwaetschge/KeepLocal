@@ -93,6 +93,16 @@ fun SettingsScreen(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let { viewModel.setBackupFolder(it) } }
 
+    // Markdown round-trip (v1.10.0): a picked folder tree imports as folder
+    // notes (Trilium/Obsidian export), the ZIP export mirrors the whole tree.
+    val importMarkdownLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> uri?.let { viewModel.importMarkdownFromTree(it) } }
+
+    val exportZipLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri -> uri?.let { viewModel.writeMarkdownExport(it) } }
+
     LaunchedEffect(Unit) {
         viewModel.logoutEvent.collect { onLogout() }
     }
@@ -459,6 +469,64 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(enabled = !uiState.isImporting) {
                     importKeepLauncher.launch(arrayOf("application/json"))
                 }
+            )
+
+            // Trilium/Markdown import (v1.10.0 Nr. 4): a folder tree of .md
+            // files becomes folder notes with children — the tree survives.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.import_markdown_title)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.isTransferring) stringResource(R.string.loading)
+                        else stringResource(R.string.import_markdown_hint)
+                    )
+                },
+                leadingContent = {
+                    if (uiState.isTransferring) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.AccountTree, contentDescription = null)
+                    }
+                },
+                modifier = Modifier.clickable(enabled = !uiState.isTransferring) {
+                    importMarkdownLauncher.launch(null)
+                }
+            )
+
+            // Markdown ZIP export (v1.10.0 Nr. 5): one .zip with the whole
+            // tree as folders of .md files — readable anywhere, re-importable.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.export_zip_title)) },
+                supportingContent = {
+                    Text(
+                        if (uiState.isTransferring) stringResource(R.string.loading)
+                        else stringResource(R.string.export_zip_hint)
+                    )
+                },
+                leadingContent = {
+                    if (uiState.isTransferring) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.FolderZip, contentDescription = null)
+                    }
+                },
+                modifier = Modifier.clickable(enabled = !uiState.isTransferring) {
+                    exportZipLauncher.launch("KeepLocal-notizen.zip")
+                }
+            )
+
+            // Journal folder (v1.10.0 Nr. 6): where the sidebar's "Heute"
+            // notes land; root level when nothing is picked.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.journal_folder_label)) },
+                supportingContent = {
+                    Text(
+                        uiState.journalFolderTitle?.ifBlank { null }
+                            ?: stringResource(R.string.journal_folder_root)
+                    )
+                },
+                leadingContent = { Icon(Icons.Default.Today, contentDescription = null) },
+                modifier = Modifier.clickable { viewModel.openJournalPicker() }
             )
 
             // Automatic backup (v1.8.0 Nr. 7): WorkManager writes JSON exports
@@ -849,6 +917,55 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {}
+        )
+    }
+
+    // Journal folder picker (v1.10.0): root on top, then every folder note.
+    if (uiState.journalPickerOpen) {
+        AlertDialog(
+            onDismissRequest = viewModel::closeJournalPicker,
+            title = { Text(stringResource(R.string.journal_folder_label)) },
+            text = {
+                Column {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.journal_folder_root)) },
+                        leadingContent = { Icon(Icons.Default.Home, contentDescription = null) },
+                        modifier = Modifier.clickable { viewModel.setJournalFolder(null) }
+                    )
+                    if (uiState.folderCandidates.isEmpty()) {
+                        Text(
+                            stringResource(R.string.move_no_folders),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                        )
+                    }
+                    uiState.folderCandidates.forEach { folder ->
+                        val selected = folder.id == uiState.journalFolderId
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    folder.title.ifBlank { stringResource(R.string.editor_untitled) },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            trailingContent = {
+                                if (selected) {
+                                    Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier.clickable { viewModel.setJournalFolder(folder.id) }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::closeJournalPicker) {
+                    Text(stringResource(R.string.ok))
+                }
+            }
         )
     }
 }

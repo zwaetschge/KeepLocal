@@ -21,7 +21,9 @@ fun NoteDto.toDomain(): Note = Note(
     createdAt = createdAt?.let { parseInstant(it) } ?: Instant.now(),
     updatedAt = updatedAt?.let { parseInstant(it) } ?: Instant.now(),
     deletedAt = deletedAt?.let { parseInstant(it) },
-    remindAt = remindAt?.let { parseInstantOrNull(it) }
+    remindAt = remindAt?.let { parseInstantOrNull(it) },
+    parentId = parentId,
+    isCode = isCode
 )
 
 fun TodoItemDto.toDomain(): TodoItem = TodoItem(
@@ -84,6 +86,22 @@ fun LinkPreviewDto.toDomain(): LinkPreview = LinkPreview(
     image = image
 )
 
+fun SavedSearchDto.toDomain(): SavedSearch = SavedSearch(
+    id = id,
+    name = name,
+    query = query,
+    typeFilter = typeFilter,
+    tag = tag
+)
+
+fun SavedSearch.toDto(): SavedSearchDto = SavedSearchDto(
+    id = id,
+    name = name,
+    query = query,
+    typeFilter = typeFilter,
+    tag = tag
+)
+
 fun Note.toCreateDto(): CreateNoteDto = CreateNoteDto(
     title = title,
     content = content,
@@ -92,7 +110,9 @@ fun Note.toCreateDto(): CreateNoteDto = CreateNoteDto(
     isTodoList = isTodoList,
     todoItems = if (isTodoList) todoItems.map { it.toDto() } else null,
     tags = tags.ifEmpty { null },
-    remindAt = remindAt?.toString()
+    remindAt = remindAt?.toString(),
+    parentId = parentId,
+    isCode = isCode
 )
 
 fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
@@ -105,7 +125,10 @@ fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
     tags = tags,
     position = position,
     // Always sent (full-state semantics): null clears the server-side reminder.
-    remindAt = NullableString(remindAt?.toString())
+    remindAt = NullableString(remindAt?.toString()),
+    // Same full-state contract for the tree position and the code flag.
+    parentId = NullableString(parentId),
+    isCode = isCode
 )
 
 fun TodoItem.toDto(): TodoItemDto = TodoItemDto(

@@ -9,7 +9,10 @@ import com.keeplocal.android.data.local.dao.PendingOperationDao
 import com.keeplocal.android.data.repository.ApiKeyRepository
 import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.auth.ChangePasswordUseCase
+import com.keeplocal.android.domain.usecase.notes.ExportMarkdownUseCase
 import com.keeplocal.android.domain.usecase.notes.ExportNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
+import com.keeplocal.android.domain.usecase.notes.ImportMarkdownFolderUseCase
 import com.keeplocal.android.domain.usecase.notes.ImportNotesUseCase
 import com.keeplocal.android.util.FileLogger
 import io.mockk.coEvery
@@ -43,6 +46,9 @@ class SettingsViewModelTest {
     private lateinit var changePasswordUseCase: ChangePasswordUseCase
     private lateinit var exportNotesUseCase: ExportNotesUseCase
     private lateinit var importNotesUseCase: ImportNotesUseCase
+    private lateinit var importMarkdownFolderUseCase: ImportMarkdownFolderUseCase
+    private lateinit var exportMarkdownUseCase: ExportMarkdownUseCase
+    private lateinit var getNoteTreeUseCase: GetNoteTreeUseCase
     private lateinit var fileLogger: FileLogger
     private lateinit var context: Context
 
@@ -65,6 +71,8 @@ class SettingsViewModelTest {
             every { backupTreeUri } returns flowOf("")
             every { backupRetention } returns flowOf(7)
             every { lastBackupAt } returns flowOf(0L)
+            // v1.10.0 journal folder; null keeps the tree unread in init.
+            every { journalFolderId } returns flowOf(null)
         }
         authRepository = mockk()
         tokenManager = mockk(relaxed = true)
@@ -74,6 +82,10 @@ class SettingsViewModelTest {
         changePasswordUseCase = mockk()
         exportNotesUseCase = mockk()
         importNotesUseCase = mockk()
+        // v1.10.0 markdown round-trip + journal folder plumbing.
+        importMarkdownFolderUseCase = mockk()
+        exportMarkdownUseCase = mockk()
+        getNoteTreeUseCase = mockk()
         fileLogger = mockk(relaxed = true)
         // getString is only used to build user-facing messages. Matched with
         // concrete values: matchers on Android's vararg overload do not match
@@ -92,7 +104,8 @@ class SettingsViewModelTest {
         SettingsViewModel(
             context, settingsDataStore, authRepository, tokenManager, noteDao,
             pendingOperationDao, apiKeyRepository, changePasswordUseCase,
-            exportNotesUseCase, importNotesUseCase, fileLogger
+            exportNotesUseCase, importNotesUseCase, importMarkdownFolderUseCase,
+            exportMarkdownUseCase, getNoteTreeUseCase, fileLogger
         )
 
     @Test

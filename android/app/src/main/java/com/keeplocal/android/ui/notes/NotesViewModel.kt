@@ -6,14 +6,20 @@ import androidx.lifecycle.viewModelScope
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.SyncManager
 import com.keeplocal.android.data.local.SyncStatus
+import com.keeplocal.android.domain.model.FolderScope
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteTreeNode
 import com.keeplocal.android.domain.model.NoteTypeFilter
+import com.keeplocal.android.domain.model.SavedSearch
 import com.keeplocal.android.domain.model.SortMode
 import com.keeplocal.android.domain.usecase.auth.GetCurrentUserUseCase
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
 import com.keeplocal.android.domain.usecase.notes.DeleteNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.DuplicateNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.FindOrCreateTodayNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
 import com.keeplocal.android.domain.usecase.notes.GetNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.MoveNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.ReorderNotesUseCase
 import com.keeplocal.android.domain.usecase.notes.ToggleArchiveUseCase
 import com.keeplocal.android.domain.usecase.notes.TogglePinUseCase
@@ -92,7 +98,24 @@ data class NotesScreenState(
     /** True when the cache likely holds more notes beyond the window. */
     val hasMore: Boolean = false,
     /** Wall-clock time of the last successful server sync (0 = never). */
-    val lastSyncAt: Long = 0L
+    val lastSyncAt: Long = 0L,
+    // --- v1.10.0 ---
+    /** Folder node the grid is scoped to; All = unscoped, Root = top level. */
+    val folderScope: FolderScope = FolderScope.All,
+    /** Whole live library as a tree — the sidebar panel's source. */
+    val noteTree: List<NoteTreeNode> = emptyList(),
+    /** Expanded tree nodes; collapsed elsewhere. */
+    val expandedFolderIds: Set<String> = emptySet(),
+    /** Per-account tag palette (tag name → hex). */
+    val tagColors: Map<String, String> = emptyMap(),
+    /** Per-account saved searches (smart folders). */
+    val savedSearches: List<SavedSearch> = emptyList(),
+    /** Note the move picker is open for; null while closed or bulk-moving. */
+    val movePickerFor: String? = null,
+    /** True while the picker shows — a bulk move carries a null movePickerFor. */
+    val movePickerOpen: Boolean = false,
+    /** Picker contents: candidate parents with their depth for indentation. */
+    val moveCandidates: List<Pair<Note, Int>> = emptyList()
 )
 
 @HiltViewModel
@@ -107,6 +130,9 @@ class NotesViewModel @Inject constructor(
     private val getCurrentUserUseCase: GetCurrentUserUseCase,
     private val getFriendsUseCase: GetFriendsUseCase,
     private val duplicateNoteUseCase: DuplicateNoteUseCase,
+    private val getNoteTreeUseCase: GetNoteTreeUseCase,
+    private val moveNoteUseCase: MoveNoteUseCase,
+    private val findOrCreateTodayNoteUseCase: FindOrCreateTodayNoteUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val syncManager: SyncManager,
     @ApplicationContext private val appContext: Context
@@ -119,11 +145,28 @@ class NotesViewModel @Inject constructor(
     private val _reloginEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val reloginEvent = _reloginEvent.asSharedFlow()
 
+    /** "Open this note in the editor" — fired by "Heute" (journal). */
+    private val _openNoteEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val openNoteEvent = _openNoteEvent.asSharedFlow()
+
     private var loadJob: Job? = null
     private var searchJob: Job? = null
 
     init {
         loadNotes()
+        refreshTree()
+        // Tag palette + saved searches (v1.10.0): per-account, synced via
+        // the preferences endpoint.
+        viewModelScope.launch {
+            settingsDataStore.tagColors.collect { colors ->
+                _uiState.update { it.copy(tagColors = colors) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.savedSearches.collect { searches ->
+                _uiState.update { it.copy(savedSearches = searches) }
+            }
+        }
         // Launcher-shortcut "Suche": arrives via IncomingIntents while the
         // nav host brings the notes screen into view. An empty query is the
         // pure "open and focus the search field" variant.
@@ -224,7 +267,8 @@ class NotesViewModel @Inject constructor(
                 archived = state.showArchived,
                 sortMode = state.sortMode,
                 limit = state.listLimit,
-                filter = state.typeFilter
+                filter = state.typeFilter,
+                scope = state.folderScope
             ).collect { result ->
                 applyNotesResult(result)
             }
@@ -251,6 +295,36 @@ class NotesViewModel @Inject constructor(
         // Pinned set/order may have changed — keep the home-screen widgets
         // in step with what the user just saw.
         if (data != null) viewModelScope.launch { refreshWidget() }
+        // The tree follows the cache: a created folder, a delete-reparenting
+        // or an offline import lands here without its own collector.
+        if (data != null) refreshTree()
+    }
+
+    /**
+     * Re-reads the sidebar tree (v1.10.0). Also guards the folder scope: a
+     * node that vanished (deleted elsewhere, sync shrink) falls back to All
+     * instead of silently showing an empty grid forever.
+     */
+    fun refreshTree() {
+        viewModelScope.launch {
+            val tree = getNoteTreeUseCase().getOrNull().orEmpty()
+            _uiState.update { state ->
+                val liveIds = tree.flatMapTo(mutableSetOf()) { node -> node.flatten().map { it.note.id } }
+                val scopeValid = state.folderScope !is FolderScope.Node ||
+                    state.folderScope.id in liveIds
+                // The whole library's tags — the sidebar lists them even when
+                // the visible window only carries a page. An empty tree must
+                // never wipe tags the note window already produced.
+                val treeTags = if (liveIds.isEmpty()) null else tree.flatMap { node -> node.flatten() }
+                    .flatMapTo(mutableSetOf()) { it.note.tags }
+                    .sorted()
+                state.copy(
+                    noteTree = tree,
+                    folderScope = if (scopeValid) state.folderScope else FolderScope.All,
+                    availableTags = treeTags ?: state.availableTags
+                )
+            }
+        }
     }
 
     private suspend fun refreshWidget() {
@@ -280,7 +354,8 @@ class NotesViewModel @Inject constructor(
                 archived = state.showArchived,
                 sortMode = state.sortMode,
                 limit = newLimit,
-                filter = state.typeFilter
+                filter = state.typeFilter,
+                scope = state.folderScope
             ).collect { result -> applyNotesResult(result) }
         }
     }
@@ -319,8 +394,132 @@ class NotesViewModel @Inject constructor(
     }
 
     fun onTagSelected(tag: String?) {
-        _uiState.update { it.copy(selectedTag = tag) }
+        _uiState.update { it.copy(selectedTag = tag, folderScope = FolderScope.All) }
         loadNotes()
+    }
+
+    // --- v1.10.0: tree scope, saved searches, journal, moves ---
+
+    /**
+     * Scopes the grid to a tree node. Selecting a folder clears tag/archive
+     * views — a scope only ever narrows one dimension at a time.
+     */
+    fun selectFolder(scope: FolderScope) {
+        if (_uiState.value.folderScope == scope && _uiState.value.showArchived.not()) {
+            // Re-tap on the active folder: collapse back to everything.
+            _uiState.update { it.copy(folderScope = FolderScope.All) }
+        } else {
+            _uiState.update { it.copy(folderScope = scope, selectedTag = null, showArchived = false) }
+        }
+        loadNotes()
+    }
+
+    /** Expand/collapse a tree node in the sidebar panel. */
+    fun toggleFolderExpanded(folderId: String) {
+        _uiState.update {
+            val expanded = it.expandedFolderIds.toMutableSet()
+            if (!expanded.remove(folderId)) expanded.add(folderId)
+            it.copy(expandedFolderIds = expanded)
+        }
+    }
+
+    /** Runs a saved search: query + type chip + tag from one tap. */
+    fun applySavedSearch(search: SavedSearch) {
+        _uiState.update {
+            it.copy(
+                searchQuery = search.query,
+                typeFilter = NoteTypeFilter.fromKey(search.typeFilter),
+                selectedTag = search.tag.ifBlank { null },
+                folderScope = FolderScope.All,
+                showArchived = false
+            )
+        }
+        loadNotes()
+    }
+
+    /**
+     * "Heute" (journal): opens today's note, creating it on first access.
+     * Emits [openNoteEvent] for the editor navigation.
+     */
+    fun openTodayNote() {
+        viewModelScope.launch {
+            when (val result = findOrCreateTodayNoteUseCase()) {
+                is Result.Success -> {
+                    refreshTree()
+                    _openNoteEvent.tryEmit(result.data.id)
+                }
+                is Result.Error -> showSnackbar(result.message)
+            }
+        }
+    }
+
+    /**
+     * Opens the move picker. [noteId] null = bulk move for the current
+     * selection. Candidates exclude the moved notes' own subtrees — those are
+     * the cycles the repository would reject anyway.
+     */
+    fun beginMove(noteId: String?) {
+        viewModelScope.launch {
+            val movingIds = noteId?.let { setOf(it) } ?: _uiState.value.selectedNoteIds
+            val flat = _uiState.value.noteTree.flatMap { it.flatten() }
+            val excluded = movingIds.flatMap { subtreeIdsOf(it, flat) }.toSet() + movingIds
+            val candidates = flat
+                .filter { it.note.id !in excluded }
+                .map { it.note to it.depth }
+            _uiState.update {
+                it.copy(
+                    movePickerFor = noteId,
+                    movePickerOpen = true,
+                    moveCandidates = candidates
+                )
+            }
+        }
+    }
+
+    /** A note's descendants, walked over the flattened tree. */
+    private fun subtreeIdsOf(noteId: String, flat: List<NoteTreeNode>): List<String> {
+        val childrenOf = flat.groupBy { it.note.parentId }
+        val out = mutableListOf<String>()
+        var frontier = childrenOf[noteId].orEmpty().map { it.note.id }
+        while (frontier.isNotEmpty()) {
+            out += frontier
+            frontier = frontier.flatMap { childrenOf[it].orEmpty().map { c -> c.note.id } }
+        }
+        return out
+    }
+
+    /** Performs the pending move (single note or selection) and closes the picker. */
+    fun moveTo(parentId: String?) {
+        val target = _uiState.value.movePickerFor
+        val selected = _uiState.value.selectedNoteIds
+        if (target == null && selected.isEmpty()) {
+            cancelMove()
+            return
+        }
+        viewModelScope.launch {
+            val ids = target?.let { listOf(it) } ?: selected.toList()
+            var firstError: String? = null
+            ids.forEach { id ->
+                val result = moveNoteUseCase(id, parentId)
+                if (result is Result.Error && firstError == null) firstError = result.message
+            }
+            _uiState.update {
+                it.copy(
+                    movePickerFor = null,
+                    movePickerOpen = false,
+                    moveCandidates = emptyList(),
+                    selectedNoteIds = emptySet(),
+                    isMultiSelectMode = false
+                )
+            }
+            firstError?.let { showSnackbar(it) }
+            refreshTree()
+            loadNotes()
+        }
+    }
+
+    fun cancelMove() {
+        _uiState.update { it.copy(movePickerFor = null, movePickerOpen = false, moveCandidates = emptyList()) }
     }
 
     /** Restricts the visible list to one note type (v1.9.0 Nr. 7). */
@@ -336,7 +535,7 @@ class NotesViewModel @Inject constructor(
     }
 
     fun toggleArchiveView(showArchived: Boolean) {
-        _uiState.update { it.copy(showArchived = showArchived) }
+        _uiState.update { it.copy(showArchived = showArchived, folderScope = FolderScope.All) }
         loadNotes()
     }
 

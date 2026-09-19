@@ -30,5 +30,12 @@ data class NoteEntity(
     val baseUpdatedAt: String? = null,
     // Reminder trigger time as epoch millis; null = no reminder. Room cannot
     // store Instant, and millis keep the v4 migration a single ADD COLUMN.
-    val remindAtEpochMs: Long? = null
+    val remindAtEpochMs: Long? = null,
+    // Tree (v1.10.0): parent note id; null = root level. Children survive a
+    // delete server-side (reparented one level up); locally the whole list is
+    // replaced on sync, so no cascade handling is needed here.
+    val parentId: String? = null,
+    // Code note (v1.10.0): monospace rendering. Boolean with SQL DEFAULT 0
+    // keeps the v5 migration a single ALTER TABLE like v4 before it.
+    val isCode: Boolean = false
 )

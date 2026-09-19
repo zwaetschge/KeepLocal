@@ -19,6 +19,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,9 +51,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
@@ -135,6 +139,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.keeplocal.android.R
+import com.keeplocal.android.domain.model.FolderScope
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
@@ -192,7 +197,7 @@ private fun PaneDivider() {
  */
 @Composable
 fun NotesScreen(
-    onNavigateToEditor: (String?) -> Unit,
+    onNavigateToEditor: (String?, String?) -> Unit,
     onNavigateToFriends: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -208,6 +213,12 @@ fun NotesScreen(
     // the existing login flow instead of retrying into nowhere.
     LaunchedEffect(Unit) {
         viewModel.reloginEvent.collect { onReLoginRequired() }
+    }
+
+    // "Heute" (v1.10.0): the journal note was found/created — straight to
+    // the editor with it.
+    LaunchedEffect(Unit) {
+        viewModel.openNoteEvent.collect { id -> onNavigateToEditor(id, null) }
     }
 
     if (windowInfo.layoutMode.isTwoPane) {
@@ -240,7 +251,7 @@ fun NotesScreen(
 
 @Composable
 private fun NotesSinglePaneLayout(
-    onNavigateToEditor: (String?) -> Unit,
+    onNavigateToEditor: (String?, String?) -> Unit,
     onNavigateToFriends: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -257,13 +268,15 @@ private fun NotesSinglePaneLayout(
     // Tablet portrait has room for the sidebar to stay on screen; a phone does not.
     val permanentSidebar = windowInfo.layoutMode == LayoutMode.TABLET_PORTRAIT
 
+    // New notes land inside the folder the grid is scoped to (v1.10.0).
+    val folderParentId = (uiState.folderScope as? FolderScope.Node)?.id
+
     val sidebar = @Composable {
         NotesSidebarContent(
             state = uiState,
             showLogo = true,
             onSelectNotes = {
-                viewModel.onTagSelected(null)
-                viewModel.toggleArchiveView(false)
+                viewModel.selectFolder(FolderScope.Root)
                 scope.launch { drawerState.close() }
             },
             onSelectArchive = {
@@ -298,6 +311,19 @@ private fun NotesSinglePaneLayout(
             onNavigateToTags = {
                 scope.launch { drawerState.close() }
                 onNavigateToTags()
+            },
+            onSelectToday = {
+                viewModel.openTodayNote()
+                scope.launch { drawerState.close() }
+            },
+            onSelectFolder = { folderScope ->
+                viewModel.selectFolder(folderScope)
+                scope.launch { drawerState.close() }
+            },
+            onToggleFolderExpanded = viewModel::toggleFolderExpanded,
+            onSelectSavedSearch = { search ->
+                viewModel.applySavedSearch(search)
+                scope.launch { drawerState.close() }
             }
         )
     }
@@ -312,8 +338,8 @@ private fun NotesSinglePaneLayout(
                 viewModel = viewModel,
                 showMenuButton = false,
                 onOpenDrawer = {},
-                onOpenNote = { onNavigateToEditor(it) },
-                onCreateNote = { onNavigateToEditor(null) },
+                onOpenNote = { onNavigateToEditor(it, null) },
+                onCreateNote = { onNavigateToEditor(null, folderParentId) },
                 selectedNoteId = null,
                 modifier = Modifier.weight(1f)
             )
@@ -327,8 +353,8 @@ private fun NotesSinglePaneLayout(
                 viewModel = viewModel,
                 showMenuButton = true,
                 onOpenDrawer = { scope.launch { drawerState.open() } },
-                onOpenNote = { onNavigateToEditor(it) },
-                onCreateNote = { onNavigateToEditor(null) },
+                onOpenNote = { onNavigateToEditor(it, null) },
+                onCreateNote = { onNavigateToEditor(null, folderParentId) },
                 selectedNoteId = null
             )
         }
@@ -360,6 +386,14 @@ private fun NotesTwoPaneLayout(
 
     BackHandler(enabled = detail != null) { detail = null }
 
+    // Journal (v1.10.0): "Heute" opens in the detail pane here.
+    LaunchedEffect(Unit) {
+        viewModel.openNoteEvent.collect { id ->
+            editorSerial += 1
+            detail = EditorRequest(noteId = id, serial = editorSerial)
+        }
+    }
+
     val listPane = @Composable { modifier: Modifier ->
         NotesPane(
             viewModel = viewModel,
@@ -368,7 +402,11 @@ private fun NotesTwoPaneLayout(
             onOpenNote = { id -> detail = EditorRequest(noteId = id, serial = editorSerial) },
             onCreateNote = {
                 editorSerial += 1
-                detail = EditorRequest(noteId = null, serial = editorSerial)
+                detail = EditorRequest(
+                    noteId = null,
+                    serial = editorSerial,
+                    parentId = (uiState.folderScope as? FolderScope.Node)?.id
+                )
             },
             selectedNoteId = detail?.noteId,
             modifier = modifier
@@ -382,6 +420,10 @@ private fun NotesTwoPaneLayout(
                 detail = null
                 viewModel.refresh()
             },
+            onOpenNote = { id ->
+                editorSerial += 1
+                detail = EditorRequest(noteId = id, serial = editorSerial)
+            },
             modifier = modifier
         )
     }
@@ -391,16 +433,14 @@ private fun NotesTwoPaneLayout(
         // Below WideSidebarBreakpoint (an unfolded foldable at 4:3, say) 264dp of
         // labels costs the editor too much room, so it starts as an icon rail.
         if (windowInfo.layoutMode == LayoutMode.TABLET_LANDSCAPE) {
-            val onSelectNotes = {
-                viewModel.onTagSelected(null)
-                viewModel.toggleArchiveView(false)
-            }
+            val onSelectNotes = { viewModel.selectFolder(FolderScope.Root) }
             val onSelectArchive = {
                 viewModel.onTagSelected(null)
                 viewModel.toggleArchiveView(true)
             }
             val onSelectTrash = { onNavigateToTrash() }
             val onSelectReminders = { onNavigateToReminders() }
+            val onSelectToday = { viewModel.openTodayNote() }
 
             if (sidebarExpanded) {
                 PermanentDrawerSheet(
@@ -421,7 +461,11 @@ private fun NotesTwoPaneLayout(
                         onNavigateToFriends = onNavigateToFriends,
                         onNavigateToAdmin = onNavigateToAdmin,
                         onNavigateToSettings = onNavigateToSettings,
-                        onNavigateToTags = onNavigateToTags
+                        onNavigateToTags = onNavigateToTags,
+                        onSelectToday = onSelectToday,
+                        onSelectFolder = viewModel::selectFolder,
+                        onToggleFolderExpanded = viewModel::toggleFolderExpanded,
+                        onSelectSavedSearch = viewModel::applySavedSearch
                     )
                 }
             } else {
@@ -435,7 +479,8 @@ private fun NotesTwoPaneLayout(
                     onNavigateToFriends = onNavigateToFriends,
                     onNavigateToAdmin = onNavigateToAdmin,
                     onNavigateToSettings = onNavigateToSettings,
-                    onNavigateToTags = onNavigateToTags
+                    onNavigateToTags = onNavigateToTags,
+                    onSelectToday = onSelectToday
                 )
             }
 
@@ -478,7 +523,7 @@ private fun NotesTwoPaneLayout(
 }
 
 /** Editor pane target. [serial] forces a fresh editor for each new blank note. */
-data class EditorRequest(val noteId: String?, val serial: Int)
+data class EditorRequest(val noteId: String?, val serial: Int, val parentId: String? = null)
 
 /* ------------------------------------------------------------------ */
 /* The note list pane itself                                           */
@@ -551,6 +596,18 @@ private fun NotesPane(
     }
 
     val archivedText = stringResource(R.string.notes_archived_toast)
+
+    // Folder breadcrumb (v1.10.0): "Projekte / 2026" while the grid is scoped
+    // to a node; null outside a folder view.
+    val folderBreadcrumb = remember(uiState.folderScope, uiState.noteTree) {
+        val scope = uiState.folderScope as? FolderScope.Node ?: return@remember null
+        val flat = uiState.noteTree.flatMap { it.flatten() }
+        val byId = flat.associateBy { it.note.id }
+        val chain = generateSequence(scope.id) { id ->
+            byId[id]?.note?.parentId?.takeIf { it in byId }
+        }.mapNotNull { byId[it]?.note?.title?.ifBlank { null } }.toList()
+        if (chain.isEmpty()) null else chain.asReversed().joinToString(" / ")
+    }
 
     // Closing the search also clears the query — the list must never stay
     // invisibly filtered behind a regular-looking title.
@@ -627,6 +684,10 @@ private fun NotesPane(
                         IconButton(onClick = { showTagDialog = true }) {
                             Icon(Icons.Default.Label, contentDescription = stringResource(R.string.cd_tag_selection))
                         }
+                        // Bulk move (v1.10.0): the whole selection into one folder.
+                        IconButton(onClick = { viewModel.beginMove(null) }) {
+                            Icon(Icons.Default.DriveFileMove, contentDescription = stringResource(R.string.cd_move_selection))
+                        }
                         IconButton(onClick = viewModel::archiveSelectedNotes) {
                             Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.cd_archive_note))
                         }
@@ -681,8 +742,11 @@ private fun NotesPane(
                                     when {
                                         uiState.showArchived -> stringResource(R.string.notes_archived)
                                         uiState.selectedTag != null -> uiState.selectedTag!!
+                                        folderBreadcrumb != null -> folderBreadcrumb
                                         else -> stringResource(R.string.notes_title)
-                                    }
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -858,6 +922,15 @@ private fun NotesPane(
                                 variant = EmptyStateVariant.ARCHIVE,
                                 title = stringResource(R.string.archive_empty_title),
                                 subtitle = stringResource(R.string.archive_empty_subtitle)
+                            )
+                            // Folder view without children (v1.10.0): notes for
+                            // this node exist none — offer to start one inside.
+                            uiState.folderScope is FolderScope.Node -> EmptyState(
+                                variant = EmptyStateVariant.NOTES,
+                                title = stringResource(R.string.folder_empty_title),
+                                subtitle = stringResource(R.string.folder_empty_subtitle),
+                                actionLabel = stringResource(R.string.folder_empty_create),
+                                onAction = onCreateNote
                             )
                             else -> EmptyState(
                                 variant = EmptyStateVariant.NOTES,
@@ -1135,6 +1208,10 @@ private fun NotesPane(
                 viewModel.togglePin(note.id)
                 showContextMenu = null
             },
+            onMove = {
+                showContextMenu = null
+                viewModel.beginMove(note.id)
+            },
             onArchive = {
                 viewModel.toggleArchive(note.id)
                 viewModel.showSnackbar(archivedText)
@@ -1194,6 +1271,70 @@ private fun NotesPane(
             confirmButton = {}
         )
     }
+
+    // Move picker (v1.10.0): one note or the whole selection into a folder —
+    // the mobile answer to the WebUI's drag & drop in the tree.
+    if (uiState.movePickerOpen) {
+        MovePickerDialog(
+            candidates = uiState.moveCandidates,
+            onPick = { parentId -> viewModel.moveTo(parentId) },
+            onDismiss = viewModel::cancelMove
+        )
+    }
+}
+
+/**
+ * Folder chooser for moves (v1.10.0): root level on top, then every folder
+ * note (a note with children) indented by tree depth.
+ */
+@Composable
+private fun MovePickerDialog(
+    candidates: List<Pair<Note, Int>>,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.move_picker_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.move_to_root)) },
+                    leadingContent = { Icon(Icons.Default.Home, contentDescription = null) },
+                    modifier = Modifier.clickableListItem { onPick(null) }
+                )
+                if (candidates.isEmpty()) {
+                    Text(
+                        stringResource(R.string.move_no_folders),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+                candidates.forEach { (note, depth) ->
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                note.title.ifBlank { stringResource(R.string.editor_untitled) },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                        modifier = Modifier
+                            .padding(start = (depth * 12).dp)
+                            .clickableListItem { onPick(note.id) }
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
 }
 
 @Composable
@@ -1362,6 +1503,7 @@ private fun NoteContextSheet(
     note: Note,
     onDismiss: () -> Unit,
     onPin: () -> Unit,
+    onMove: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
@@ -1384,6 +1526,13 @@ private fun NoteContextSheet(
                 headlineContent = { Text(stringResource(R.string.editor_edit_note)) },
                 leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
                 modifier = Modifier.clickableListItem(onEdit)
+            )
+            // Move into a folder (v1.10.0) — the tree's mobile counterpart to
+            // the WebUI's drag & drop.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.action_move)) },
+                leadingContent = { Icon(Icons.Default.DriveFileMove, contentDescription = null) },
+                modifier = Modifier.clickableListItem(onMove)
             )
             // Share as text / duplicate (v1.8.0 Nr. 8) — the two actions that
             // used to be WebUI-only.

@@ -17,9 +17,13 @@ import com.keeplocal.android.data.local.dao.PendingOperationDao
 import com.keeplocal.android.data.local.entity.OperationType
 import com.keeplocal.android.data.repository.ApiKeyRepository
 import com.keeplocal.android.data.sync.BackgroundSync
+import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.domain.usecase.auth.ChangePasswordUseCase
+import com.keeplocal.android.domain.usecase.notes.ExportMarkdownUseCase
 import com.keeplocal.android.domain.usecase.notes.ExportNotesUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
+import com.keeplocal.android.domain.usecase.notes.ImportMarkdownFolderUseCase
 import com.keeplocal.android.domain.usecase.notes.ImportNotesUseCase
 import com.keeplocal.android.util.GoogleKeepImportParser
 import com.keeplocal.android.ui.notes.NoteViewMode
@@ -88,6 +92,18 @@ data class SettingsUiState(
     val backupRetention: Int = 7,
     /** Wall-clock of the last written backup; 0 = never. */
     val lastBackupAt: Long = 0L,
+
+    // v1.10.0: journal folder + markdown round-trip.
+    /** Folder note that collects the "Heute" journal notes; null = root. */
+    val journalFolderId: String? = null,
+    /** Display title of the journal folder; null = root or vanished. */
+    val journalFolderTitle: String? = null,
+    /** Folder notes for the journal picker, loaded on demand. */
+    val folderCandidates: List<Note> = emptyList(),
+    /** Journal picker open. */
+    val journalPickerOpen: Boolean = false,
+    /** Markdown import/export in flight. */
+    val isTransferring: Boolean = false,
     val message: String? = null
 )
 
@@ -103,6 +119,9 @@ class SettingsViewModel @Inject constructor(
     private val changePasswordUseCase: ChangePasswordUseCase,
     private val exportNotesUseCase: ExportNotesUseCase,
     private val importNotesUseCase: ImportNotesUseCase,
+    private val importMarkdownFolderUseCase: ImportMarkdownFolderUseCase,
+    private val exportMarkdownUseCase: ExportMarkdownUseCase,
+    private val getNoteTreeUseCase: GetNoteTreeUseCase,
     private val fileLogger: FileLogger
 ) : ViewModel() {
 
@@ -138,6 +157,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.lastBackupAt.collect { at ->
                 _uiState.update { it.copy(lastBackupAt = at) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.journalFolderId.collect { id ->
+                _uiState.update { it.copy(journalFolderId = id) }
+                resolveJournalFolderTitle(id)
             }
         }
     }
@@ -424,6 +449,111 @@ class SettingsViewModel @Inject constructor(
             settingsDataStore.setBackupIntervalHours(hours)
             runCatching { BackupScheduler.schedule(context, hours) }
                 .onFailure { fileLogger.error("Settings", "backup schedule failed", it) }
+        }
+    }
+
+    // --- Markdown round-trip + journal (v1.10.0) ---
+
+    /**
+     * Trilium/Obsidian-style import: the picked SAF folder tree becomes
+     * folder notes and children. Text-only; binaries are skipped by the walk.
+     */
+    fun importMarkdownFromTree(treeUri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTransferring = true) }
+            when (val result = importMarkdownFolderUseCase(treeUri)) {
+                is Result.Success -> _uiState.update {
+                    it.copy(
+                        isTransferring = false,
+                        message = context.getString(R.string.import_markdown_done, result.data)
+                    )
+                }
+                is Result.Error -> _uiState.update {
+                    it.copy(isTransferring = false, message = context.getString(R.string.import_markdown_failed, result.message))
+                }
+            }
+        }
+    }
+
+    /**
+     * Markdown ZIP export into the SAF document the user created. Offline
+     * edits are pushed first by the use case, so the archive is complete.
+     */
+    fun writeMarkdownExport(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTransferring = true) }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        exportMarkdownUseCase(output)
+                    } ?: throw IOException("Stream closed")
+                }.getOrNull() ?: Result.Error("Stream closed")
+            }
+            _uiState.update { it.copy(isTransferring = false) }
+            when (result) {
+                is Result.Success -> _uiState.update {
+                    it.copy(message = context.getString(R.string.export_markdown_done, result.data))
+                }
+                is Result.Error -> _uiState.update {
+                    it.copy(message = context.getString(R.string.export_markdown_failed, result.message))
+                }
+            }
+        }
+    }
+
+    /** Loads the folder notes for the journal picker. */
+    fun openJournalPicker() {
+        viewModelScope.launch {
+            val folders = getNoteTreeUseCase().getOrNull().orEmpty()
+                .flatMap { it.flatten() }
+                .filter { it.children.isNotEmpty() } // only real folders
+                .map { it.note }
+            _uiState.update { it.copy(folderCandidates = folders, journalPickerOpen = true) }
+        }
+    }
+
+    fun closeJournalPicker() {
+        _uiState.update { it.copy(journalPickerOpen = false) }
+    }
+
+    /**
+     * Journal folder (v1.10.0): where "Heute" notes land. null = root level.
+     * Persisted locally and pushed with the account preferences.
+     */
+    fun setJournalFolder(folderId: String?) {
+        _uiState.update {
+            it.copy(
+                journalFolderId = folderId,
+                // The picker's candidates are loaded, so the title is known;
+                // root just clears it.
+                journalFolderTitle = folderId?.let { id ->
+                    _uiState.value.folderCandidates.firstOrNull { f -> f.id == id }?.title
+                },
+                journalPickerOpen = false
+            )
+        }
+        viewModelScope.launch {
+            settingsDataStore.setJournalFolderId(folderId)
+            authRepository.pushJournalFolderId(folderId)
+                .takeIf { it.isError }
+                ?.let { fileLogger.error("Settings", "journalFolder push failed: ${(it as Result.Error).message}") }
+        }
+    }
+
+    /** Resolves the journal folder's display title from the tree cache. */
+    private fun resolveJournalFolderTitle(folderId: String?) {
+        if (folderId == null) {
+            _uiState.update { it.copy(journalFolderTitle = null) }
+            return
+        }
+        viewModelScope.launch {
+            val title = getNoteTreeUseCase().getOrNull().orEmpty()
+                .flatMap { it.flatten() }
+                .firstOrNull { it.note.id == folderId }?.note?.title
+            // A picker pick may have won the race — only apply if still current.
+            if (_uiState.value.journalFolderId == folderId) {
+                _uiState.update { it.copy(journalFolderTitle = title) }
+            }
         }
     }
 

@@ -8,10 +8,14 @@ import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
 import com.keeplocal.android.domain.model.NoteImage
+import com.keeplocal.android.domain.model.NoteTreeNode
 import com.keeplocal.android.domain.repository.MediaRepository
+import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.domain.usecase.friends.GetFriendsUseCase
 import com.keeplocal.android.domain.usecase.notes.CreateNoteUseCase
+import com.keeplocal.android.domain.usecase.notes.GetBacklinksUseCase
 import com.keeplocal.android.domain.usecase.notes.GetLinkPreviewUseCase
+import com.keeplocal.android.domain.usecase.notes.GetNoteTreeUseCase
 import com.keeplocal.android.domain.usecase.notes.GetNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.ShareNoteUseCase
 import com.keeplocal.android.domain.usecase.notes.TogglePinUseCase
@@ -52,6 +56,9 @@ class NoteEditorViewModelTest {
     private lateinit var getFriendsUseCase: GetFriendsUseCase
     private lateinit var togglePinUseCase: TogglePinUseCase
     private lateinit var getLinkPreviewUseCase: GetLinkPreviewUseCase
+    private lateinit var getNoteTreeUseCase: GetNoteTreeUseCase
+    private lateinit var getBacklinksUseCase: GetBacklinksUseCase
+    private lateinit var noteRepository: NoteRepository
     private lateinit var mediaRepository: MediaRepository
     private lateinit var settingsDataStore: SettingsDataStore
     private lateinit var noteDraftStore: NoteDraftStore
@@ -75,9 +82,17 @@ class NoteEditorViewModelTest {
         getFriendsUseCase = mockk()
         togglePinUseCase = mockk()
         getLinkPreviewUseCase = mockk()
+        // v1.10.0: empty tree/backlinks keep tag suggestions and the
+        // "Erwähnt in" section at defaults.
+        getNoteTreeUseCase = mockk()
+        coEvery { getNoteTreeUseCase() } returns Result.Success(emptyList<NoteTreeNode>())
+        getBacklinksUseCase = mockk()
+        coEvery { getBacklinksUseCase(any(), any()) } returns Result.Success(emptyList<Note>())
+        noteRepository = mockk(relaxed = true)
         mediaRepository = mockk(relaxed = true)
         settingsDataStore = mockk {
             every { voiceTranscription } returns flowOf(true)
+            every { tagColors } returns flowOf(emptyMap())
         }
         noteDraftStore = mockk(relaxed = true)
         context = mockk(relaxed = true)
@@ -95,7 +110,8 @@ class NoteEditorViewModelTest {
         return NoteEditorViewModel(
             savedStateHandle, getNoteUseCase, createNoteUseCase,
             updateNoteUseCase, shareNoteUseCase, getFriendsUseCase,
-            togglePinUseCase, getLinkPreviewUseCase, mediaRepository,
+            togglePinUseCase, getLinkPreviewUseCase, getNoteTreeUseCase,
+            getBacklinksUseCase, noteRepository, mediaRepository,
             settingsDataStore, noteDraftStore, context
         )
     }

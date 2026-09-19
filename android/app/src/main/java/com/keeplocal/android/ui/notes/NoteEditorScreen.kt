@@ -77,11 +77,13 @@ import java.util.Locale
 @Composable
 fun NoteEditorScreen(
     onNavigateBack: () -> Unit,
+    onOpenNote: (String) -> Unit = {},
     viewModel: NoteEditorViewModel = hiltViewModel()
 ) {
     NoteEditorContent(
         viewModel = viewModel,
         onNavigateBack = onNavigateBack,
+        onOpenNote = onOpenNote,
         isEmbedded = false
     )
 }
@@ -96,7 +98,8 @@ fun NoteEditorScreen(
 fun NoteEditorContent(
     viewModel: NoteEditorViewModel,
     onNavigateBack: () -> Unit,
-    isEmbedded: Boolean
+    isEmbedded: Boolean,
+    onOpenNote: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showColorPicker by remember { mutableStateOf(false) }
@@ -270,6 +273,15 @@ fun NoteEditorContent(
                         Icon(
                             if (uiState.isTodoList) Icons.AutoMirrored.Filled.Notes else Icons.Default.CheckBox,
                             contentDescription = stringResource(R.string.editor_todo_mode)
+                        )
+                    }
+                    // Code note (v1.10.0): monospaced content.
+                    IconButton(onClick = { viewModel.toggleCode() }) {
+                        Icon(
+                            Icons.Default.Code,
+                            contentDescription = stringResource(R.string.editor_code_mode),
+                            tint = if (uiState.isCode) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = { showColorPicker = true }) {
@@ -582,6 +594,11 @@ fun NoteEditorContent(
                     onValueChange = viewModel::updateContent,
                     placeholder = { Text(stringResource(R.string.editor_content_hint)) },
                     modifier = Modifier.fillMaxWidth().weight(1f),
+                    textStyle = if (uiState.isCode) {
+                        MaterialTheme.typography.bodyLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    } else {
+                        MaterialTheme.typography.bodyLarge
+                    },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -597,6 +614,33 @@ fun NoteEditorContent(
                         VisualTransformation.None
                     }
                 )
+                // Wiki links (v1.10.0): [[Ziel]] chips under the text. A dimmed
+                // chip means no note carries that title — fix the name or create
+                // the note and it resolves on the next keystroke.
+                if (uiState.wikiLinks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        uiState.wikiLinks.forEach { link ->
+                            AssistChip(
+                                onClick = { link.noteId?.let(onOpenNote) },
+                                enabled = link.noteId != null,
+                                label = { Text(link.target) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Link,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
                 // Tappable links (v1.8.0 Nr. 6): URLs the text carries open in
                 // a Custom Tab. Links that already have a preview card don't
                 // need a chip — the card itself is tappable.
@@ -733,6 +777,38 @@ fun NoteEditorContent(
                 )
             }
 
+            // "Erwähnt in" (v1.10.0): backlinks — notes whose content carries
+            // a [[this note's title]] link.
+            if (uiState.backlinks.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.editor_backlinks),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        uiState.backlinks.forEach { note ->
+                            AssistChip(
+                                onClick = { onOpenNote(note.id) },
+                                label = { Text(note.title.ifBlank { stringResource(R.string.editor_untitled) }) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Link,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Tags
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
@@ -743,10 +819,23 @@ fun NoteEditorContent(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         uiState.tags.forEach { tag ->
+                            val tagColor = remember(tag, uiState.tagColors) {
+                                tagChipColor(uiState.tagColors[tag])
+                            }
                             InputChip(
                                 selected = false,
                                 onClick = { viewModel.removeTag(tag) },
                                 label = { Text(tag) },
+                                leadingIcon = tagColor?.let { color ->
+                                    {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(color)
+                                        )
+                                    }
+                                },
                                 trailingIcon = {
                                     Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
                                 }
@@ -772,6 +861,36 @@ fun NoteEditorContent(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = viewModel::addTag) {
                         Icon(Icons.Default.Add, contentDescription = null)
+                    }
+                }
+
+                // Autocomplete (v1.10.0): known tags matching the input.
+                if (uiState.tagSuggestions.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        uiState.tagSuggestions.forEach { suggestion ->
+                            AssistChip(
+                                onClick = { viewModel.applyTagSuggestion(suggestion) },
+                                label = { Text(suggestion) },
+                                leadingIcon = {
+                                    val color = remember(suggestion, uiState.tagColors) {
+                                        tagChipColor(uiState.tagColors[suggestion])
+                                    }
+                                    if (color != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(color)
+                                        )
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -982,6 +1101,13 @@ private fun linkHost(url: String): String =
     url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
         .substringBefore('/')
         .ifBlank { url }
+
+/**
+ * A tag's palette color as a Compose color (v1.10.0); null when the tag has
+ * none or the stored value is not a parseable hex.
+ */
+internal fun tagChipColor(hex: String?): androidx.compose.ui.graphics.Color? =
+    hex?.let { runCatching { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
 
 @Composable
 fun ShareNoteDialog(

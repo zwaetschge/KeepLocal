@@ -154,6 +154,10 @@ class SyncManager @Inject constructor(
                 // server id, so the following UPDATE/TOGGLE ops hit the note
                 // that was just created instead of 404-ing on the offline id.
                 pendingOperationDao.reassignNoteId(noteId, serverId)
+                // Tree (v1.10.0): children created offline still reference the
+                // temporary id in their parentId — move them onto the server
+                // id, or the structure silently falls apart on replay.
+                noteDao.reassignParentId(noteId, serverId)
                 idRewrites[op.noteId] = serverId
                 return OpOutcome.SYNCED
             }

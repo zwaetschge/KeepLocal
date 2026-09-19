@@ -25,7 +25,7 @@ import com.keeplocal.android.util.IncomingIntents
 object Routes {
     const val SETUP = "setup"
     const val NOTES = "notes"
-    const val NOTE_EDITOR = "note_editor?noteId={noteId}"
+    const val NOTE_EDITOR = "note_editor?noteId={noteId}&parentId={parentId}"
     const val FRIENDS = "friends"
     const val TRASH = "trash"
     const val ADMIN = "admin"
@@ -33,8 +33,14 @@ object Routes {
     const val TAGS = "tags"
     const val REMINDERS = "reminders"
 
-    fun noteEditor(noteId: String? = null): String =
-        if (noteId != null) "note_editor?noteId=$noteId" else "note_editor"
+    fun noteEditor(noteId: String? = null, parentId: String? = null): String =
+        buildString {
+            append("note_editor")
+            // parentId (v1.10.0) only matters for brand-new notes started
+            // inside a folder; existing notes carry their own parent.
+            if (noteId != null) append("?noteId=").append(noteId)
+            else if (parentId != null) append("?parentId=").append(parentId)
+        }
 }
 
 private const val TRANSITION_DURATION = 300
@@ -101,8 +107,8 @@ fun AppNavigation() {
 
         composable(Routes.NOTES) {
             NotesScreen(
-                onNavigateToEditor = { noteId ->
-                    navController.navigate(Routes.noteEditor(noteId))
+                onNavigateToEditor = { noteId, parentId ->
+                    navController.navigate(Routes.noteEditor(noteId, parentId))
                 },
                 onNavigateToFriends = {
                     navController.navigate(Routes.FRIENDS)
@@ -137,11 +143,20 @@ fun AppNavigation() {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("parentId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) {
             NoteEditorScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                // Wiki links / "Erwähnt in" (v1.10.0) push the target note.
+                onOpenNote = { noteId ->
+                    navController.navigate(Routes.noteEditor(noteId))
+                }
             )
         }
 

@@ -1,12 +1,16 @@
 package com.keeplocal.android.domain.repository
 
+import com.keeplocal.android.domain.model.FolderScope
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteTreeNode
 import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
+import com.keeplocal.android.util.MarkdownNoteParser
 import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.Result
 import kotlinx.coroutines.flow.Flow
+import java.io.OutputStream
 
 interface NoteRepository {
     /**
@@ -15,7 +19,8 @@ interface NoteRepository {
      * [sortMode] and [limit] (paging window; null = everything) apply equally
      * to fresh server data and to the offline fallback. [filter] (v1.9.0)
      * narrows the result to a structural type; unlike the server-side search
-     * it is applied locally, in SQL, so it also works offline.
+     * it is applied locally, in SQL, so it also works offline. [scope]
+     * (v1.10.0) narrows the grid to one tree node or the root level.
      */
     fun getNotes(
         search: String? = null,
@@ -23,7 +28,8 @@ interface NoteRepository {
         archived: Boolean = false,
         sortMode: SortMode = SortMode.MANUAL,
         limit: Int? = null,
-        filter: NoteTypeFilter = NoteTypeFilter.ALL
+        filter: NoteTypeFilter = NoteTypeFilter.ALL,
+        scope: FolderScope = FolderScope.All
     ): Flow<Result<List<Note>>>
 
     /** Room-only view for cheap re-reads: sort switch, "load more", widget.
@@ -33,7 +39,8 @@ interface NoteRepository {
         archived: Boolean = false,
         sortMode: SortMode = SortMode.MANUAL,
         limit: Int? = null,
-        filter: NoteTypeFilter = NoteTypeFilter.ALL
+        filter: NoteTypeFilter = NoteTypeFilter.ALL,
+        scope: FolderScope = FolderScope.All
     ): Flow<Result<List<Note>>>
     suspend fun getNote(id: String): Result<Note>
     suspend fun createNote(note: Note): Result<Note>
@@ -99,4 +106,59 @@ interface NoteRepository {
      * created like a new note (own id, reminders kept, sharing not copied).
      */
     suspend fun duplicateNote(noteId: String, copyLabel: String): Result<Note>
+
+    // --- Tree, wiki links, journal (v1.10.0) ---
+
+    /**
+     * The whole live tree nested in memory out of the Room cache. A note with
+     * children is a folder — there is no separate folder type. Roots are notes
+     * without a parent; orphans whose parent row is missing are surfaced as
+     * roots instead of silently disappearing.
+     */
+    suspend fun getNoteTree(): Result<List<NoteTreeNode>>
+
+    /**
+     * Moves a note to another parent (null = root level). Cycles are rejected
+     * locally before anything is sent — a note never moves into itself or its
+     * own subtree. Routes through [updateNote], so the move is offline-capable
+     * and conflict-guarded like any edit.
+     */
+    suspend fun moveNote(id: String, parentId: String?): Result<Note>
+
+    /** All ids in the note's subtree, [id] itself included — the move picker
+     *  disables these targets, bulk actions bound their scope with it. */
+    suspend fun getSubtreeIds(id: String): List<String>
+
+    /**
+     * Wiki-link resolution: [[Title]] targets notes by exact title
+     * (case-insensitive). Several notes may share a title — the caller picks.
+     */
+    suspend fun findByExactTitle(title: String): Result<List<Note>>
+
+    /**
+     * Notes whose content mentions [[title]] ("Erwähnt in"). Pure Room query —
+     * works offline and updates with every cache refresh.
+     */
+    suspend fun getBacklinks(title: String, excludeId: String): Result<List<Note>>
+
+    /**
+     * Journal (v1.10.0): the note for today, titled with the ISO date
+     * ("2026-09-19") inside the configured journal folder (root level when no
+     * folder is set). Creates it on first access of the day, tagged "Journal".
+     */
+    suspend fun findOrCreateTodayNote(): Result<Note>
+
+    /**
+     * Markdown export (v1.10.0): streams the server-built ZIP (folders =
+     * directories, one .md per note) into [output]. The caller owns the
+     * stream and closes it. Returns the number of bytes written.
+     */
+    suspend fun exportMarkdownTo(output: OutputStream): Result<Long>
+
+    /**
+     * Markdown/Trilium import (v1.10.0): turns traversed .md files into notes
+     * — directories become folder notes (`_index.md` supplies their content),
+     * files become their children. Returns how many notes were created.
+     */
+    suspend fun importMarkdownFiles(files: List<MarkdownNoteParser.FileEntry>): Result<Int>
 }

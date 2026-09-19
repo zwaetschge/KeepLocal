@@ -15,22 +15,30 @@ import com.keeplocal.android.data.local.entity.OperationType
 import com.keeplocal.android.data.local.entity.PendingOperationEntity
 import com.keeplocal.android.data.local.entity.toEntity
 import com.keeplocal.android.data.local.entity.toDomain as entityToDomain
+import com.keeplocal.android.domain.model.FolderScope
 import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.NoteTreeNode
 import com.keeplocal.android.domain.model.NoteTypeFilter
 import com.keeplocal.android.domain.model.SortMode
+import com.keeplocal.android.domain.model.TodoItem
 import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.reminder.ReminderScheduler
 import com.keeplocal.android.util.FileLogger
+import com.keeplocal.android.util.MarkdownNoteParser
 import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.NoteShareFormatter
 import com.keeplocal.android.util.Result
 import com.keeplocal.android.util.ServerContract
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
+import java.io.OutputStream
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 
@@ -55,7 +63,8 @@ class NoteRepositoryImpl @Inject constructor(
         archived: Boolean,
         sortMode: SortMode,
         limit: Int?,
-        filter: NoteTypeFilter
+        filter: NoteTypeFilter,
+        scope: FolderScope
     ): Flow<Result<List<Note>>> = flow {
         try { syncManager.syncPendingOperations() } catch (_: Exception) {}
 
@@ -106,8 +115,8 @@ class NoteRepositoryImpl @Inject constructor(
                     try { reminderScheduler.rescheduleAll() } catch (_: Exception) {}
                     // Room is the single display source for the plain list:
                     // sorting and the paging window apply to fresh server data
-                    // and offline alike.
-                    emit(Result.Success(readCache(null, archived, sortMode, limit, filter)))
+                    // and offline alike. The tree scope rides along (v1.10.0).
+                    emit(Result.Success(readCache(null, archived, sortMode, limit, filter, scope)))
                 } else {
                     // Search/tag results keep the server's relevance ranking
                     // (full-text index over ALL notes, not just the cache);
@@ -115,9 +124,12 @@ class NoteRepositoryImpl @Inject constructor(
                     // knows them too. An explicitly chosen sort re-orders even
                     // search results — MANUAL means "as delivered". The type
                     // chip is a client-side concern — the server has no such
-                    // filter — so it narrows the ranked hits in memory.
+                    // filter — so it narrows the ranked hits in memory; so
+                    // does the tree scope (the server search is tree-blind).
                     noteDao.insertNotes(serverEntities)
-                    val filtered = if (filter == NoteTypeFilter.ALL) notes else notes.filter { filter.matches(it) }
+                    val filtered = notes
+                        .let { if (filter == NoteTypeFilter.ALL) it else it.filter { filter.matches(it) } }
+                        .let { if (scope == FolderScope.All) it else it.filter { scope.matches(it.parentId) } }
                     val display = if (sortMode == SortMode.MANUAL) filtered else sortInMemory(filtered, sortMode)
                     emit(Result.Success(window(display, limit)))
                 }
@@ -129,7 +141,7 @@ class NoteRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             fileLogger.error("NoteRepo", "getNotes exception, serving cache", e)
             try {
-                val cached = readCache(search, archived, sortMode, limit, filter)
+                val cached = readCache(search, archived, sortMode, limit, filter, scope)
                 if (cached.isNotEmpty()) {
                     emit(Result.Success(cached))
                 } else {
@@ -146,28 +158,30 @@ class NoteRepositoryImpl @Inject constructor(
         archived: Boolean,
         sortMode: SortMode,
         limit: Int?,
-        filter: NoteTypeFilter
+        filter: NoteTypeFilter,
+        scope: FolderScope
     ): Flow<Result<List<Note>>> = flow {
-        emit(Result.Success(readCache(search, archived, sortMode, limit, filter)))
+        emit(Result.Success(readCache(search, archived, sortMode, limit, filter, scope)))
     }
 
     /**
      * The display list out of Room, honouring sort mode and paging window.
      * A blank search reads the whole section; a term narrows it with the same
      * LIKE match the offline fallback always used. The type filter rides
-     * along in SQL (v1.9.0).
+     * along in SQL (v1.9.0), and so does the tree scope (v1.10.0).
      */
     private suspend fun readCache(
         search: String?,
         archived: Boolean,
         sortMode: SortMode,
         limit: Int?,
-        filter: NoteTypeFilter = NoteTypeFilter.ALL
+        filter: NoteTypeFilter = NoteTypeFilter.ALL,
+        scope: FolderScope = FolderScope.All
     ): List<Note> {
         val query = when {
-            !search.isNullOrBlank() -> NoteQueries.searchNotes(search, sortMode, limit, filter)
+            !search.isNullOrBlank() -> NoteQueries.searchNotes(search, sortMode, limit, filter, scope)
             archived -> NoteQueries.archivedNotes(sortMode, limit)
-            else -> NoteQueries.liveNotes(sortMode, limit, filter)
+            else -> NoteQueries.liveNotes(sortMode, limit, filter, scope)
         }
         return noteDao.getNotesQuery(query).first().map { it.entityToDomain() }
     }
@@ -604,6 +618,218 @@ class NoteRepositoryImpl @Inject constructor(
             is Result.Success -> result.data
             is Result.Error -> throw Exception(result.message)
         }
+    }
+
+    // --- Tree, wiki links, journal (v1.10.0) ---
+
+    override suspend fun getNoteTree(): Result<List<NoteTreeNode>> = Result.catching {
+        val all = noteDao.getAllLiveNotesSync().map { it.entityToDomain() }
+        val byParent = all.groupBy { it.parentId }
+        val liveIds = all.map { it.id }.toSet()
+        // Roots: no parent, or a parent that is not part of the live cache
+        // (archived or already deleted elsewhere) — those orphans surface at
+        // the top instead of disappearing with their folder.
+        fun build(note: Note, depth: Int, seen: Set<String>): NoteTreeNode =
+            NoteTreeNode(
+                note = note,
+                depth = depth,
+                children = if (note.id in seen) {
+                    emptyList() // corrupt state guard — never recurse into a cycle
+                } else {
+                    (byParent[note.id] ?: emptyList())
+                        .sortedWith(compareByDescending<Note> { it.isPinned }.thenBy { it.title.lowercase() })
+                        .map { build(it, depth + 1, seen + note.id) }
+                }
+            )
+        all
+            .filter { it.parentId == null || it.parentId !in liveIds }
+            .sortedWith(compareByDescending<Note> { it.isPinned }.thenBy { it.title.lowercase() })
+            .map { build(it, 0, emptySet()) }
+    }
+
+    override suspend fun moveNote(id: String, parentId: String?): Result<Note> = Result.catching {
+        if (parentId == id) {
+            throw Exception("Eine Notiz kann nicht in sich selbst verschoben werden")
+        }
+        if (parentId != null && parentId in getSubtreeIds(id)) {
+            throw Exception("Ein Ordner kann nicht in einen seiner Unterordner verschoben werden")
+        }
+        val current = when (val cached = getNote(id)) {
+            is Result.Success -> cached.data
+            is Result.Error -> throw Exception(cached.message)
+        }
+        if (current.parentId == parentId) return@catching current
+        when (val moved = updateNote(current.copy(parentId = parentId))) {
+            is Result.Success -> moved.data
+            is Result.Error -> throw Exception(moved.message)
+        }
+    }
+
+    override suspend fun getSubtreeIds(id: String): List<String> {
+        val collected = mutableListOf<String>()
+        val queue = ArrayDeque<String>()
+        queue += id
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (current in collected) continue // corrupt state guard
+            collected += current
+            queue += noteDao.getDirectChildIds(current)
+        }
+        return collected
+    }
+
+    override suspend fun findByExactTitle(title: String): Result<List<Note>> = Result.catching {
+        noteDao.findByExactTitle(title.trim()).map { it.entityToDomain() }
+    }
+
+    override suspend fun getBacklinks(title: String, excludeId: String): Result<List<Note>> = Result.catching {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return@catching emptyList()
+        // Escape LIKE's own wildcards so a title containing % or _ matches
+        // literally; the query declares ESCAPE '\'.
+        val escaped = trimmed.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        noteDao.findBacklinks(excludeId, "%[[$escaped]]%").map { it.entityToDomain() }
+    }
+
+    override suspend fun findOrCreateTodayNote(): Result<Note> = Result.catching {
+        val journalFolderId = settingsDataStore.journalFolderId.first()
+        val today = LocalDate.now().toString() // ISO: "2026-09-19"
+        // Dedupe happens against the Room cache; a same-day note created on
+        // another device only becomes visible here after the next sync — the
+        // first of the day should be written on the device that opens it.
+        val existing = noteDao.findByExactTitle(today)
+            .firstOrNull { it.parentId == journalFolderId && !it.isArchived }
+        if (existing != null) return@catching existing.entityToDomain()
+        val now = Instant.now()
+        val draft = Note(
+            id = "",
+            title = today,
+            content = "# $today\n\n",
+            color = NoteColor.DEFAULT,
+            isPinned = false,
+            isArchived = false,
+            isTodoList = false,
+            todoItems = emptyList(),
+            tags = listOf("Journal"),
+            sharedWith = emptyList(),
+            images = emptyList(),
+            owner = "",
+            position = 0,
+            createdAt = now,
+            updatedAt = now,
+            parentId = journalFolderId
+        )
+        when (val created = createNote(draft)) {
+            is Result.Success -> created.data
+            is Result.Error -> throw Exception(created.message)
+        }
+    }
+
+    override suspend fun exportMarkdownTo(output: OutputStream): Result<Long> = Result.catching {
+        // Push offline edits first so the ZIP contains them.
+        try { syncManager.syncPendingOperations() } catch (_: Exception) {}
+        withContext(Dispatchers.IO) {
+            val response = api.exportMarkdown()
+            if (!response.isSuccessful) {
+                val body = try { response.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
+                throw Exception(errorMessage("Markdown-Export", response.code(), body))
+            }
+            val responseBody = response.body() ?: throw Exception("Export ohne Daten")
+            var copied = 0L
+            responseBody.byteStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    copied += read
+                }
+            }
+            output.flush()
+            fileLogger.log("NoteRepo", "exportMarkdownTo: $copied bytes")
+            copied
+        }
+    }
+
+    override suspend fun importMarkdownFiles(files: List<MarkdownNoteParser.FileEntry>): Result<Int> = Result.catching {
+        val parsed = when (val result = MarkdownNoteParser.parse(files)) {
+            is MarkdownNoteParser.Result.Success -> result.import
+            is MarkdownNoteParser.Result.Invalid -> throw Exception(result.reason)
+        }
+        val now = Instant.now()
+        val pathToId = mutableMapOf<String, String>()
+        var created = 0
+        var lastError: Exception? = null
+        suspend fun createDraft(
+            title: String,
+            content: String,
+            tags: List<String>,
+            isTodoList: Boolean,
+            todoItems: List<TodoItem>,
+            parentId: String?
+        ): Note? {
+            val draft = Note(
+                id = "",
+                title = title,
+                content = content,
+                color = NoteColor.DEFAULT,
+                isPinned = false,
+                isArchived = false,
+                isTodoList = isTodoList,
+                todoItems = todoItems,
+                tags = tags,
+                sharedWith = emptyList(), // sharing is account-bound, never copied
+                images = emptyList(), // .md import is text-only by design
+                owner = "",
+                position = 0,
+                createdAt = now,
+                updatedAt = now,
+                parentId = parentId
+            )
+            return when (val result = createNote(draft)) {
+                is Result.Success -> result.data
+                is Result.Error -> {
+                    lastError = Exception(result.message)
+                    null
+                }
+            }
+        }
+
+        // Folders first (parsed parents-before-children), each folder note
+        // carrying its _index.md body — or its own name when it has none.
+        for (dir in parsed.dirs) {
+            val note = createDraft(
+                title = dir.title,
+                content = dir.indexContent ?: "# ${dir.title}",
+                tags = emptyList(),
+                isTodoList = false,
+                todoItems = emptyList(),
+                parentId = dir.parentPath?.let { pathToId[it] }
+            ) ?: continue
+            pathToId[dir.dirPath] = note.id
+            created++
+        }
+        // Then the files; if a folder failed to materialize, the note climbs
+        // to the nearest ancestor that exists rather than being lost.
+        for (file in parsed.files) {
+            val parentId = generateSequence(file.parentPath) { anchor ->
+                MarkdownNoteParser.parentOf(anchor)?.ifEmpty { null }
+            }.mapNotNull { anchor -> pathToId[anchor] }.firstOrNull()
+            val note = createDraft(
+                title = file.title,
+                content = file.content,
+                tags = file.tags,
+                isTodoList = file.isTodoList,
+                todoItems = file.todoItems,
+                parentId = parentId
+            ) ?: continue
+            created++
+        }
+        if (created == 0) {
+            throw lastError ?: Exception("Import fehlgeschlagen")
+        }
+        fileLogger.log("NoteRepo", "importMarkdownFiles: created $created notes")
+        created
     }
 
     /** In-memory ordering for server-delivered lists (search/tag results);

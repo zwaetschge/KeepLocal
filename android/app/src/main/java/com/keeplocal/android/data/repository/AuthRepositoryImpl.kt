@@ -1,6 +1,7 @@
 package com.keeplocal.android.data.repository
 
 import com.keeplocal.android.data.api.KeepLocalApi
+import com.keeplocal.android.data.api.NullableString
 import com.keeplocal.android.data.api.SessionCookieJar
 import com.keeplocal.android.data.api.dto.ChangePasswordDto
 import com.keeplocal.android.data.api.dto.LoginRequestDto
@@ -10,10 +11,12 @@ import com.keeplocal.android.data.api.dto.UpdateAiFeaturesDto
 import com.keeplocal.android.data.api.dto.UpdatePreferencesDto
 import com.keeplocal.android.data.api.dto.UserPreferencesDto
 import com.keeplocal.android.data.api.dto.toDomain
+import com.keeplocal.android.data.api.dto.toDto
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.TokenManager
 import com.keeplocal.android.domain.model.AuthState
 import com.keeplocal.android.domain.model.OAuthProviders
+import com.keeplocal.android.domain.model.SavedSearch
 import com.keeplocal.android.domain.model.User
 import com.keeplocal.android.domain.repository.AuthRepository
 import com.keeplocal.android.util.FileLogger
@@ -182,6 +185,47 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun pushTagColors(colors: Map<String, String>): Result<Unit> = Result.catching {
+        fileLogger.log("AuthRepo", "pushTagColors: ${colors.size} tags")
+        val response = api.updatePreferences(UpdatePreferencesDto(tagColors = colors))
+        if (!response.isSuccessful) {
+            val body = try { response.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
+            fileLogger.error("AuthRepo", "pushTagColors failed: code=${response.code()} body=$body")
+            throw Exception(serverMessage(body) ?: "Tag colors not saved (HTTP ${response.code()})")
+        }
+        // Keep the device in step even when this device's login pull is stale.
+        settingsDataStore.setTagColors(colors)
+    }
+
+    override suspend fun pushSavedSearches(searches: List<SavedSearch>): Result<Unit> =
+        Result.catching {
+            fileLogger.log("AuthRepo", "pushSavedSearches: ${searches.size} entries")
+            val response = api.updatePreferences(
+                UpdatePreferencesDto(savedSearches = searches.map { it.toDto() })
+            )
+            if (!response.isSuccessful) {
+                val body = try { response.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
+                fileLogger.error("AuthRepo", "pushSavedSearches failed: code=${response.code()} body=$body")
+                throw Exception(serverMessage(body) ?: "Saved searches not saved (HTTP ${response.code()})")
+            }
+            settingsDataStore.setSavedSearches(searches)
+        }
+
+    override suspend fun pushJournalFolderId(folderId: String?): Result<Unit> = Result.catching {
+        fileLogger.log("AuthRepo", "pushJournalFolderId: ${if (folderId == null) "clear" else "set"}")
+        // NullableString: an explicit JSON null is the only way to clear the
+        // journal root — an absent field would leave it untouched.
+        val response = api.updatePreferences(
+            UpdatePreferencesDto(journalFolderId = NullableString(folderId))
+        )
+        if (!response.isSuccessful) {
+            val body = try { response.errorBody()?.string()?.take(200) } catch (_: Exception) { null }
+            fileLogger.error("AuthRepo", "pushJournalFolderId failed: code=${response.code()} body=$body")
+            throw Exception(serverMessage(body) ?: "Journal folder not saved (HTTP ${response.code()})")
+        }
+        settingsDataStore.setJournalFolderId(folderId)
+    }
+
     /**
      * Login response pull (Top-30 Nr. 17): theme, language and the Whisper
      * hint travel with the account. The server stores themes as
@@ -206,6 +250,18 @@ class AuthRepositoryImpl @Inject constructor(
                 ?.let { settingsDataStore.setTranscriptionLanguage(it) }
             preferences.aiFeatures?.voiceTranscription
                 ?.let { settingsDataStore.setVoiceTranscription(it) }
+            // v1.10.0: tag colors, saved searches and the journal root follow
+            // the account like theme and language. Null = the server has
+            // never stored them — that must not clear a local edit mid-push.
+            preferences.tagColors
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { settingsDataStore.setTagColors(it) }
+            preferences.savedSearches
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { searches -> settingsDataStore.setSavedSearches(searches.map { it.toDomain() }) }
+            preferences.journalFolderId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { settingsDataStore.setJournalFolderId(it) }
         }.onFailure { fileLogger.error("AuthRepo", "applyServerPreferences failed", it) }
     }
 

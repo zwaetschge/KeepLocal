@@ -33,4 +33,16 @@ enum class NoteTypeFilter {
         REMINDERS -> note.remindAt != null
         PINNED -> note.isPinned
     }
+
+    companion object {
+        /** Wire key of the saved-search preference (v1.10.0); ALL for junk. */
+        fun fromKey(key: String?): NoteTypeFilter = when (key?.lowercase()) {
+            "lists" -> LISTS
+            "text" -> TEXT
+            "images" -> IMAGES
+            "reminders" -> REMINDERS
+            "pinned" -> PINNED
+            else -> ALL
+        }
+    }
 }

@@ -479,4 +479,33 @@
     <string name="admin_reset_token_created">Token valid 15 minutes:</string>
     <string name="admin_reset_token_failed">Could not create the token</string>
     <string name="cd_more_actions">More actions</string>
+
+    <!-- v1.10.0: note tree, journal, tag colors, markdown round-trip -->
+    <string name="nav_today">Today</string>
+    <string name="sidebar_folders">Folders</string>
+    <string name="sidebar_saved_searches">Saved searches</string>
+    <string name="cd_toggle_folder">Expand or collapse folder</string>
+    <string name="editor_untitled">Untitled</string>
+    <string name="editor_code_mode">Monospace code view</string>
+    <string name="editor_backlinks">Mentioned in</string>
+    <string name="action_move">Move</string>
+    <string name="move_picker_title">Move to folder</string>
+    <string name="move_to_root">Top level</string>
+    <string name="move_no_folders">No folders yet — notes with children become folders</string>
+    <string name="cd_move_selection">Move selection to a folder</string>
+    <string name="folder_empty_title">Nothing in this folder</string>
+    <string name="folder_empty_subtitle">Start the first note right here</string>
+    <string name="folder_empty_create">New note</string>
+    <string name="tag_set_color">Tag color</string>
+    <string name="tag_remove_color">Remove color</string>
+    <string name="import_markdown_title">Import Trilium / Markdown folder</string>
+    <string name="import_markdown_hint">Pick a folder of .md files — the tree becomes folder notes</string>
+    <string name="import_markdown_done">%1$d note(s) imported</string>
+    <string name="import_markdown_failed">Import failed: %1$s</string>
+    <string name="export_zip_title">Export as Markdown ZIP</string>
+    <string name="export_zip_hint">Whole tree as folders of .md files, re-importable</string>
+    <string name="export_markdown_done">ZIP written (%1$d bytes)</string>
+    <string name="export_markdown_failed">Export failed: %1$s</string>
+    <string name="journal_folder_label">Journal folder</string>
+    <string name="journal_folder_root">Top level</string>
 </resources>
