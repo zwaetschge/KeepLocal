@@ -1074,3 +1074,121 @@ body.eink-mode::before {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---------------------------------------------------------------------------
+   v1.10.0: Ordner-Breadcrumb + Mehrfachauswahl-Leiste
+   --------------------------------------------------------------------------- */
+
+.folder-scope-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-3, 12px);
+  padding: 6px 12px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  font-size: 0.9rem;
+  color: var(--text-primary, inherit);
+}
+
+.folder-scope-breadcrumb button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.folder-scope-breadcrumb button:hover {
+  background: var(--accent-light);
+  color: var(--text-primary, inherit);
+}
+
+.bulk-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 var(--space-3, 12px);
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-color, #2563eb);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+.bulk-action-count {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--accent-text, var(--accent-color));
+}
+
+.bulk-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bulk-action-buttons button {
+  padding: 5px 10px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, inherit);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bulk-action-buttons button:hover:not(:disabled) {
+  background: var(--accent-light);
+  border-color: var(--accent-color);
+}
+
+.bulk-action-buttons button.bulk-danger {
+  color: var(--error-color, #DC2626);
+}
+
+.bulk-action-buttons button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bulk-action-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.bulk-tag-input,
+.bulk-folder-select {
+  padding: 5px 8px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, inherit);
+  font-size: 0.85rem;
+  max-width: 180px;
+}
+
+.bulk-cancel {
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, #666);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.bulk-cancel:hover:not(:disabled) {
+  color: var(--text-primary, inherit);
+}

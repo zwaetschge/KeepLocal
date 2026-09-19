@@ -96,7 +96,9 @@ test('the repair paths clear the language key too, and both lists stay identical
 test('App reads the theme from the account settings and nests providers correctly', () => {
   const app = read('App.jsx');
 
-  assert.match(app, /const \{ settings, setTheme \} = useSettings\(\);/);
+  // v1.10.0: die Dekonstruktion nimmt setTagColor/setSavedSearches mit auf —
+  // entscheidend ist nur, dass theme aus settings kommt und kein useState ist.
+  assert.match(app, /const \{ settings, setTheme[^}]*\} = useSettings\(\);/);
   assert.match(app, /const theme = settings\.theme;/);
   assert.doesNotMatch(app, /const \[theme, setTheme\] = useState/);
 

@@ -247,13 +247,15 @@ test('toter useNotes-Hook ist entfernt und durch useNotesManager ersetzt', () =>
   const app = readClientFile('src/App.jsx');
   assert.match(app, /useNotesManager\(\{/);
   // Zeilen wie wc -l zählen (trailing newline nicht als eigene Zeile).
-  // Obergrenze 440: App.jsx darf keine Geschäftslogik zurückholen (die lebt in
+  // Obergrenze 520: App.jsx darf keine Geschäftslogik zurückholen (die lebt in
   // useNotesManager); der Spielraum über 400 kommt aus den Audit-Fixes
   // 2026-09-10 (OAuth-Callback-State, Ctrl+N-Guard) und Nr. 26 (2026-09-13:
   // stabile Handler per useCallback, listActions in useMemo, Suspense-Wrapper
-  // für die drei lazy Modals — Verdrahtung, keine Logik).
+  // für die drei lazy Modals — Verdrahtung, keine Logik). v1.10.0 (2026-09-19)
+  // erhöht erneut: Sidebar-/Modal-/BulkBar-Props für Baum, Journal und
+  // gespeicherte Suchen — die zugehörige Logik steckt in useFolderFeatures.
   const lineCount = app.endsWith('\n') ? app.split('\n').length - 1 : app.split('\n').length;
-  assert.ok(lineCount < 440, `App.jsx sollte < 440 Zeilen haben, hat aber ${lineCount}`);
+  assert.ok(lineCount < 520, `App.jsx sollte < 520 Zeilen haben, hat aber ${lineCount}`);
 });
 
 test('App.jsx nutzt React.lazy + Suspense für AdminConsole, Settings und OAuthCallback', () => {
@@ -444,5 +446,56 @@ test('Nr. 26: operationLoading schreibt keine false-Leichen mehr', () => {
   assert.doesNotMatch(manager, /\.\.\.prev, \[id\]: false \}\)/, 'Einträge werden entfernt, nicht auf false gesetzt');
   assert.doesNotMatch(manager, /\.\.\.prev, (create|trash): false \}\)/);
   const uses = (manager.match(/setOperationLoading\(prev => withoutOperation\(prev, /g) || []).length;
-  assert.ok(uses === 8, `alle acht Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
+  // v1.10.0: moveNote und runBulkAction kommen dazu (10 statt 8).
+  assert.ok(uses === 10, `alle zehn Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
+});
+
+// ---------------------------------------------------------------------------
+// v1.10.0: buildNoteTree — Verschachtelung der flachen Baum-Projektion
+// ---------------------------------------------------------------------------
+
+test('buildNoteTree verschachtelt die flache Projektion und hebt Waisen auf', async () => {
+  const { buildNoteTree } = await import(moduleUrl);
+
+  const flat = [
+    { id: 'a', parentId: null, title: 'Projekte' },
+    { id: 'b', parentId: 'a', title: 'KeepLocal' },
+    { id: 'c', parentId: 'b', title: 'Roadmap' },
+    { id: 'd', parentId: null, title: ' lose Notiz' },
+    // Waise: Eltern-ID existiert (noch) nicht in der Projektion
+    { id: 'e', parentId: 'weg', title: 'Waise' },
+  ];
+
+  const roots = buildNoteTree(flat);
+  assert.equal(roots.length, 3, 'a, d und die Waise sind Wurzeln');
+  const projekte = roots.find(root => root.node.id === 'a');
+  assert.equal(projekte.children.length, 1);
+  assert.equal(projekte.children[0].node.id, 'b');
+  assert.equal(projekte.children[0].children[0].node.id, 'c');
+  assert.ok(roots.some(root => root.node.id === 'e'), 'die Waise wird zur Wurzel');
+});
+
+test('buildNoteTree kappt Zyklen und zu tiefe Ketten an der Wurzel', async () => {
+  const { buildNoteTree } = await import(moduleUrl);
+
+  // Zyklus A -> B -> A: beide müssen als Wurzeln landen, kein Rekursions-Tod
+  const cyclic = [
+    { id: 'a', parentId: 'b', title: 'A' },
+    { id: 'b', parentId: 'a', title: 'B' },
+  ];
+  const roots = buildNoteTree(cyclic);
+  assert.equal(roots.length, 2, 'beide Zyklus-Knoten sind eigenständige Wurzeln');
+  assert.equal(roots[0].children.length, 0);
+
+  // Kette jenseits des Tiefen-Caps (maxDepth 50): der Knoten auf Tiefe 51
+  // reißt heraus und wird selbst Wurzel, statt endlos zu nesten.
+  const deep = [];
+  for (let i = 0; i < 55; i += 1) {
+    deep.push({ id: `n${i}`, parentId: i === 0 ? null : `n${i - 1}`, title: `N${i}` });
+  }
+  const deepRoots = buildNoteTree(deep);
+  // Tiefe 0..49 hängt an der ersten Wurzel, der Rest startet eine eigene.
+  assert.ok(deepRoots.length >= 2, 'die Kette wird am Cap durchtrennt');
+
+  assert.deepEqual(buildNoteTree(null), [], 'keine Projektion -> leerer Wald');
 });

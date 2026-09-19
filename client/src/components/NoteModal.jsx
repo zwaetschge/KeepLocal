@@ -40,7 +40,7 @@ function isNoteConflictError(error) {
   );
 }
 
-function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete }) {
+function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], backlinks = [], onOpenNote, folders = [], defaultParentId = null }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -57,6 +57,11 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const [color, setColor] = useState(note?.color || '#ffffff');
   const [isTodoList, setIsTodoList] = useState(note?.isTodoList || false);
   const [isPinned, setIsPinned] = useState(note?.isPinned || false);
+  // v1.10.0: Code-/Monospace-Notiz und Eltern-Ordner
+  const [isCode, setIsCode] = useState(note?.isCode || false);
+  const [parentId, setParentId] = useState(
+    typeof note?.parentId === 'string' ? note.parentId : (defaultParentId || null)
+  );
   const [images, setImages] = useState(note?.images || []);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -217,6 +222,8 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     setColor(source.color || '#ffffff');
     setIsTodoList(source.isTodoList || false);
     setIsPinned(source.isPinned || false);
+    setIsCode(Boolean(source.isCode));
+    setParentId(typeof source.parentId === 'string' ? source.parentId : null);
     setTodoItems(source.todoItems || []);
     setLinkPreviews(source.linkPreviews || []);
     setImages(source.images || []);
@@ -336,9 +343,15 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       color: color,
       isPinned: isPinned,
       isTodoList: isTodoList,
+      isCode: isCode,
       todoItems: isTodoList ? getCleanedItems() : [],
       linkPreviews: isDemo ? [] : (linkPreviews || []),
     };
+    // v1.10.0: Ordner — Verschieben bleibt beim Besitzer (wie Archiv/Löschen);
+    // bei neuen Notizen setzt der Editor den aktuell gewählten Ordner-Scope.
+    if (canManage) {
+      noteData.parentId = parentId || null;
+    }
 
     // Optimistic locking (edits only — creates have no server version yet).
     const payload = { ...noteData };
@@ -393,10 +406,26 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   };
 
   // Handle tag input
+  // v1.10.0: Enter/Komma übernehmen den markierten Vorschlag, falls einer
+  // aktiv ist; Pfeiltasten wandern durch die Liste, Escape schließt sie (und
+  // wird deshalb nicht an den Modal-Shortcut weitergereicht).
   const handleTagInputKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      addTagFromInput();
+      if (tagSuggestionIndex >= 0 && tagSuggestions[tagSuggestionIndex]) {
+        applyTagSuggestion(tagSuggestions[tagSuggestionIndex]);
+      } else {
+        addTagFromInput();
+      }
+    } else if (e.key === 'ArrowDown' && tagSuggestions.length > 0) {
+      e.preventDefault();
+      setTagSuggestionIndex((index) => (index + 1) % tagSuggestions.length);
+    } else if (e.key === 'ArrowUp' && tagSuggestions.length > 0) {
+      e.preventDefault();
+      setTagSuggestionIndex((index) => (index - 1 + tagSuggestions.length) % tagSuggestions.length);
+    } else if (e.key === 'Escape' && tagSuggestions.length > 0) {
+      e.stopPropagation();
+      setTagInput('');
     } else if (e.key === 'Backspace' && tagInput === '' && tags.length > 0) {
       // Remove last tag if backspace is pressed on empty input
       removeTag(tags.length - 1);
@@ -418,6 +447,90 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const removeTag = (index) => {
     setTags(tags.filter((_, i) => i !== index));
   };
+
+  // v1.10.0 ---------------------------------------------------------------
+  // Tag-Vervollständigung: Vorschläge aus allen bekannten Tags (geladenes
+  // Fenster + Baum-Projektion), Prefix-Treffer zuerst, eigene Tags ausgespart.
+  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
+
+  const tagSuggestions = useMemo(() => {
+    const query = tagInput.trim().toLowerCase();
+    if (!query) return [];
+    const own = new Set(tags);
+    const startsWith = [];
+    const contains = [];
+    for (const candidate of availableTags) {
+      if (own.has(candidate)) continue;
+      const lower = candidate.toLowerCase();
+      if (lower.startsWith(query)) startsWith.push(candidate);
+      else if (lower.includes(query)) contains.push(candidate);
+    }
+    return [...startsWith, ...contains].slice(0, 6);
+  }, [tagInput, tags, availableTags]);
+
+  useEffect(() => {
+    setTagSuggestionIndex(-1);
+  }, [tagInput]);
+
+  const applyTagSuggestion = (tag) => {
+    if (tag && !tags.includes(tag)) setTags([...tags, tag].slice(0, 50));
+    setTagInput('');
+  };
+
+  // Wiki-Links `[[Titel]]`: Autovervollständigung über dem Caret während des
+  // Tippens plus Chips der vollständigen Links unter dem Inhalt — Navigation
+  // wie in Trilium, ohne dass der Server davon weiß (reine Client-Sache).
+  const contentCaretRef = useRef(0);
+
+  const wikiByTitle = useMemo(() => {
+    const map = new Map();
+    for (const entry of wikiNotes) {
+      if (!map.has(entry.title)) map.set(entry.title, entry);
+    }
+    return map;
+  }, [wikiNotes]);
+
+  const wikiSuggestion = useMemo(() => {
+    const fragment = content.slice(0, contentCaretRef.current);
+    const match = /\[\[([^\][\n]{0,100})$/.exec(fragment);
+    if (!match) return null;
+    const query = match[1].toLowerCase();
+    const candidates = wikiNotes
+      .filter(entry => !query || entry.title.toLowerCase().includes(query))
+      .slice(0, 6);
+    return candidates.length > 0 ? { partialStart: fragment.length - match[0].length, candidates } : null;
+  }, [content, wikiNotes]);
+
+  const insertWikiLink = (noteTitle) => {
+    const caret = contentCaretRef.current;
+    const suggestion = wikiSuggestion;
+    const start = suggestion ? suggestion.partialStart : caret;
+    const next = `${content.slice(0, start)}[[${noteTitle}]]${content.slice(caret)}`;
+    setContent(next);
+    const pos = start + noteTitle.length + 4;
+    requestAnimationFrame(() => {
+      const textarea = contentTextareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(pos, pos);
+      contentCaretRef.current = pos;
+    });
+  };
+
+  const linkedNotes = useMemo(() => {
+    if (isTodoList) return [];
+    const seen = new Set();
+    const result = [];
+    for (const match of content.matchAll(/\[\[([^\][\n]{1,200})\]\]/g)) {
+      const target = wikiByTitle.get(match[1]);
+      if (target && !seen.has(target.id)) {
+        seen.add(target.id);
+        result.push(target);
+      }
+    }
+    return result;
+  }, [content, isTodoList, wikiByTitle]);
+  // Ende v1.10.0 -----------------------------------------------------------
 
   const handleToggleTodoMode = () => {
     const newMode = !isTodoList;
@@ -856,12 +969,82 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
           ) : (
             <textarea
               ref={contentTextareaRef}
-              className="note-modal-content"
+              className={`note-modal-content ${isCode ? 'code' : ''}`}
               placeholder={t('enterNote')}
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                setContent(e.target.value);
+                contentCaretRef.current = e.target.selectionStart ?? 0;
+              }}
+              onSelect={(e) => {
+                contentCaretRef.current = e.target.selectionStart ?? 0;
+              }}
               maxLength={10000}
             />
+          )}
+
+          {/* v1.10.0: Wiki-Link-Vervollständigung — erscheint, sobald über dem
+              Caret ein angefangenes `[[` steht; Klick ersetzt das Fragment. */}
+          {!isTodoList && wikiSuggestion && (
+            <div className="note-modal-wiki-suggestions" role="listbox" aria-label={t('wikiSuggestionHint')}>
+              {wikiSuggestion.candidates.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  role="option"
+                  aria-selected="false"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertWikiLink(candidate.title);
+                  }}
+                >
+                  [[{candidate.title}]]
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* v1.10.0: Verlinkte Notizen (aus `[[Titel]]` im Inhalt) und
+              Backlinks („Erwähnt in") — Klick springt direkt hinein. */}
+          {!isTodoList && (linkedNotes.length > 0 || backlinks.length > 0) && (
+            <div className="note-modal-links">
+              {linkedNotes.length > 0 && (
+                <div className="note-modal-links-group">
+                  <span className="note-modal-links-title">{t('linkedNotes')}</span>
+                  <div className="note-modal-links-chips">
+                    {linkedNotes.map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        className="note-modal-wiki-chip"
+                        onClick={() => onOpenNote?.(target.id)}
+                        title={t('openNote')}
+                      >
+                        🔗 {target.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {backlinks.length > 0 && (
+                <div className="note-modal-links-group">
+                  <span className="note-modal-links-title">{t('mentionedIn')}</span>
+                  <div className="note-modal-links-chips">
+                    {backlinks.map((source) => (
+                      <button
+                        key={source.id}
+                        type="button"
+                        className="note-modal-wiki-chip"
+                        onClick={() => onOpenNote?.(source.id)}
+                        title={t('openNote')}
+                      >
+                        ↩︎ {source.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {!isDemo && !isTodoList && linkPreviews && linkPreviews.length > 0 && (
@@ -959,6 +1142,28 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
           )}
 
           <div className="note-modal-tags-container">
+            {/* v1.10.0: Eltern-Ordner — entspricht dem Move-Picker der App und
+                setzt bei neuen Notizen den aktiven Ordner-Scope vor. */}
+            {canManage && (
+              <div className="note-modal-folder-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                <select
+                  className="note-modal-folder-select"
+                  value={parentId || ''}
+                  onChange={(e) => setParentId(e.target.value || null)}
+                  aria-label={t('folderLabel')}
+                >
+                  <option value="">{t('topLevel')}</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {' '.repeat(folder.depth * 2)}{folder.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {tags.length > 0 && (
               <div className="note-modal-tags-pills">
                 {tags.map((tag, index) => (
@@ -978,16 +1183,39 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 ))}
               </div>
             )}
-            <input
-              type="text"
-              className="note-modal-tags-input"
-              placeholder={tags.length > 0 ? t('addMoreTags') : t('tagsPlaceholder')}
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={handleTagInputKeyDown}
-              onBlur={addTagFromInput}
-              maxLength={50}
-            />
+            <div className="note-modal-tags-input-wrap">
+              <input
+                type="text"
+                className="note-modal-tags-input"
+                placeholder={tags.length > 0 ? t('addMoreTags') : t('tagsPlaceholder')}
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagInputKeyDown}
+                onBlur={addTagFromInput}
+                maxLength={50}
+              />
+              {/* v1.10.0: Vervollständigung — onMouseDown (vor dem Blur), damit
+                  der Klick nicht erst das halbe Wort als Tag übernimmt. */}
+              {tagSuggestions.length > 0 && (
+                <div className="note-modal-tag-suggestions" role="listbox" aria-label={t('addMoreTags')}>
+                  {tagSuggestions.map((candidate, index) => (
+                    <button
+                      key={candidate}
+                      type="button"
+                      role="option"
+                      aria-selected={index === tagSuggestionIndex}
+                      className={index === tagSuggestionIndex ? 'active' : ''}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyTagSuggestion(candidate);
+                      }}
+                    >
+                      {candidate}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1009,6 +1237,25 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 <path d="M9 11l3 3 6-6"/>
               </svg>
             </button>
+            {/* v1.10.0: Code-/Monospace-Notiz — Inhalt in JetBrains Mono */}
+            {!isTodoList && (
+              <button
+                type="button"
+                className={`btn-modal-code ${isCode ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCode(!isCode);
+                }}
+                title={t('codeMode')}
+                aria-label={t('codeMode')}
+                aria-pressed={isCode}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="16 18 22 12 16 6"/>
+                  <polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </button>
+            )}
             {note && canManage && onToggleArchive && (
               <button
                 type="button"

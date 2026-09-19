@@ -3,10 +3,10 @@
  * User preferences and feature toggles
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { getApiKeys, createApiKey, revokeApiKey } from '../services/api/apiKeysAPI';
-import { authAPI } from '../services/api';
+import { authAPI, notesAPI } from '../services/api';
 import './Settings.css';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -16,9 +16,14 @@ import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
-function Settings({ onClose, isAdmin, onAdminClick }) {
+function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported }) {
   const { t, language } = useLanguage();
-  const { settings, toggleAIFeature, setTranscriptionLanguage } = useSettings();
+  const { settings, toggleAIFeature, setTranscriptionLanguage, setJournalFolderId } = useSettings();
+
+  // v1.10.0: Markdown-Export (ZIP vom Server) und Trilium/Markdown-Import
+  // (Ordner mit .md/.txt — Unterordner werden zu Ordner-Notizen im Baum).
+  const [mdBusy, setMdBusy] = useState(null); // 'export' | 'import' | null
+  const mdImportInputRef = useRef(null);
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
@@ -135,6 +140,89 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
   };
 
   const backdropClose = useBackdropClose(onClose);
+
+  // v1.10.0: Ganzen Baum als Markdown-ZIP exportieren (der Server baut das
+  // ZIP inkl. _index.md pro Ordner, hier bleibt nur der Download).
+  const handleExportMarkdown = async () => {
+    setMdBusy('export');
+    try {
+      const blob = await notesAPI.exportMarkdown();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'keeplocal-export.zip';
+      link.click();
+      // ObjectURL erst nach dem Download-Fenster abbauen, nicht sofort.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toastBus.success(t('exportMarkdownDone'));
+    } catch (err) {
+      toastBus.error(resolveApiErrorMessage(err, t, 'exportMarkdownFailed'));
+    } finally {
+      setMdBusy(null);
+    }
+  };
+
+  // Trilium/Markdown-Import: Der Browser liefert mit webkitdirectory das
+  // ganze Verzeichnis; jedes Verzeichnis-Segment wird zu einer Ordner-Notiz
+  // (angelegt bei Bedarf, bottom-up), jede .md/.txt zu einer Notiz darin.
+  // Nur Text — Bilder und Binärdateien überspringt der Import bewusst.
+  const handleImportMarkdown = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (mdImportInputRef.current) mdImportInputRef.current.value = '';
+    if (files.length === 0) return;
+    setMdBusy('import');
+    let created = 0;
+    try {
+      const folderIdsByPath = new Map();
+      const ensureFolder = async (dirPath) => {
+        if (!dirPath) return null;
+        if (folderIdsByPath.has(dirPath)) return folderIdsByPath.get(dirPath);
+        const segments = dirPath.split('/');
+        const parentId = await ensureFolder(segments.slice(0, -1).join('/'));
+        const folder = await notesAPI.create({
+          title: segments[segments.length - 1].slice(0, 200),
+          content: '',
+          parentId: parentId ?? undefined
+        });
+        folderIdsByPath.set(dirPath, folder._id);
+        created += 1;
+        return folder._id;
+      };
+
+      // Dateien nach Pfad sortieren, damit Eltern vor Kindern drankommen —
+      // die ensureFolder-Rekursion legt zwar selbst an, aber so stimmt die
+      // Reihenfolge im Baum schon beim Anlegen.
+      files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+
+      for (const file of files) {
+        if (!/\.(md|markdown|txt)$/i.test(file.name) || file.size > 500_000) continue;
+        const segments = (file.webkitRelativePath || file.name).split('/');
+        const fileName = segments.pop();
+        const parentId = await ensureFolder(segments.join('/'));
+        const text = await file.text();
+        let noteTitle = fileName.replace(/\.(md|markdown|txt)$/i, '').slice(0, 200);
+        // index.md/_index.md (Trilium-Export-Konvention) trägt oft nur einen
+        // Titel in der ersten Überschrift — dann den nehmen.
+        if (noteTitle === 'index' || noteTitle === '_index') {
+          const heading = /^#\s+(.+)$/m.exec(text);
+          noteTitle = (heading ? heading[1] : segments[segments.length - 1] || 'Notiz').trim().slice(0, 200);
+        }
+        await notesAPI.create({
+          title: noteTitle || 'Notiz',
+          content: text.slice(0, 10_000),
+          parentId: parentId ?? undefined
+        });
+        created += 1;
+      }
+      toastBus.success(t('importMarkdownDone', { count: created }));
+      onDataImported?.();
+    } catch (err) {
+      console.error('Markdown-Import fehlgeschlagen:', err);
+      toastBus.error(resolveApiErrorMessage(err, t, 'importMarkdownFailed'));
+    } finally {
+      setMdBusy(null);
+    }
+  };
 
   // Settings renders as a full-screen overlay, so it gets the same dialog
   // semantics (focus trap, initial focus, focus restore, Escape) as the modals.
@@ -367,6 +455,89 @@ function Settings({ onClose, isAdmin, onAdminClick }) {
                 </div>
               </div>
             )}
+          </section>
+
+          {/* Data Section (v1.10.0): Markdown round-trip + Journal-Ordner */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+              </svg>
+              {t('dataSection')}
+            </h3>
+            <p className="settings-section-description">{t('dataSectionDescription')}</p>
+
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <label className="settings-item-label">{t('exportMarkdownTitle')}</label>
+                <p className="settings-item-description">{t('exportMarkdownHint')}</p>
+              </div>
+              <div className="settings-item-control">
+                <button
+                  type="button"
+                  className="btn-change-password"
+                  onClick={handleExportMarkdown}
+                  disabled={mdBusy !== null}
+                >
+                  {mdBusy === 'export' ? t('saving') : t('exportAction')}
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <label className="settings-item-label">{t('importMarkdownTitle')}</label>
+                <p className="settings-item-description">{t('importMarkdownHint')}</p>
+              </div>
+              <div className="settings-item-control">
+                <input
+                  ref={mdImportInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleImportMarkdown}
+                  style={{ display: 'none' }}
+                  id="markdown-import-input"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                />
+                <button
+                  type="button"
+                  className="btn-change-password"
+                  // webkitdirectory/directory sind keine React-Props — als
+                  // DOM-Attribute gesetzt, bevor der Picker aufgeht.
+                  onClick={() => {
+                    const input = mdImportInputRef.current;
+                    if (!input) return;
+                    input.setAttribute('webkitdirectory', '');
+                    input.setAttribute('directory', '');
+                    input.click();
+                  }}
+                  disabled={mdBusy !== null}
+                >
+                  {mdBusy === 'import' ? t('saving') : t('importAction')}
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-input-group" style={{ marginTop: '1rem' }}>
+              <label htmlFor="journal-folder" className="settings-input-label">
+                {t('journalFolderLabel')}
+              </label>
+              <select
+                id="journal-folder"
+                className="settings-input"
+                value={settings.journalFolderId || ''}
+                onChange={(e) => setJournalFolderId(e.target.value || null)}
+              >
+                <option value="">{t('topLevel')}</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {' '.repeat(folder.depth * 2)}{folder.title}
+                  </option>
+                ))}
+              </select>
+              <p className="settings-input-hint">{t('journalFolderHint')}</p>
+            </div>
           </section>
 
           {/* AI Features Section */}

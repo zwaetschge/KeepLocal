@@ -4,6 +4,90 @@ import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Sidebar.css';
 
+/** Farbauswahl für Tags (v1.10.0) — 12 unterscheidbare Farben, synchronisiert
+ *  über die Konto-Preferences (wie die Notizfarben, aber pro Tag-Name). */
+export const TAG_COLOR_PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6',
+  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#6b7280'
+];
+
+const FOLDER_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+  </svg>
+);
+
+/**
+ * Eine Zeile im Ordner-Baum (v1.10.0). Jede Notiz mit Kindern ist ein Ordner;
+ * Klick scope-t die Liste auf die direkten Kinder, Drop verschiebt die
+ * gezogene Notiz hinein. Caret und Zeile sind getrennte Buttons (kein
+ * Button-in-Button), der Einzug kommt aus der Tiefe.
+ */
+function FolderRow({ entry, depth, folderScope, onSelectFolder, onFolderDrop, t }) {
+  const { node, children } = entry;
+  const [expanded, setExpanded] = useState(false);
+  const [dropActive, setDropActive] = useState(false);
+  const hasChildren = children.length > 0;
+  const title = node.title || t('untitledNote');
+  const active = folderScope === node.id;
+
+  return (
+    <>
+      <div className="sidebar-folder-row" style={{ paddingLeft: `${depth * 14}px` }}>
+        {hasChildren ? (
+          <button
+            type="button"
+            className={`sidebar-folder-caret ${expanded ? 'open' : ''}`}
+            onClick={() => setExpanded(prev => !prev)}
+            aria-label={expanded ? t('collapseFolder', { title }) : t('expandFolder', { title })}
+            aria-expanded={expanded}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        ) : (
+          <span className="sidebar-folder-caret-spacer" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          className={`sidebar-item sidebar-folder ${active ? 'active' : ''} ${dropActive ? 'drop-target' : ''}`}
+          onClick={() => onSelectFolder(node.id)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDropActive(true);
+          }}
+          onDragLeave={() => setDropActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDropActive(false);
+            onFolderDrop(node.id);
+          }}
+          title={t('moveToFolder', { title })}
+          aria-current={active ? 'true' : undefined}
+        >
+          {FOLDER_ICON}
+          <span className="sidebar-folder-title">{title}</span>
+          {hasChildren && <span className="count">{children.length}</span>}
+        </button>
+      </div>
+      {expanded && hasChildren && children.map(child => (
+        <FolderRow
+          key={child.node.id}
+          entry={child}
+          depth={depth + 1}
+          folderScope={folderScope}
+          onSelectFolder={onSelectFolder}
+          onFolderDrop={onFolderDrop}
+          t={t}
+        />
+      ))}
+    </>
+  );
+}
+
 function Sidebar({
   allTags,
   selectedTag,
@@ -23,7 +107,20 @@ function Sidebar({
   theme,
   onThemeToggle,
   isMobileOpen,
-  onMobileClose
+  onMobileClose,
+  // v1.10.0: Ordner-Baum, Journal, gespeicherte Suchen, Tag-Farben
+  noteTree = [],
+  folderScope = null,
+  onSelectFolder,
+  onFolderDrop,
+  onOpenToday,
+  savedSearches = [],
+  onRunSavedSearch,
+  onDeleteSavedSearch,
+  onSaveCurrentSearch,
+  canSaveSearch = false,
+  tagColors = {},
+  onTagColorSelect,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { t } = useLanguage();
@@ -219,6 +316,27 @@ function Sidebar({
           </button>
         )}
 
+        {/* Journal „Heute" (v1.10.0): öffnet (oder legt an) die Tages-Notiz
+            im konfigurierten Journal-Ordner — dieselbe Notiz wie in der App. */}
+        {onOpenToday && (
+          <button
+            className="sidebar-item"
+            onClick={() => {
+              onOpenToday();
+              onMobileClose();
+            }}
+            aria-label={t('today')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <span>{t('today')}</span>
+          </button>
+        )}
+
         {onOpenFriends && (
           <button
             className="sidebar-item"
@@ -237,10 +355,132 @@ function Sidebar({
           </button>
         )}
 
+        {/* Ordner-Baum (v1.10.0): Jede Notiz mit Kindern ist ein Ordner. Der
+            Baum kommt aus der leichten /api/notes/tree-Projektion; Klick scope-t
+            die Liste, Drop verschiebt die gezogene Notiz hinein. */}
+        {noteTree.length > 0 && (
+          <>
+            <div className="sidebar-divider"></div>
+            <div className="sidebar-section-title">{t('foldersSection')}</div>
+            <button
+              type="button"
+              className={`sidebar-item sidebar-folder ${folderScope === 'root' ? 'active' : ''}`}
+              onClick={() => {
+                onSelectFolder('root');
+                onMobileClose();
+              }}
+              aria-label={t('topLevel')}
+              aria-current={folderScope === 'root' ? 'true' : undefined}
+            >
+              {FOLDER_ICON}
+              <span>{t('topLevel')}</span>
+            </button>
+            {noteTree.map(entry => (
+              <FolderRow
+                key={entry.node.id}
+                entry={entry}
+                depth={0}
+                folderScope={folderScope}
+                onSelectFolder={onSelectFolder}
+                onFolderDrop={onFolderDrop}
+                t={t}
+              />
+            ))}
+          </>
+        )}
+
+        {/* Gespeicherte Suchen (v1.10.0): Smarte Ordner aus Suchbegriff + Tag,
+            synchronisiert über die Konto-Preferences. */}
+        {(savedSearches.length > 0 || canSaveSearch) && (
+          <>
+            <div className="sidebar-divider"></div>
+            <div className="sidebar-section-title sidebar-section-title-row">
+              <span>{t('savedSearchesSection')}</span>
+              {canSaveSearch && (
+                <button
+                  type="button"
+                  className="sidebar-savedsearch-add"
+                  onClick={onSaveCurrentSearch}
+                  title={t('saveCurrentSearch')}
+                  aria-label={t('saveCurrentSearch')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+            {savedSearches.map((search) => (
+              <div key={search.id} className="sidebar-savedsearch-row">
+                <button
+                  type="button"
+                  className="sidebar-item sidebar-savedsearch"
+                  onClick={() => {
+                    onRunSavedSearch(search);
+                    onMobileClose();
+                  }}
+                  title={search.tag ? `#${search.tag}` : undefined}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <span>{search.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-savedsearch-delete"
+                  onClick={() => onDeleteSavedSearch(search.id)}
+                  title={t('savedSearchDelete')}
+                  aria-label={t('savedSearchDelete')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+
         {allTags.length > 0 && (
           <>
             <div className="sidebar-divider"></div>
             <div className="sidebar-section-title">Labels</div>
+            {/* Tag-Farben (v1.10.0): Palette für den ausgewählten Tag — Farbe
+                landet sofort in den Preferences und damit auf allen Geräten. */}
+            {selectedTag && onTagColorSelect && (
+              <div className="sidebar-tag-palette" role="group" aria-label={t('tagColorTitle', { tag: selectedTag })}>
+                {TAG_COLOR_PALETTE.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className={`sidebar-tag-color ${tagColors[selectedTag] === hex ? 'selected' : ''}`}
+                    style={{ backgroundColor: hex }}
+                    onClick={() => onTagColorSelect(selectedTag, tagColors[selectedTag] === hex ? null : hex)}
+                    title={t('tagColorTitle', { tag: selectedTag })}
+                    aria-label={t('tagColorTitle', { tag: selectedTag })}
+                    aria-pressed={tagColors[selectedTag] === hex}
+                  />
+                ))}
+                {tagColors[selectedTag] && (
+                  <button
+                    type="button"
+                    className="sidebar-tag-color sidebar-tag-color-none"
+                    onClick={() => onTagColorSelect(selectedTag, null)}
+                    title={t('tagColorNone')}
+                    aria-label={t('tagColorNone')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
             {allTags.map((tag) => (
               <button
                 key={tag.name}
@@ -265,6 +505,9 @@ function Sidebar({
                   <line x1="7" y1="7" x2="7.01" y2="7"/>
                 </svg>
                 <span>{tag.name}</span>
+                {tagColors[tag.name] && (
+                  <span className="sidebar-tag-dot" style={{ backgroundColor: tagColors[tag.name] }} aria-hidden="true" />
+                )}
                 <span className="count">{tag.count}</span>
               </button>
             ))}

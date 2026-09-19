@@ -189,6 +189,58 @@ export function getEmptyStateReason({ hasNotes, selectedTag, searchTerm } = {}) 
 }
 
 /**
+ * Verschachtelt die flache /api/notes/tree-Projektion (v1.10.0, pure).
+ * Waisen (Eltern gelöscht, Kinder noch nicht hochgezogen) rücken wie Wurzel-
+ * Knoten nach oben; ein Zykklus (sollte der Server nie liefern) endet am
+ * Tiefen-Cap, statt den Stack zu sprengen.
+ *
+ * @param {Array} flatNodes - {id, parentId, title, isArchived, ...}
+ * @returns {Array} Wurzelknoten {node, children: []}
+ */
+export function buildNoteTree(flatNodes, { maxDepth = 50 } = {}) {
+  if (!Array.isArray(flatNodes)) return [];
+  const byId = new Map();
+  for (const node of flatNodes) {
+    if (node && typeof node.id === 'string') byId.set(node.id, { node, children: [] });
+  }
+  // Effektive Wurzel-Probe: läuft die Elternkette hoch; ein Zyklus (sollte der
+  // Server nie liefern) oder eine Kette jenseits des Caps macht den Knoten
+  // selbst zur Wurzel — so bleibt der entstehende Wald garantiert azyklisch
+  // und endlich tief, egal was reinkommt.
+  const isCyclicOrTooDeep = (entry) => {
+    const seen = new Set([entry]);
+    let current = entry;
+    let depth = 0;
+    while (depth <= maxDepth) {
+      const parentId = current.node.parentId;
+      const parent = parentId ? byId.get(parentId) : null;
+      if (!parent) return false;
+      if (seen.has(parent)) return true;
+      seen.add(parent);
+      current = parent;
+      depth += 1;
+    }
+    return true;
+  };
+  const detached = new Set();
+  for (const entry of byId.values()) {
+    if (isCyclicOrTooDeep(entry)) detached.add(entry);
+  }
+  const roots = [];
+  for (const entry of byId.values()) {
+    if (detached.has(entry)) {
+      roots.push(entry);
+      continue;
+    }
+    const parentId = entry.node.parentId;
+    const parent = parentId ? byId.get(parentId) : null;
+    if (parent && parent !== entry) parent.children.push(entry);
+    else roots.push(entry);
+  }
+  return roots;
+}
+
+/**
  * Entfernt eine beendete Operation aus dem operationLoading-Objekt (Nr. 26).
  * Rein: identische Referenz, wenn der Schlüssel nicht existiert — ein no-op
  * setState, das die memoisierten Karten nicht invalidiert. Vorher wurden
@@ -236,7 +288,11 @@ export function useNotesManager({
   const [allTags, setAllTags] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
   const [draggedNoteId, setDraggedNoteId] = useState(null);
-
+  // v1.10.0: Ordner-Baum + Ansichts-Scope + Mehrfachauswahl
+  const [noteTree, setNoteTree] = useState([]);
+  const [treeNodes, setTreeNodes] = useState({});
+  const [folderScope, setFolderScope] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const fetchSequenceRef = useRef(0);
   const fetchAbortRef = useRef(null);
@@ -247,7 +303,10 @@ export function useNotesManager({
 
   // Spiegel des aktuellen Zustands für Handler ohne Stale-Closures
   const stateRef = useRef({});
-  stateRef.current = { notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm };
+  stateRef.current = {
+    notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm,
+    treeNodes, selectedIds
+  };
 
   // Läuft ein Fetch mit älterer Sequenz ein, wird sein Ergebnis verworfen.
   const invalidateInFlightFetches = useCallback(() => {
@@ -381,6 +440,28 @@ export function useNotesManager({
     fetchNotes(search, page, { background: true, silent });
   }, [fetchNotes]);
 
+  /**
+   * Ordner-Baum neu lesen (v1.10.0). Läuft still mit: der Baum ist ein Panel
+   * neben der Liste, kein primärer Inhalt — ein Fehler dort toastet nur, wenn
+   * explizit danach gefragt wird (Erst-/Zweitaufruf über Mutationen bleibt stumm).
+   */
+  const refreshTree = useCallback(async ({ silent = true } = {}) => {
+    if (!isLoggedIn) return;
+    try {
+      const flat = await api.getTree();
+      if (!Array.isArray(flat)) return;
+      const nodes = {};
+      for (const node of flat) {
+        if (node && typeof node.id === 'string') nodes[node.id] = node;
+      }
+      setTreeNodes(nodes);
+      setNoteTree(buildNoteTree(flat));
+    } catch (error) {
+      console.error('Fehler beim Laden des Notiz-Baums:', error);
+      if (!silent) showToast(resolveApiErrorMessage(error, t, 'errorLoadingNotes'), 'error');
+    }
+  }, [isLoggedIn, api, showToast, t]);
+
   // Notizen laden wenn eingeloggt bzw. wenn Ansicht/Filter sich ändert.
   // Nur der allererste Load (leere Liste) läuft mit `loading`/Skeletons,
   // alle weiteren Filterwechsel laufen als dimmed Hintergrund-Refresh.
@@ -388,8 +469,9 @@ export function useNotesManager({
     if (isLoggedIn && !authLoading) {
       const background = hasLoadedRef.current && stateRef.current.notes.length > 0;
       fetchNotes(searchTerm, 1, { background });
+      refreshTree();
     }
-  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, fetchNotes]);
+  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, fetchNotes, refreshTree]);
 
   // Beim Logout: Zustand zurücksetzen und laufende Fetches entwerten.
   useEffect(() => {
@@ -400,6 +482,10 @@ export function useNotesManager({
       setPagination(DEFAULT_PAGINATION);
       setNoteCounts(DEFAULT_COUNTS);
       setAllTags([]);
+      setNoteTree([]);
+      setTreeNodes({});
+      setFolderScope(null);
+      setSelectedIds(new Set());
     }
   }, [isLoggedIn, invalidateInFlightFetches]);
 
@@ -631,6 +717,147 @@ export function useNotesManager({
     setNotes(prev => applyMutationLocally(prev, { type: 'update', note: normalized }));
   }, [invalidateInFlightFetches]);
 
+  // ---------------------------------------------------------------------------
+  // v1.10.0: Ordner (Baum), Verschieben, Mehrfachauswahl, Journal
+  // ---------------------------------------------------------------------------
+
+  /** Ansichts-Scope setzen; erneutes Antippen des aktiven Scope zeigt wieder alles. */
+  const selectFolder = useCallback((scope) => {
+    setFolderScope(prev => (prev === scope ? null : scope));
+    setSelectedIds(new Set());
+  }, []);
+
+  /** Notiz in einen Ordner verschieben (parentId null = Hauptebene). */
+  const moveNote = useCallback(async (id, parentId) => {
+    setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
+    try {
+      const response = normalizeNote(await api.update(id, { parentId }));
+      if (!response) throw new Error('Ungültige Serverantwort');
+      applyLocallyAndRevalidate({ type: 'update', note: response });
+      refreshTree();
+      showToast(t('noteMoved'), 'success');
+      return response;
+    } catch (error) {
+      console.error('Fehler beim Verschieben:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
+      return null;
+    } finally {
+      setOperationLoading(prev => withoutOperation(prev, id));
+    }
+  }, [api, applyLocallyAndRevalidate, refreshTree, showToast, t]);
+
+  const toggleNoteSelection = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  /**
+   * Führt eine Aktion für die gesamte Mehrfachauswahl sequenziell aus (keine
+   * Batch-Endpoints serverseitig). Einzelfehler werden gezählt und geloggt, die
+   * Auswahl räumt danach immer ab; ein Refresh zieht den Serverstand nach.
+   */
+  const runBulkAction = useCallback(async (action) => {
+    const ids = Array.from(stateRef.current.selectedIds);
+    if (ids.length === 0) return { done: 0, failed: 0 };
+    setOperationLoading(prev => ({ ...prev, bulk: true }));
+    let done = 0;
+    let failed = 0;
+    try {
+      for (const id of ids) {
+        try {
+          await action(id, stateRef.current.notes.find(note => note._id === id));
+          done += 1;
+        } catch (error) {
+          failed += 1;
+          console.error('Bulk-Aktion für Notiz fehlgeschlagen:', error);
+        }
+      }
+      invalidateInFlightFetches();
+      refreshInBackground(stateRef.current.searchTerm, 1, { silent: true });
+      refreshTree();
+      return { done, failed };
+    } finally {
+      setSelectedIds(new Set());
+      setOperationLoading(prev => withoutOperation(prev, 'bulk'));
+    }
+  }, [invalidateInFlightFetches, refreshInBackground, refreshTree]);
+
+  /** Alle ausgewählten anheften (pin=true) oder abheften. */
+  const bulkSetPinned = useCallback(async (pin) => {
+    const { done } = await runBulkAction(async (id, note) => {
+      if (Boolean(note?.isPinned) === pin) return;
+      await api.togglePin(id);
+    });
+    if (done > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: done }), 'success');
+  }, [runBulkAction, api, showToast, t]);
+
+  /** Alle ausgewählten archivieren. */
+  const bulkArchive = useCallback(async () => {
+    const { done } = await runBulkAction(async (id, note) => {
+      if (note?.isArchived) return;
+      await api.toggleArchive(id);
+    });
+    if (done > 0) showToast(t('bulkArchived', { count: done }), 'success');
+  }, [runBulkAction, api, showToast, t]);
+
+  /** Alle ausgewählten in den Papierkorb. */
+  const bulkDelete = useCallback(async () => {
+    const { done } = await runBulkAction(async (id) => {
+      await api.delete(id);
+    });
+    if (done > 0) showToast(t('bulkDeleted', { count: done }), 'success');
+  }, [runBulkAction, api, showToast, t]);
+
+  /** Ein Tag an alle ausgewählten Notizen anhängen (Duplikate überspringen). */
+  const bulkAddTag = useCallback(async (tag) => {
+    const trimmed = typeof tag === 'string' ? tag.trim() : '';
+    if (!trimmed) return;
+    const { done } = await runBulkAction(async (id, note) => {
+      if (note?.tags?.includes(trimmed)) return;
+      await api.update(id, { tags: [...(note?.tags ?? []), trimmed] });
+    });
+    if (done > 0) showToast(t('bulkTagged', { count: done, tag: trimmed }), 'success');
+  }, [runBulkAction, api, showToast, t]);
+
+  /** Alle ausgewählten in einen Ordner verschieben (parentId null = Hauptebene). */
+  const bulkMove = useCallback(async (parentId) => {
+    const { done } = await runBulkAction(async (id, note) => {
+      if (note?.parentId === parentId) return;
+      await api.update(id, { parentId });
+    });
+    if (done > 0) showToast(t('bulkMoved', { count: done }), 'success');
+  }, [runBulkAction, api, showToast, t]);
+
+  /**
+   * Journal „Heute" (v1.10.0): liefert die Tages-Notiz — Titel ist das ISO-
+   * Datum, sie liegt im konfigurierten Journal-Ordner — und legt sie beim ersten
+   * Zugriff des Tages an. Identisch zur Android-App, damit „Heute" auf beiden
+   * Plattformen dieselbe Notiz findet.
+   */
+  const findOrCreateTodayNote = useCallback(async (journalFolderId) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const targetParent = journalFolderId ?? null;
+    const existing = Object.values(stateRef.current.treeNodes)
+      .find(node => node.title === today
+        && (node.parentId ?? null) === targetParent
+        && !node.isArchived);
+    if (existing) return existing.id;
+    const created = await createNote({
+      title: today,
+      content: `# ${today}\n\n`,
+      tags: ['Journal'],
+      parentId: journalFolderId ?? undefined
+    });
+    refreshTree();
+    return created?._id ?? null;
+  }, [createNote, refreshTree]);
+
   // Drag & Drop Handlers
   const handleDragStart = useCallback((noteId, _event) => {
     setDraggedNoteId(noteId);
@@ -726,11 +953,20 @@ export function useNotesManager({
     };
   }, [isLoggedIn, refreshInBackground]);
 
-  // Notizen nach Tag filtern und in angeheftete/sonstige Sektionen trennen
+  // Notizen nach Tag/Ordner filtern und in angeheftete/sonstige Sektionen trennen
   const { pinnedNotes, otherNotes } = useMemo(() => {
-    const filtered = selectedTag
-      ? notes.filter(item => item.tags && item.tags.includes(selectedTag))
-      : notes;
+    let filtered = notes;
+    if (selectedTag) {
+      filtered = filtered.filter(item => item.tags && item.tags.includes(selectedTag));
+    }
+    // Ordner-Scope (v1.10.0): 'root' = nur Hauptebene, sonst die direkten
+    // Kinder des gewählten Knotens. Wie der Tag-Filter ein clientseitiger
+    // Filter auf dem geladenen Fenster — die Baum-Projektion trägt die Vollständigkeit.
+    if (folderScope === 'root') {
+      filtered = filtered.filter(item => !item.parentId);
+    } else if (folderScope) {
+      filtered = filtered.filter(item => item.parentId === folderScope);
+    }
     const byRecency = (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
     // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
     // sortiert hat, bleibt die gewohnte „zuletzt bearbeitet zuerst"-Ordnung.
@@ -748,7 +984,7 @@ export function useNotesManager({
       pinnedNotes: order(filtered.filter(item => item.isPinned)),
       otherNotes: order(filtered.filter(item => !item.isPinned)),
     };
-  }, [notes, selectedTag, searchTerm]);
+  }, [notes, selectedTag, folderScope, searchTerm]);
 
   const emptyStateReason = useMemo(() => getEmptyStateReason({
     hasNotes: pinnedNotes.length > 0 || otherNotes.length > 0,
@@ -783,6 +1019,22 @@ export function useNotesManager({
     handleDragEnd,
     handleDragOver,
     handleDrop,
+    // v1.10.0: Baum, Ordner-Scope, Mehrfachauswahl, Journal
+    noteTree,
+    treeNodes,
+    folderScope,
+    selectedIds,
+    selectFolder,
+    refreshTree,
+    moveNote,
+    toggleNoteSelection,
+    clearSelection,
+    bulkSetPinned,
+    bulkArchive,
+    bulkDelete,
+    bulkAddTag,
+    bulkMove,
+    findOrCreateTodayNote,
   };
 }
 

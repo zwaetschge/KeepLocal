@@ -135,13 +135,35 @@ export function SettingsProvider({ children }) {
     setSettings((prev) => (THEMES.includes(theme) ? normalizeSettings({ ...prev, theme }) : prev));
   }, []);
 
+  // v1.10.0: Tag-Farbe setzen/entfernen (hex null = entfernen). Kommt lokal
+  // sofort an, der debounced Sync schiebt sie mit den anderen Preferences.
+  const setTagColor = useCallback((tag, hex) => {
+    setSettings((prev) => {
+      const colors = { ...prev.tagColors };
+      if (hex) colors[tag] = hex;
+      else delete colors[tag];
+      return normalizeSettings({ ...prev, tagColors: colors });
+    });
+  }, []);
+
+  const setSavedSearches = useCallback((savedSearches) => {
+    setSettings((prev) => normalizeSettings({ ...prev, savedSearches }));
+  }, []);
+
+  const setJournalFolderId = useCallback((journalFolderId) => {
+    setSettings((prev) => normalizeSettings({ ...prev, journalFolderId }));
+  }, []);
+
   const value = useMemo(() => ({
     settings,
     updateSettings,
     toggleAIFeature,
     setTranscriptionLanguage,
     setTheme,
-  }), [settings, updateSettings, toggleAIFeature, setTranscriptionLanguage, setTheme]);
+    setTagColor,
+    setSavedSearches,
+    setJournalFolderId,
+  }), [settings, updateSettings, toggleAIFeature, setTranscriptionLanguage, setTheme, setTagColor, setSavedSearches, setJournalFolderId]);
 
   return (
     <SettingsContext.Provider value={value}>

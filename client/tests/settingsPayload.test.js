@@ -22,7 +22,11 @@ test('settings normalization preserves valid supported values', async () => {
   const settings = {
     theme: 'oled',
     aiFeatures: { voiceTranscription: true },
-    transcriptionLanguage: 'de'
+    transcriptionLanguage: 'de',
+    // v1.10.0: Tag-Farben, gespeicherte Suchen, Journal-Ordner
+    tagColors: { ideen: '#84cc16' },
+    savedSearches: [{ id: 's-1', name: 'Offene Punkte', query: 'offen', typeFilter: null, tag: null }],
+    journalFolderId: '64b1f0c9a1d4e5f6a7b8c9d0'
   };
 
   assert.deepEqual(normalizeSettings(settings), settings);
@@ -47,16 +51,24 @@ test('user preferences are mapped into settings and back', async () => {
     preferences: { theme: 'dark', aiFeatures: { voiceTranscription: true }, transcriptionLanguage: 'fr' }
   };
   const settings = settingsFromUser(user);
+  // v1.10.0: Die neuen Schlüssel normalisieren mit auf ihre Defaults — ein
+  // Account ohne sie bekommt leere Farben/Suchen und keinen Journal-Ordner.
   assert.deepEqual(settings, {
     theme: 'dark',
     aiFeatures: { voiceTranscription: true },
-    transcriptionLanguage: 'fr'
+    transcriptionLanguage: 'fr',
+    tagColors: {},
+    savedSearches: [],
+    journalFolderId: null
   });
 
   assert.deepEqual(preferencesFromSettings(settings), {
     theme: 'dark',
     aiFeatures: { voiceTranscription: true },
-    transcriptionLanguage: 'fr'
+    transcriptionLanguage: 'fr',
+    tagColors: {},
+    savedSearches: [],
+    journalFolderId: null
   });
 
   // A user without preferences (older account) falls back to the defaults.
@@ -68,5 +80,62 @@ test('user preferences are mapped into settings and back', async () => {
     settingsEqual(settings, { theme: 'dark', aiFeatures: { voiceTranscription: 'true' }, transcriptionLanguage: 'fr' }),
     false,
     'a stringified boolean is not the same preference'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// v1.10.0: Tag-Farben, gespeicherte Suchen, Journal-Ordner
+// ---------------------------------------------------------------------------
+
+test('tag colors are clamped like the server (200 max, 6-digit hex only)', async () => {
+  const { normalizeSettings } = await import(moduleUrl);
+
+  const colors = {};
+  for (let i = 0; i < 220; i += 1) colors[`tag${i}`] = '#ABCDEF';
+  colors['bad'] = 'red';
+  colors['short'] = '#fff';
+
+  const normalized = normalizeSettings({ tagColors: colors });
+  const keys = Object.keys(normalized.tagColors);
+  assert.equal(keys.length, 200, 'überzählige Farben fallen weg');
+  assert.equal(normalized.tagColors.tag0, '#abcdef', 'Hex wird kleingeschrieben');
+  assert.ok(!('bad' in normalized.tagColors), 'kein Hex-Code wird gedroppt');
+  assert.ok(!('short' in normalized.tagColors), '3-stelliger Hex wird gedroppt');
+  assert.equal(Object.keys(normalizeSettings({ tagColors: 'x' }).tagColors).length, 0);
+});
+
+test('saved searches keep at most 20 valid entries', async () => {
+  const { normalizeSettings } = await import(moduleUrl);
+
+  const valid = { id: 's-1', name: '  Offen  ', query: 'todo', typeFilter: null, tag: 'arbeit' };
+  const searches = Array.from({ length: 25 }, (_, index) => ({ ...valid, id: `s-${index}` }));
+  searches.push({ id: 'no-name', name: '', query: 'x' }); // ungültig: leerer Name
+
+  const normalized = normalizeSettings({ savedSearches: searches });
+  assert.equal(normalized.savedSearches.length, 20, 'mehr als 20 Suchen werden gekappt');
+  assert.equal(normalized.savedSearches[0].name, 'Offen', 'Name wird getrimmt');
+  assert.equal(normalized.savedSearches[0].id, 's-0', 'Reihenfolge bleibt erhalten');
+});
+
+test('journalFolderId must be a 24-hex Mongo id or null', async () => {
+  const { normalizeSettings } = await import(moduleUrl);
+
+  const valid = '64b1f0c9a1d4e5f6a7b8c9d0';
+  assert.equal(normalizeSettings({ journalFolderId: valid }).journalFolderId, valid);
+  assert.equal(normalizeSettings({ journalFolderId: 'not-an-id' }).journalFolderId, null);
+  assert.equal(normalizeSettings({ journalFolderId: 42 }).journalFolderId, null);
+  assert.equal(normalizeSettings({}).journalFolderId, null);
+});
+
+test('tag colors and saved searches participate in settingsEqual', async () => {
+  const { settingsEqual } = await import(moduleUrl);
+
+  const base = { theme: 'light' };
+  assert.equal(settingsEqual(base, { ...base, tagColors: {} }), true);
+  assert.equal(settingsEqual(base, { ...base, tagColors: { work: '#3b82f6' } }), false);
+  assert.equal(settingsEqual(base, { ...base, savedSearches: [] }), true);
+  assert.equal(
+    settingsEqual(base, { ...base, savedSearches: [{ id: 's', name: 'N', query: '', typeFilter: null, tag: null }] }),
+    false
   );
 });

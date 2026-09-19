@@ -59,3 +59,15 @@ test('notes payload normalization supplies a safe empty response', async () => {
     tags: []
   });
 });
+
+// v1.10.0: Baum-Eltern (parentId) und Code-Notizen (isCode)
+test('normalizeNote keeps parentId (string or null) and isCode', async () => {
+  const { normalizeNote } = await import(moduleUrl);
+
+  assert.equal(normalizeNote({ _id: 'a', parentId: '64b1f0c9a1d4e5f6a7b8c9d0' }).parentId, '64b1f0c9a1d4e5f6a7b8c9d0');
+  assert.equal(normalizeNote({ _id: 'a', parentId: undefined }).parentId, null);
+  assert.equal(normalizeNote({ _id: 'a', parentId: 42 }).parentId, null, 'kein String -> null');
+  assert.equal(normalizeNote({ _id: 'a' }).isCode, false);
+  assert.equal(normalizeNote({ _id: 'a', isCode: true }).isCode, true);
+  assert.equal(normalizeNote({ _id: 'a', isCode: 'yes' }).isCode, true);
+});

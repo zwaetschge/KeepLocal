@@ -6,11 +6,51 @@ export const DEFAULT_SETTINGS = {
   aiFeatures: {
     voiceTranscription: false
   },
-  transcriptionLanguage: 'auto'
+  transcriptionLanguage: 'auto',
+  // v1.10.0: Tag-Farben (Name → Hex), gespeicherte Suchen, Journal-Ordner
+  tagColors: {},
+  savedSearches: [],
+  journalFolderId: null
 };
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Tag colors: Name → Hex, limited like the server (≤200, 6-digit hex). */
+function normalizeTagColors(value) {
+  if (!isRecord(value)) return {};
+  const colors = {};
+  let count = 0;
+  for (const [tag, hex] of Object.entries(value)) {
+    if (count >= 200) break;
+    if (typeof tag === 'string' && tag.length <= 100
+      && typeof hex === 'string' && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+      colors[tag] = hex.toLowerCase();
+      count += 1;
+    }
+  }
+  return colors;
+}
+
+/** Saved searches: {id, name, query, typeFilter, tag}, ≤20 like the server. */
+function normalizeSavedSearches(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .slice(0, 20)
+    .map((search) => ({
+      id: typeof search.id === 'string' && search.id.length <= 40 ? search.id : null,
+      name: typeof search.name === 'string' && search.name.trim()
+        ? search.name.trim().slice(0, 80)
+        : null,
+      query: typeof search.query === 'string' ? search.query.slice(0, 200) : '',
+      typeFilter: typeof search.typeFilter === 'string' && search.typeFilter.length <= 20
+        ? search.typeFilter
+        : null,
+      tag: typeof search.tag === 'string' && search.tag.length <= 100 ? search.tag : null
+    }))
+    .filter((search) => search.id && search.name);
 }
 
 /**
@@ -35,7 +75,13 @@ export function normalizeSettings(value) {
     aiFeatures: {
       voiceTranscription: aiFeatures.voiceTranscription === true
     },
-    transcriptionLanguage
+    transcriptionLanguage,
+    tagColors: normalizeTagColors(source.tagColors),
+    savedSearches: normalizeSavedSearches(source.savedSearches),
+    journalFolderId: typeof source.journalFolderId === 'string'
+      && /^[0-9a-f]{24}$/.test(source.journalFolderId)
+      ? source.journalFolderId
+      : null
   };
 }
 
@@ -56,7 +102,10 @@ export function preferencesFromSettings(settings) {
   return {
     theme: normalized.theme,
     aiFeatures: { voiceTranscription: normalized.aiFeatures.voiceTranscription },
-    transcriptionLanguage: normalized.transcriptionLanguage
+    transcriptionLanguage: normalized.transcriptionLanguage,
+    tagColors: normalized.tagColors,
+    savedSearches: normalized.savedSearches,
+    journalFolderId: normalized.journalFolderId
   };
 }
 
@@ -72,7 +121,10 @@ export function settingsEqual(a, b) {
   const right = normalizeSettings(b);
   return left.theme === right.theme
     && left.transcriptionLanguage === right.transcriptionLanguage
-    && left.aiFeatures.voiceTranscription === right.aiFeatures.voiceTranscription;
+    && left.aiFeatures.voiceTranscription === right.aiFeatures.voiceTranscription
+    && left.journalFolderId === right.journalFolderId
+    && JSON.stringify(left.tagColors) === JSON.stringify(right.tagColors)
+    && JSON.stringify(left.savedSearches) === JSON.stringify(right.savedSearches);
 }
 
 const settingsPayload = {
