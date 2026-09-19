@@ -48,7 +48,8 @@ test('search relevance beats manual order, which beats recency', () => {
   assert.match(hook, /const order = \(items\) => \(comparator \? items\.sort\(comparator\) : items\);/);
   assert.match(hook, /pinnedNotes: order\(filtered\.filter\(item => item\.isPinned\)\)/);
   assert.match(hook, /otherNotes: order\(filtered\.filter\(item => !item\.isPinned\)\)/);
-  assert.match(hook, /\}, \[notes, selectedTag, searchTerm\]\);/);
+  // v1.10.0: folderScope ist als Abhängigkeit dazugekommen (Ordner-Filter).
+  assert.match(hook, /\}, \[notes, selectedTag, folderScope, searchTerm\]\);/);
 });
 
 test('the payload normalizer keeps a numeric order', async () => {

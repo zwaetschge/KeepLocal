@@ -512,3 +512,173 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* ---------------------------------------------------------------------------
+   v1.10.0: Ordner-Baum, gespeicherte Suchen, Tag-Farben
+   --------------------------------------------------------------------------- */
+
+.sidebar-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-folder-caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: transform var(--duration-fast, 0.15s) var(--ease-default, ease);
+}
+
+.sidebar-folder-caret:hover {
+  color: var(--text-primary, inherit);
+  background: var(--accent-light, rgba(0, 0, 0, 0.05));
+}
+
+.sidebar-folder-caret.open {
+  transform: rotate(90deg);
+}
+
+.sidebar-folder-caret-spacer {
+  flex: 0 0 auto;
+  width: 20px;
+}
+
+.sidebar-folder {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drop-Ziel beim Verschieben einer Notiz in den Ordner */
+.sidebar-folder.drop-target {
+  outline: 2px dashed var(--accent-color);
+  outline-offset: -2px;
+  background: var(--accent-light);
+}
+
+/* Hauptebene/Ordner-Zeilen sind im eingeklappten Zustand wie Items versteckt */
+.sidebar.collapsed .sidebar-folder-title,
+.sidebar.collapsed .sidebar-tag-palette,
+.sidebar.collapsed .sidebar-savedsearch-delete,
+.sidebar.collapsed .sidebar-savedsearch-add {
+  display: none;
+}
+
+.sidebar-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.sidebar-savedsearch-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.sidebar-savedsearch-add:hover {
+  background: var(--accent-light);
+  color: var(--accent-text, var(--accent-color));
+}
+
+.sidebar-savedsearch-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-savedsearch-row .sidebar-savedsearch {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-savedsearch-row .sidebar-savedsearch span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-savedsearch-delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.sidebar-savedsearch-delete:hover {
+  background: var(--accent-light);
+  color: var(--error-color, #DC2626);
+}
+
+/* Tag-Farbpalette unter dem Labels-Titel (nur bei ausgewähltem Tag) */
+.sidebar-tag-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 8px;
+}
+
+.sidebar-tag-color {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.sidebar-tag-color.selected {
+  border-color: var(--text-primary, #222);
+}
+
+.sidebar-tag-color-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary, #eee);
+  color: var(--text-secondary, #666);
+}
+
+.sidebar-tag-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+/* Der Punkt sitzt zwischen Name und Zähler — Zähler bleibt rechtsbündig */
+.sidebar-item .sidebar-tag-dot + .count {
+  margin-left: 0;
+}

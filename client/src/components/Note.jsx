@@ -8,7 +8,7 @@ import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, tagColors }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
@@ -156,6 +156,22 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
       onDrop={handleDrop}
     >
       <div className="note-content-wrapper">
+        {/* v1.10.0: Mehrfachauswahl — die Checkbox erscheint dauerhaft, sobald
+            eine Auswahl läuft, sonst beim Hover/Fokus der Karte. */}
+        {!inTrash && onToggleSelect && (
+          <input
+            type="checkbox"
+            className={`note-select ${selectedIds?.size > 0 ? 'visible' : ''}`}
+            checked={Boolean(selectedIds?.has(note._id))}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleSelect(note._id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t('selectNote')}
+            disabled={Boolean(operation)}
+          />
+        )}
         {note.title && <h3 className="note-title">{note.title}</h3>}
 
         {note.isTodoList && note.todoItems && note.todoItems.length > 0 ? (
@@ -229,6 +245,9 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
           <div className="note-tags">
             {note.tags.map((tag, index) => (
               <span key={index} className="note-tag">
+                {tagColors?.[tag] && (
+                  <span className="note-tag-dot" style={{ backgroundColor: tagColors[tag] }} aria-hidden="true" />
+                )}
                 {tag}
               </span>
             ))}

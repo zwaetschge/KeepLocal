@@ -11,4 +11,5 @@ export { useLinkPreview } from './useLinkPreview';
 export { useTodoList } from './useTodoList';
 export { useKeyboardShortcuts, useModalShortcuts } from './useKeyboardShortcuts';
 export { useNotesManager } from './useNotesManager';
+export { useFolderFeatures } from './useFolderFeatures';
 export { useOnlineStatus, useOnlineRefresh } from './useOnlineStatus';

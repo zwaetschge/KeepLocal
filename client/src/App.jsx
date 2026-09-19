@@ -15,8 +15,10 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
-import { useKeyboardShortcuts, useNotesManager, useOnlineRefresh } from './hooks';
+import { useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh } from './hooks';
 import OfflineBanner from './components/OfflineBanner';
+import BulkActionBar from './components/BulkActionBar';
+import FolderScopeBar from './components/FolderScopeBar';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
 
 // Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden. Nr. 26
@@ -47,8 +49,9 @@ function AppContent() {
   } = useAuth();
   const { t } = useLanguage();
   // Theme ist eine Konto-Einstellung (SettingsContext) und folgt damit dem
-  // Login statt dem Gerät.
-  const { settings, setTheme } = useSettings();
+  // Login statt dem Gerät. v1.10.0: Tag-Farben, gespeicherte Suchen und der
+  // Journal-Ordner reisen auf demselben Weg mit.
+  const { settings, setTheme, setTagColor, setSavedSearches } = useSettings();
   const theme = settings.theme;
 
   // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
@@ -86,6 +89,10 @@ function AppContent() {
     createNote, updateNote, deleteNote, restoreNote, purgeNote, emptyTrash,
     togglePinNote, toggleArchiveNote, handleNoteShared,
     handleDragStart, handleDragEnd, handleDragOver, handleDrop,
+    // v1.10.0: Baum, Ordner-Scope, Mehrfachauswahl, Journal
+    noteTree, treeNodes, folderScope, selectedIds, selectFolder, refreshTree, moveNote,
+    toggleNoteSelection, clearSelection, bulkSetPinned, bulkArchive, bulkDelete, bulkAddTag, bulkMove,
+    findOrCreateTodayNote, draggedNoteId,
   } = useNotesManager({
     api: notesAPI, isLoggedIn, authLoading, showToast, t,
     showArchived, showTrash, selectedTag, searchTerm,
@@ -145,6 +152,21 @@ function AppContent() {
     setSelectedTag(tag);
   }, []);
 
+  // v1.10.0: Ordner-Baum, Journal, gespeicherte Suchen, Wiki-Links — die
+  // Ableitungen und Handler leben im eigenen Hook, damit App.jsx Verdrahtung
+  // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js).
+  const {
+    folderOptions, wikiNotes, allKnownTags, backlinks,
+    handleOpenNoteById, handleOpenToday, handleRunSavedSearch, handleSaveCurrentSearch,
+    handleDeleteSavedSearch, handleFolderDrop, handleDataImported,
+  } = useFolderFeatures({
+    notes, noteTree, treeNodes, allTags, noteModal,
+    findOrCreateTodayNote, moveNote, draggedNoteId, refreshTree, fetchNotes,
+    openNoteModal, showToast, t, searchTerm, selectedTag,
+    settings, setSavedSearches,
+    setSearchTerm, setSelectedTag, setShowTrash, setShowArchived,
+  });
+
   // Nr. 26: listActions in useMemo — ein neues Objekt-Literal pro Render hätte
   // die memoisierten Karten bei jedem AppContent-Tick neu gerendert. Muss vor
   // den Early Returns stehen (Hook-Regeln).
@@ -162,9 +184,13 @@ function AppContent() {
       onOpenModal: openNoteModal,
       onDragStart: handleDragStart, onDragEnd: handleDragEnd,
       onDragOver: handleDragOver, onDrop: handleDrop,
+      // v1.10.0: Mehrfachauswahl (die Karten zeigen die Checkbox, sobald
+      // eine Auswahl aktiv ist)
+      selectedIds, onToggleSelect: toggleNoteSelection,
+      tagColors: settings.tagColors,
       highlight: searchTerm,
       operationLoading,
-    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, searchTerm]);
+    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, settings.tagColors, searchTerm]);
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
@@ -328,6 +354,16 @@ function AppContent() {
           onShowTrashToggle={() => selectView(showTrash ? 'notes' : 'trash')}
           onEmptyTrash={emptyTrash}
           onOpenFriends={user?.isDemo ? undefined : () => setShowFriendsModal(true)}
+          noteTree={noteTree} folderScope={folderScope}
+          onSelectFolder={selectFolder} onFolderDrop={handleFolderDrop}
+          onOpenToday={handleOpenToday}
+          savedSearches={settings.savedSearches}
+          onRunSavedSearch={handleRunSavedSearch}
+          onDeleteSavedSearch={handleDeleteSavedSearch}
+          onSaveCurrentSearch={handleSaveCurrentSearch}
+          canSaveSearch={Boolean(searchTerm.trim() || selectedTag)}
+          tagColors={settings.tagColors}
+          onTagColorSelect={setTagColor}
         />
 
         {/* tabIndex=-1 (Skip-Link-Standard): Fragment-Ziel sonst ohne echten Fokus. */}
@@ -343,7 +379,33 @@ function AppContent() {
               onEmpty={emptyTrash}
             />
           ) : (
-            <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
+            <>
+              {/* v1.10.0: aktiver Ordner-Scope als Breadcrumb — ein Klick auf ×
+                  zeigt wieder alle Notizen. */}
+              {folderScope && (
+                <FolderScopeBar
+                  title={folderScope === 'root' ? t('topLevel') : (treeNodes[folderScope]?.title || t('untitledNote'))}
+                  onClear={() => selectFolder(folderScope)}
+                />
+              )}
+              <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
+            </>
+          )}
+
+          {/* v1.10.0: Mehrfachauswahl — Aktionsleiste über der Liste */}
+          {!showTrash && selectedIds.size > 0 && (
+            <BulkActionBar
+              count={selectedIds.size}
+              busy={Boolean(operationLoading.bulk)}
+              folders={folderOptions}
+              onPin={() => bulkSetPinned(true)}
+              onUnpin={() => bulkSetPinned(false)}
+              onArchive={bulkArchive}
+              onDelete={bulkDelete}
+              onAddTag={bulkAddTag}
+              onMove={bulkMove}
+              onCancel={clearSelection}
+            />
           )}
 
           {/* P15b: erster Load zeigt Skeletons; Hintergrund-Refresh dimmt die Liste nur */}
@@ -395,6 +457,12 @@ function AppContent() {
             onSave={handleModalSave} onClose={closeNoteModal}
             onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
             onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
+            availableTags={allKnownTags}
+            wikiNotes={wikiNotes}
+            backlinks={backlinks}
+            onOpenNote={handleOpenNoteById}
+            folders={folderOptions}
+            defaultParentId={folderScope && folderScope !== 'root' ? folderScope : null}
           />
         </Suspense>
       )}
@@ -412,7 +480,8 @@ function AppContent() {
       {showSettings && !user?.isDemo && (
         <Suspense fallback={LAZY_FALLBACK}>
           <Settings onClose={() => setShowSettings(false)} isAdmin={user?.isAdmin}
-            onAdminClick={() => setShowAdminConsole(true)} />
+            onAdminClick={() => setShowAdminConsole(true)}
+            folders={folderOptions} onDataImported={handleDataImported} />
         </Suspense>
       )}
 

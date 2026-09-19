@@ -39,6 +39,9 @@ export const API_ENDPOINTS = {
     REORDER: '/api/notes/reorder',
     RESTORE: (id) => `/api/notes/${id}/restore`,
     TRASH: '/api/notes/trash',
+    // v1.10.0: Baum-Projektion für das Ordner-Panel + Markdown-ZIP-Export
+    TREE: '/api/notes/tree',
+    EXPORT_MARKDOWN: '/api/notes/export/markdown',
   },
 
   // Friends endpoints

@@ -72,6 +72,29 @@ const notesAPI = {
   getById: (id, options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id), { signal: options.signal }),
 
   /**
+   * Light note-tree projection (v1.10.0): flat list of {id, parentId, title,
+   * order, isPinned, isCode, isArchived, ...} — no contents. The client nests
+   * it itself for the folder panel.
+   * @param {Object} [options] - `{ signal }`
+   * @returns {Promise<Array>} Flat tree nodes
+   */
+  getTree: (options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.TREE, { signal: options.signal }),
+
+  /**
+   * Markdown ZIP export (v1.10.0): the whole tree as folders of .md files.
+   * Blob download — the browser saves it like any other export.
+   * @returns {Promise<Blob>} ZIP blob
+   */
+  exportMarkdown: async () => {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.EXPORT_MARKDOWN}`, {
+      credentials: 'include',
+      headers: getCsrfToken() ? { 'X-CSRF-Token': getCsrfToken() } : {},
+    });
+    if (!response.ok) throw await toHttpError(response, 'Export fehlgeschlagen');
+    return response.blob();
+  },
+
+  /**
    * Create a new note
    * @param {Object} noteData - Note data (title, content, color, etc.)
    * @returns {Promise<Object>} Created note

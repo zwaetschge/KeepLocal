@@ -74,6 +74,9 @@ export function normalizeNote(note) {
     color: asText(note.color, '#ffffff'),
     isPinned: Boolean(note.isPinned),
     isArchived: Boolean(note.isArchived),
+    // v1.10.0: Baum-Eltern (null = Wurzel) und Code-/Monospace-Notizen
+    parentId: typeof note.parentId === 'string' ? note.parentId : null,
+    isCode: Boolean(note.isCode),
     order: Number.isFinite(Number(note.order)) ? Number(note.order) : 0,
     isTodoList: Boolean(note.isTodoList),
     todoItems: Array.isArray(note.todoItems)

@@ -17,7 +17,9 @@ test('theme cycle includes doodle mode after e-ink and applies the body class', 
 
   // Improvement #6: the theme is an account preference now, so App.jsx only
   // reads it from the SettingsContext and applies it to the document.
-  assert.match(app, /const \{ settings, setTheme \} = useSettings\(\);/);
+  // v1.10.0: die Dekonstruktion nimmt setTagColor/setSavedSearches mit auf —
+  // entscheidend ist nur, dass theme aus settings kommt und kein useState ist.
+  assert.match(app, /const \{ settings, setTheme[^}]*\} = useSettings\(\);/);
   assert.match(app, /const theme = settings\.theme;/);
   assert.match(app, /applyThemeToDocument\(theme\)/);
   assert.doesNotMatch(app, /readLocalStorage\('theme'\)/);
