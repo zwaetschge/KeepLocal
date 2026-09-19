@@ -59,7 +59,23 @@ function publicAuthUser(user, includeProfile = false) {
       aiFeatures: {
         voiceTranscription: user.preferences?.aiFeatures?.voiceTranscription === true
       },
-      transcriptionLanguage: user.preferences?.transcriptionLanguage || 'auto'
+      transcriptionLanguage: user.preferences?.transcriptionLanguage || 'auto',
+      // v1.10.0: Tag-Farben, gespeicherte Suchen und Journal-Wurzel folgen
+      // ebenfalls dem Konto. savedSearches ist ein Array von Subdokumenten —
+      // lean toJSON kann die _id mitliefern, die Clients interessiert sie nicht.
+      tagColors: user.preferences?.tagColors && typeof user.preferences.tagColors === 'object'
+        ? user.preferences.tagColors
+        : {},
+      savedSearches: Array.isArray(user.preferences?.savedSearches)
+        ? user.preferences.savedSearches.map((search) => ({
+          id: search.id,
+          name: search.name,
+          query: search.query || '',
+          typeFilter: search.typeFilter || 'all',
+          tag: search.tag || ''
+        }))
+        : [],
+      journalFolderId: user.preferences?.journalFolderId || null
     }
   };
 
@@ -403,7 +419,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 // ein Client nicht beliebige Dokumentteile schreiben kann.
 router.put('/preferences', authenticateToken, blockDemoUser('preferences'), async (req, res, next) => {
   try {
-    const { theme, language, aiFeatures, transcriptionLanguage } = req.body || {};
+    const { theme, language, aiFeatures, transcriptionLanguage, tagColors, savedSearches, journalFolderId } = req.body || {};
     const update = {};
 
     if (theme !== undefined) {
@@ -438,6 +454,70 @@ router.put('/preferences', authenticateToken, blockDemoUser('preferences'), asyn
         return res.status(400).json({ error: 'Ungueltige Transkriptionssprache' });
       }
       update['preferences.transcriptionLanguage'] = transcriptionLanguage;
+    }
+
+    // v1.10.0: Tag-Farben — Schluessel sind Tag-Namen, Werte Hexes aus der
+    // Karten-Palette. Gesamtkappgrenze haelt Mixed-Dokumente klein.
+    if (tagColors !== undefined) {
+      if (typeof tagColors !== 'object' || tagColors === null || Array.isArray(tagColors)) {
+        return res.status(400).json({ error: 'Ungueltige Tag-Farben' });
+      }
+      const NOTE_COLOR_SET = new Set([
+        '#ffffff', '#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb',
+        '#cbf0f8', '#aecbfa', '#d7aefb', '#fdcfe8', '#e6c9a8', '#e8eaed'
+      ]);
+      const entries = Object.entries(tagColors);
+      if (entries.length > 200) {
+        return res.status(400).json({ error: 'Maximal 200 Tag-Farben sind erlaubt' });
+      }
+      for (const [tag, color] of entries) {
+        if (
+          typeof tag !== 'string' || tag.length < 1 || tag.length > 50
+          || !/^[a-zA-Z0-9äöüÄÖÜß\-_]+$/.test(tag)
+          || typeof color !== 'string' || !NOTE_COLOR_SET.has(color)
+        ) {
+          return res.status(400).json({ error: 'Ungueltige Tag-Farbe' });
+        }
+      }
+      update['preferences.tagColors'] = tagColors;
+    }
+
+    // v1.10.0: Gespeicherte Suchen — komplette Liste ersetzen (Client ist
+    // Quelle der Wahrheit, Geraete synchronisieren ueber GET /me).
+    if (savedSearches !== undefined) {
+      if (!Array.isArray(savedSearches) || savedSearches.length > 20) {
+        return res.status(400).json({ error: 'Maximal 20 gespeicherte Suchen sind erlaubt' });
+      }
+      const TYPE_FILTERS = new Set(['all', 'lists', 'text', 'images', 'reminders', 'pinned']);
+      const seenIds = new Set();
+      for (const search of savedSearches) {
+        if (
+          !search || typeof search !== 'object'
+          || typeof search.id !== 'string' || !/^[a-zA-Z0-9_-]{1,40}$/.test(search.id) || seenIds.has(search.id)
+          || typeof search.name !== 'string' || search.name.trim().length < 1 || search.name.length > 50
+          || (search.query !== undefined && search.query !== null && (typeof search.query !== 'string' || search.query.length > 200))
+          || (search.typeFilter !== undefined && !TYPE_FILTERS.has(search.typeFilter))
+          || (search.tag !== undefined && search.tag !== null && (typeof search.tag !== 'string' || search.tag.length > 50))
+        ) {
+          return res.status(400).json({ error: 'Ungueltige gespeicherte Suche' });
+        }
+        seenIds.add(search.id);
+      }
+      update['preferences.savedSearches'] = savedSearches.map((search) => ({
+        id: search.id,
+        name: search.name.trim(),
+        query: typeof search.query === 'string' ? search.query : '',
+        typeFilter: TYPE_FILTERS.has(search.typeFilter) ? search.typeFilter : 'all',
+        tag: typeof search.tag === 'string' ? search.tag : ''
+      }));
+    }
+
+    // v1.10.0: Journal-Wurzel — Notiz-ID oder null (Journal aus/noch nie benutzt).
+    if (journalFolderId !== undefined) {
+      if (journalFolderId !== null && (typeof journalFolderId !== 'string' || !/^[0-9a-fA-F]{24}$/.test(journalFolderId))) {
+        return res.status(400).json({ error: 'Ungueltige Journal-Ordner-ID' });
+      }
+      update['preferences.journalFolderId'] = journalFolderId;
     }
 
     if (Object.keys(update).length === 0) {

@@ -111,7 +111,9 @@ test('emptying the trash deletes exactly the notes it read', async () => {
         return { deletedCount: filter._id.$in.length };
       },
       findOneAndUpdate: async () => null,
-      exists: async () => false
+      exists: async () => false,
+      // Baum (v1.10.0): emptyTrash reparentet die Kinder jeder Notiz.
+      updateMany: async () => ({ modifiedCount: 0 })
     }
   };
   const service = require(notesServicePath);

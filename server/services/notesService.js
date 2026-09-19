@@ -9,6 +9,7 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
 const { imagesDir } = require('../config/paths');
+const { ZipWriter } = require('../utils/zipWriter');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -21,6 +22,8 @@ const TAG_PATTERN = /^[a-zA-Z0-9äöüÄÖÜß\-_]+$/;
 const MAX_IMAGE_PIXELS = 40000000;
 const MAX_IMAGES_PER_NOTE = 25;
 const NOTE_CONFLICT_MESSAGE = 'Die Notiz wurde inzwischen geändert';
+// Baum (v1.10.0): Zweites Netz unter dem Zyklus-Schutz — siehe assertValidParent.
+const MAX_TREE_DEPTH = 50;
 // MongoDB truncates timestamps to milliseconds and clients may round when
 // serializing, so small skews must not look like a concurrent edit.
 const CONFLICT_TOLERANCE_MS = 1000;
@@ -170,6 +173,64 @@ function validateNoteFields(noteData) {
       throw clientError('Ungueltiger Erinnerungszeitpunkt');
     }
   }
+
+  // Baum (v1.10.0): null = Wurzel, sonst ObjectId-Hex. Existenz, Eigentum und
+  // Zyklusfreiheit prueft assertValidParent zum Zug-Zeitpunkt (create/update),
+  // nicht hier — validateNoteFields ist synchron.
+  if (noteData.parentId !== undefined && noteData.parentId !== null) {
+    const validId = typeof noteData.parentId === 'string' && /^[0-9a-fA-F]{24}$/.test(noteData.parentId);
+    if (!validId) throw clientError('parentId muss eine Notiz-ID oder null sein');
+  }
+  if (noteData.isCode !== undefined && typeof noteData.isCode !== 'boolean') {
+    throw clientError('isCode muss ein Boolean sein');
+  }
+}
+
+/**
+ * Baum (v1.10.0): Legt fest, dass `parentId` eine eigene, nicht geloeschte
+ * Notiz des Benutzers ist und dass die Notiz `noteId` (null beim Anlegen)
+ * nicht bereits Vorfahre des neuen Eltern-Knotens ist — sonst entstuende ein
+ * Zyklus, in dem kein Baum-Panel mehr eine Wurzel faende.
+ * @param {string} userId - Besitzer (Eltern muessen dem Caller gehoeren)
+ * @param {string|null} noteId - Die zu verschiebende/anzulegende Notiz
+ * @param {string|null} parentId - Gewuenschter Eltern-Knoten (null = Wurzel)
+ */
+async function assertValidParent(userId, noteId, parentId) {
+  if (parentId === undefined || parentId === null) return;
+
+  let currentId = parentId;
+  for (let depth = 0; depth < MAX_TREE_DEPTH; depth++) {
+    if (noteId !== null && String(currentId) === String(noteId)) {
+      throw clientError('Eine Notiz kann nicht unter sich selbst oder einem ihrer Nachkommen liegen');
+    }
+    const parent = await Note.findOne(
+      { _id: currentId, userId, deletedAt: null },
+      'parentId'
+    ).lean();
+    if (!parent) {
+      throw clientError('Uebergeordnete Notiz nicht gefunden');
+    }
+    if (parent.parentId === null || parent.parentId === undefined) return;
+    currentId = parent.parentId;
+  }
+  // Tiefen-Cap als zweites Netz unter dem Zyklus-Schutz: Ein Zyklus ueber
+  // Import oder direkte DB-Manipulation kann nicht in eine Endloss-Schleife
+  // laufen.
+  throw clientError('Der Notiz-Baum ist zu tief verschachtelt');
+}
+
+/**
+ * Kinder einer Notiz eine Ebene hochziehen (v1.10.0). Wird beim Loeschen
+ * (Papierkorb und endgueltig) ausgefuehrt: Die Kinder sollen nicht mit in den
+ * Papierkorb wandern — der Baum bleibt fuer alles andere unveraendert stehen.
+ * @param {Object} note - Die gleich verschwindende Notiz (mit parentId)
+ * @param {string} userId - Besitzer
+ */
+async function reparentChildren(note, userId) {
+  await Note.updateMany(
+    { userId, parentId: note._id, deletedAt: null },
+    { $set: { parentId: note.parentId ?? null } }
+  );
 }
 
 /** remindAt normalisieren: gueltiger Date oder null (loescht die Erinnerung). */
@@ -462,7 +523,7 @@ async function getEditableNoteById(noteId, userId) {
  */
 async function createNote(noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, parentId, isCode } = noteData;
   const normalizedIsTodoList = isTodoList === true;
   const normalizedContent = normalizedIsTodoList ? '' : (typeof content === 'string' ? content.trim() : '');
   const normalizedTodoItems = normalizedIsTodoList && Array.isArray(todoItems) ? todoItems : [];
@@ -472,6 +533,10 @@ async function createNote(noteData, userId) {
     todoItems: normalizedTodoItems,
     content: normalizedContent
   });
+
+  // Baum: Existenz/Eigentum/Zyklusfreiheit des Eltern-Knotens (null = Wurzel).
+  // Vor der Notiz-Anlage, damit ein kaputter Import keine Waisen erzeugt.
+  await assertValidParent(userId, null, parentId);
 
   // Manuelle Reihenfolge: Sobald in einem Abschnitt (angeheftet / sonstige)
   // einmal per Drag & Drop sortiert wurde, gehören neue Notizen nach oben.
@@ -490,6 +555,8 @@ async function createNote(noteData, userId) {
     linkPreviews: linkPreviews || [],
     order: nextOrder,
     remindAt: normalizeRemindAt(remindAt),
+    parentId: parentId ?? null,
+    isCode: isCode === true,
     userId: userId
   });
 
@@ -608,7 +675,7 @@ async function reorderNotes(userId, orderedIds) {
  */
 async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order, parentId, isCode } = noteData;
 
   // Manuelle Reihenfolge: Vor diesem Fix wurde ein mitgeschicktes `order`
   // stillschweigend verworfen (nicht destrukturiert) — Sync-Scripts hatten
@@ -623,6 +690,12 @@ async function updateNote(noteId, noteData, userId) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
     error.statusCode = 404;
     throw error;
+  }
+
+  // Baum: Verschieben nur auf eigene, nicht geloeschte Eltern ohne Zyklus.
+  // null loest die Notiz vom Baum (Wurzel), undefined laesst sie unangetastet.
+  if (parentId !== undefined) {
+    await assertValidParent(userId, noteId, parentId);
   }
 
   // Optimistic locking: baseUpdatedAt is the updatedAt of the note version
@@ -682,6 +755,15 @@ async function updateNote(noteId, noteData, userId) {
     $set.order = order;
   }
 
+  // Baum + Code-Notiz (v1.10.0): undefined laesst beide unangetastet; null
+  // loest die Notiz vom Baum. assertValidParent lief oben bereits.
+  if (parentId !== undefined) {
+    $set.parentId = parentId ?? null;
+  }
+  if (isCode !== undefined) {
+    $set.isCode = isCode;
+  }
+
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
   $set.lastEditedBy = userId;
 
@@ -735,6 +817,10 @@ async function deleteNote(noteId, userId) {
     throw error;
   }
 
+  // Baum: Die Kinder wandern eine Ebene hoch — sie sollen nicht mit in den
+  // Papierkorb verschwinden, nur weil ihr Ordner geloescht wurde.
+  await reparentChildren(note, userId);
+
   return note;
 }
 
@@ -781,6 +867,10 @@ async function purgeNote(noteId, userId) {
     throw error;
   }
 
+  // Baum: Auch beim Endloeschen die Kinder eine Ebene hochziehen, bevor der
+  // Knoten verschwindet (sonst zeigten sie auf eine nicht mehr existente Notiz).
+  await reparentChildren(note, userId);
+
   await deleteNoteImages(note);
   return note;
 }
@@ -791,9 +881,16 @@ async function purgeNote(noteId, userId) {
  * @returns {Promise<number>} Count of permanently removed notes
  */
 async function emptyTrash(userId) {
-  const notes = await Note.find({ userId, deletedAt: { $ne: null } }).select('images');
+  const notes = await Note.find({ userId, deletedAt: { $ne: null } }).select('images parentId');
   if (notes.length === 0) {
     return 0;
+  }
+
+  // Baum: Kinder jedes endgueltig geloeschten Knotens eine Ebene hochziehen
+  // (vor dem deleteMany — danach waere die Eltern-Notiz fuer den Blick nach
+  // oben weg und die Kinder haengen im Leeren).
+  for (const note of notes) {
+    await reparentChildren(note, userId);
   }
 
   // Mengentreu: gelöscht wird genau die gelesene Menge (plus erneutes
@@ -807,6 +904,119 @@ async function emptyTrash(userId) {
   });
   await Promise.all(notes.map(note => deleteNoteImages(note)));
   return deleted.deletedCount ?? notes.length;
+}
+
+/**
+ * Baum-Übersicht (v1.10.0): Leichte Projektion aller aktiven und archivierten
+ * Notizen — alles, was ein Baum-Panel braucht, ohne Inhalte und Bilder. Der
+ * Client verschachtelt die Liste selbst; ein Server-seitiger Baum waere nur
+ * eine teurere Art, dasselbe JSON zu liefern.
+ * @param {string} userId
+ * @returns {Promise<Array>} Flache Liste mit _id, parentId, title, order, Flags
+ */
+async function getNoteTree(userId) {
+  const notes = await Note.find({
+    userId,
+    deletedAt: null
+  })
+    .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt')
+    .sort({ isPinned: -1, order: -1, updatedAt: -1 })
+    .lean();
+
+  return notes.map((note) => ({
+    id: note._id,
+    parentId: note.parentId ?? null,
+    title: note.title || '',
+    order: note.order || 0,
+    isPinned: note.isPinned === true,
+    isCode: note.isCode === true,
+    isArchived: note.isArchived === true,
+    isTodoList: note.isTodoList === true,
+    remindAt: note.remindAt ?? null,
+    updatedAt: note.updatedAt
+  }));
+}
+
+/**
+ * Markdown-Export des Baums (v1.10.0) als ZIP: Jede Notiz wird eine .md-Datei,
+ * jede Notiz mit Kindern ein Verzeichnis mit _index.md plus den Kindern. Das
+ * Ergebnis ist ein Round-trip-Partner zum Trilium-/Markdown-Ordner-Import und
+ * zugleich ein lesbares Volldaten-Backup (abzüglich Bilder und Todo-Status).
+ * Archivierte Notizen kommen mit, geloeschte nicht.
+ * @param {string} userId
+ * @returns {Promise<Buffer>} ZIP-Archiv
+ */
+async function buildMarkdownExport(userId) {
+  const notes = await Note.find({ userId, deletedAt: null })
+    .select('parentId title content isTodoList todoItems tags isCode order isArchived isPinned createdAt')
+    .sort({ order: -1, updatedAt: -1 })
+    .lean();
+
+  const byId = new Map(notes.map((note) => [String(note._id), note]));
+  const childrenOf = new Map();
+  for (const note of notes) {
+    const key = note.parentId ? String(note.parentId) : null;
+    if (!childrenOf.has(key)) childrenOf.set(key, []);
+    childrenOf.get(key).push(note);
+  }
+
+  // Dateinamen sanitizen und pro Verzeichnis eindeutig halten — zwei Notizen
+  // mit demselben Titel (oder ohne: „Ohne Titel") duerfen sich nicht ueberschreiben.
+  const sanitize = (name) => name
+    .replace(/[/\\?%*:|"<>\x00-\x1f]/g, '-')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 80) || 'Ohne-Titel';
+
+  const renderMarkdown = (note) => {
+    const lines = [];
+    if (note.title) lines.push(`# ${note.title}`, '');
+    if (note.tags && note.tags.length > 0) {
+      lines.push(note.tags.map((tag) => `#${tag}`).join(' '), '');
+    }
+    if (note.isTodoList) {
+      for (const item of note.todoItems || []) {
+        lines.push(`- [${item.completed ? 'x' : ' '}] ${item.text}`);
+      }
+    } else if (note.content) {
+      lines.push(note.content);
+    }
+    return lines.join('\n').replace(/\s+$/, '') + '\n';
+  };
+
+  const zip = new ZipWriter();
+  const usedNames = new Set();
+  const uniqueName = (parentPath, name) => {
+    let candidate = `${parentPath ? parentPath + '/' : ''}${sanitize(name)}`;
+    let counter = 2;
+    while (usedNames.has(candidate.toLowerCase())) {
+      candidate = `${parentPath ? parentPath + '/' : ''}${sanitize(name)}-${counter++}`;
+    }
+    usedNames.add(candidate.toLowerCase());
+    return candidate;
+  };
+
+  const writeNode = (note, parentPath) => {
+    const children = childrenOf.get(String(note._id)) || [];
+    if (children.length === 0) {
+      const path = uniqueName(parentPath, note.title || 'Ohne-Titel');
+      zip.add(`${path}.md`, renderMarkdown(note));
+      return;
+    }
+    const dirPath = uniqueName(parentPath, note.title || 'Ordner');
+    zip.add(`${dirPath}/_index.md`, renderMarkdown(note));
+    for (const child of children) {
+      writeNode(child, dirPath);
+    }
+  };
+
+  for (const root of childrenOf.get(null) || []) {
+    writeNode(root, '');
+  }
+
+  // Komplett leere Bibliothek: trotzdem ein gueltiges (leeres) Archiv liefern,
+  // kein 500 und kein „null"-Body.
+  return zip.finish();
 }
 
 /**
@@ -1080,6 +1290,8 @@ module.exports = {
   shareNote,
   unshareNote,
   revokeSharedNotesBetween,
+  getNoteTree,
+  buildMarkdownExport,
   addImages,
   removeImage,
   generateThumbnail, // Export for use in routes

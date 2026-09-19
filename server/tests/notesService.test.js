@@ -52,7 +52,9 @@ test('deleting a note moves it to the trash without touching image files', async
     },
     findOneAndDelete: async () => {
       throw new Error('a soft delete must never remove the document');
-    }
+    },
+    // Baum (v1.10.0): Loeschen zieht Kinder eine Ebene hoch.
+    updateMany: async () => ({ modifiedCount: 0 })
   };
   const service = loadService(NoteMock);
 

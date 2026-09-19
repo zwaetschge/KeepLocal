@@ -70,6 +70,13 @@ const { httpStatus } = require('../../constants');
  *           format: date-time
  *           nullable: true
  *           description: Erinnerungszeitpunkt; null = keine Erinnerung.
+ *         parentId:
+ *           type: string
+ *           nullable: true
+ *           description: Übergeordnete Notiz (Baum, v1.10.0); null = Wurzel-Ebene. Eine Notiz mit Kindern verhält sich wie ein Ordner.
+ *         isCode:
+ *           type: boolean
+ *           description: Code-/Monospace-Notiz (v1.10.0) — Clients stellen Inhalt dicktengleich dar.
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -121,6 +128,13 @@ const { httpStatus } = require('../../constants');
  *           format: date-time
  *           nullable: true
  *           description: Erinnerung setzen; null löscht sie.
+ *         parentId:
+ *           type: string
+ *           nullable: true
+ *           description: Notiz unter eine andere hängen (Baum, v1.10.0); null löst die Notiz vom Baum (Wurzel-Ebene), fehlt das Feld, bleibt die Position unangetastet. Zyklen werden mit 400 abgelehnt.
+ *         isCode:
+ *           type: boolean
+ *           description: Als Code-/Monospace-Notiz markieren (v1.10.0).
  *     ApiResponse:
  *       type: object
  *       properties:

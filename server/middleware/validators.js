@@ -46,6 +46,16 @@ const noteValidationRules = {
       .optional({ nullable: true })
       .custom((value) => value === null || value instanceof Date || !Number.isNaN(Date.parse(value)))
       .withMessage('remindAt muss ein Datum oder null sein'),
+    body('isCode')
+      .optional()
+      .isBoolean()
+      .withMessage('isCode muss ein Boolean sein'),
+
+    // Baum (v1.10.0): null = Wurzel. Existenz/Eigentum/Zyklus prueft der Service.
+    body('parentId')
+      .optional({ nullable: true })
+      .isMongoId()
+      .withMessage('parentId muss eine Notiz-ID oder null sein'),
 
     body('tags')
       .optional()
@@ -156,6 +166,16 @@ const noteValidationRules = {
       .optional({ nullable: true })
       .custom((value) => value === null || value instanceof Date || !Number.isNaN(Date.parse(value)))
       .withMessage('remindAt muss ein Datum oder null sein'),
+    body('isCode')
+      .optional()
+      .isBoolean()
+      .withMessage('isCode muss ein Boolean sein'),
+
+    // Baum (v1.10.0): null = Wurzel. Existenz/Eigentum/Zyklus prueft der Service.
+    body('parentId')
+      .optional({ nullable: true })
+      .isMongoId()
+      .withMessage('parentId muss eine Notiz-ID oder null sein'),
 
     body('tags')
       .optional()
