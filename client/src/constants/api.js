@@ -42,6 +42,8 @@ export const API_ENDPOINTS = {
     // v1.10.0: Baum-Projektion für das Ordner-Panel + Markdown-ZIP-Export
     TREE: '/api/notes/tree',
     EXPORT_MARKDOWN: '/api/notes/export/markdown',
+    // v1.10.1: Bulk-Import (Ordner-Chunk) statt Create-Request pro Datei
+    IMPORT_MARKDOWN: '/api/notes/import/markdown',
   },
 
   // Friends endpoints

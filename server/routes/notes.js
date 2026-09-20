@@ -20,7 +20,8 @@ const { imagesDir } = require('../config/paths');
 const {
   blockDemoUser,
   enforceDemoNoteLimit,
-  rejectDemoNoteCapabilities
+  rejectDemoNoteCapabilities,
+  parseDemoNoteLimit
 } = require('../middleware/demoPolicy');
 
 const blockDemoCollaboration = blockDemoUser('collaboration');
@@ -187,6 +188,30 @@ router.get('/export/markdown', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * POST /api/notes/import/markdown (v1.10.1) — Bulk-Import eines Ordner-Chunks.
+ * Der Web-Client schickte vorher eine Create-Request pro Datei; ein 300-Notizen-
+ * Trilium-Export war eine 300+-Request-Sequenz mit halbem Import bei Abbruch.
+ * Route vor '/:id'-Mustern registriert (wie export/markdown).
+ */
+router.post(
+  '/import/markdown',
+  noteValidation.importMarkdown,
+  async (req, res, next) => {
+    try {
+      const result = await notesService.importMarkdownNotes(req.user._id, req.body.items, {
+        // Demo-Budget: der Service rechnet Bestand + Chunk-Groesse gegen das
+        // Limit — enforceDemoNoteLimit prueft nur den Bestand und wuerde einen
+        // Rutsch durchlassen.
+        demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null
+      });
+      res.status(httpStatus.CREATED).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * GET /api/notes - Get all notes with optional filtering and pagination

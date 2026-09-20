@@ -106,6 +106,18 @@ const notesAPI = {
     }),
 
   /**
+   * Markdown-Bulk-Import (v1.10.1): ein Ordner-Chunk pro Aufruf — die
+   * Servergrenze (500 Items) spiegelt chunkImportItems im utils-Helper.
+   * @param {Array<{path: string, title: string, content: string}>} items
+   * @returns {Promise<{created: number, foldersCreated: number}>}
+   */
+  importMarkdown: (items) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.IMPORT_MARKDOWN, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
+  /**
    * Update an existing note
    * @param {string} id - Note ID
    * @param {Object} noteData - Updated note data

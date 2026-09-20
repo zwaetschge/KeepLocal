@@ -341,6 +341,48 @@ const noteValidationRules = {
       .withMessage('Ungültige Notiz-ID'),
 
     handleValidationErrors
+  ],
+
+  // POST /api/notes/import/markdown (v1.10.1) — Bulk-Import: der Chunk ersetzt
+  // die bisherige Create-Request pro Datei. Tiefere Grenzen (Pfadlänge, Ebenen)
+  // prüft der Service — hier nur das, was express-validator sinnvoll abdeckt.
+  importMarkdown: [
+    body('items')
+      .isArray({ min: 1, max: 500 })
+      .withMessage('items muss ein Array mit 1 bis 500 Einträgen sein'),
+
+    body('items.*.path')
+      .optional({ checkFalsy: true })
+      .isString()
+      .trim()
+      .isLength({ max: 400 })
+      .withMessage('path darf maximal 400 Zeichen lang sein'),
+
+    body('items.*.title')
+      .optional({ checkFalsy: true })
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('Titel darf maximal 200 Zeichen lang sein'),
+
+    body('items.*.content')
+      .optional({ checkFalsy: true })
+      .isString()
+      .isLength({ max: 10000 })
+      .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
+
+    body('items.*.tags')
+      .optional()
+      .isArray({ max: 50 })
+      .withMessage('Tags müssen ein Array mit maximal 50 Einträgen sein'),
+
+    body('items.*.tags.*')
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage('Jeder Tag muss zwischen 1 und 50 Zeichen lang sein'),
+
+    handleValidationErrors
   ]
 };
 

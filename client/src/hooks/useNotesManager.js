@@ -253,6 +253,35 @@ export function withoutOperation(loading, key) {
   return next;
 }
 
+// v1.10.1: Bulk-Aktionen mit begrenzter Parallelität statt strikt sequenziell —
+// 50 angewählte Notizen waren 50 Requests à je ein RTT, mit einem 4er-Pool sind
+// es rund 13 Wellen. Ein fehlgeschlagenes Item reißt die anderen nicht mit.
+export const BULK_CONCURRENCY = 4;
+
+export async function runPool(items, { limit = BULK_CONCURRENCY, worker } = {}) {
+  const results = { done: 0, failed: 0 };
+  if (!Array.isArray(items) || items.length === 0 || typeof worker !== 'function') {
+    return results;
+  }
+  const concurrency = Math.max(1, Math.min(Number(limit) || 1, items.length));
+  let cursor = 0;
+  const lanes = Array.from({ length: concurrency }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      try {
+        await worker(item);
+        results.done += 1;
+      } catch (error) {
+        results.failed += 1;
+        console.error('Pool-Item fehlgeschlagen:', error);
+      }
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -291,6 +320,9 @@ export function useNotesManager({
   // v1.10.0: Ordner-Baum + Ansichts-Scope + Mehrfachauswahl
   const [noteTree, setNoteTree] = useState([]);
   const [treeNodes, setTreeNodes] = useState({});
+  // v1.10.1: Signatur des letzten Baum-Stands — Poll-Ticks ohne Änderung
+  // dürfen keine neuen Identitäten (Sidebar-Rerender) erzeugen.
+  const treeSignatureRef = useRef(null);
   const [folderScope, setFolderScope] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -450,6 +482,12 @@ export function useNotesManager({
     try {
       const flat = await api.getTree();
       if (!Array.isArray(flat)) return;
+      // v1.10.1: Der Baum reist jetzt im 60-s-Poll mit — der Signatur-Vergleich
+      // verhindert, dass jeder Tick bei unverändertem Baum zwei neue Objekt-
+      // Identitäten (und damit ein Sidebar-Rerender) erzeugt.
+      const signature = JSON.stringify(flat);
+      if (signature === treeSignatureRef.current) return;
+      treeSignatureRef.current = signature;
       const nodes = {};
       for (const node of flat) {
         if (node && typeof node.id === 'string') nodes[node.id] = node;
@@ -484,6 +522,7 @@ export function useNotesManager({
       setAllTags([]);
       setNoteTree([]);
       setTreeNodes({});
+      treeSignatureRef.current = null;
       setFolderScope(null);
       setSelectedIds(new Set());
     }
@@ -766,18 +805,11 @@ export function useNotesManager({
     const ids = Array.from(stateRef.current.selectedIds);
     if (ids.length === 0) return { done: 0, failed: 0 };
     setOperationLoading(prev => ({ ...prev, bulk: true }));
-    let done = 0;
-    let failed = 0;
     try {
-      for (const id of ids) {
-        try {
-          await action(id, stateRef.current.notes.find(note => note._id === id));
-          done += 1;
-        } catch (error) {
-          failed += 1;
-          console.error('Bulk-Aktion für Notiz fehlgeschlagen:', error);
-        }
-      }
+      // v1.10.1: 4er-Pool statt sequenzieller Schleife — s. runPool.
+      const { done, failed } = await runPool(ids, {
+        worker: (id) => action(id, stateRef.current.notes.find(note => note._id === id))
+      });
       invalidateInFlightFetches();
       refreshInBackground(stateRef.current.searchTerm, 1, { silent: true });
       refreshTree();
@@ -924,11 +956,14 @@ export function useNotesManager({
 
   // Live-Refresh geteilter Notizen (P17): Focus/visibilitychange (15s-Throttle)
   // und 60s-Interval-Poll, beides nur bei sichtbarem Tab und im Hintergrund.
+  // v1.10.1: Der Baum reist mit — vorher blieb die Ordnerstruktur über die
+  // ganze Session stehen, während ein anderes Gerät Ordner anlegte/notierte.
   useEffect(() => {
     if (!isLoggedIn) return undefined;
 
     const throttledFocusRefresh = createThrottledAction(() => {
       refreshInBackground(undefined, undefined, { silent: true });
+      refreshTree();
     }, { windowMs: FOCUS_REFRESH_THROTTLE_MS });
 
     const onWake = () => {
@@ -942,6 +977,7 @@ export function useNotesManager({
     const pollInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         refreshInBackground(undefined, undefined, { silent: true });
+        refreshTree();
       }
     }, POLL_INTERVAL_MS);
 
@@ -951,7 +987,7 @@ export function useNotesManager({
       clearInterval(pollInterval);
       clearTimeout(dimTimerRef.current);
     };
-  }, [isLoggedIn, refreshInBackground]);
+  }, [isLoggedIn, refreshInBackground, refreshTree]);
 
   // Notizen nach Tag/Ordner filtern und in angeheftete/sonstige Sektionen trennen
   const { pinnedNotes, otherNotes } = useMemo(() => {

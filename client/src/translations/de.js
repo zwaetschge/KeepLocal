@@ -625,6 +625,8 @@ export const de = {
   importMarkdownHint: 'Ordner mit .md/.txt-Dateien wählen — Unterordner werden zu Ordnern im Baum. Bilder und Binärdateien werden übersprungen.',
   importMarkdownDone: '{count} Notiz(en) importiert',
   importMarkdownFailed: 'Import fehlgeschlagen',
+  importMarkdownNoText: 'Keine passenden Textdateien gefunden (nur .md/.markdown/.txt bis 500 kB)',
+  importMarkdownProgress: 'Import läuft: {done}/{total} Notizen',
   journalFolderLabel: 'Journal-Ordner',
   journalFolderHint: '„Heute" legt die Tages-Notiz in diesem Ordner ab.',
 };
