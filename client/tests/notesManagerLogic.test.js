@@ -499,3 +499,40 @@ test('buildNoteTree kappt Zyklen und zu tiefe Ketten an der Wurzel', async () =>
 
   assert.deepEqual(buildNoteTree(null), [], 'keine Projektion -> leerer Wald');
 });
+
+// ---------------------------------------------------------------------------
+// v1.10.1: runPool — Bulk-Aktionen mit begrenzter Parallelität
+// ---------------------------------------------------------------------------
+
+test('runPool arbeitet alle Items ab und begrenzt die Parallelität', async () => {
+  const { runPool } = await import(moduleUrl);
+
+  let running = 0;
+  let peak = 0;
+  const worker = async (item) => {
+    running += 1;
+    peak = Math.max(peak, running);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    running -= 1;
+    if (item === 'boom') throw new Error('dieser eine Fehler reißt nichts mit');
+    return item;
+  };
+
+  const items = ['a', 'b', 'boom', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const result = await runPool(items, { limit: 3, worker });
+
+  assert.equal(result.done, 8);
+  assert.equal(result.failed, 1);
+  assert.ok(peak <= 3, `Parallelität darf 3 nicht übersteigen, war ${peak}`);
+  assert.ok(peak >= 2, 'wirklich parallel gearbeitet');
+});
+
+test('runPool toleriert leere/degenerierte Eingaben', async () => {
+  const { runPool } = await import(moduleUrl);
+  const worker = async () => { throw new Error('darf nicht aufgerufen werden'); };
+
+  assert.deepEqual(await runPool([], { worker }), { done: 0, failed: 0 });
+  assert.deepEqual(await runPool(null, { worker }), { done: 0, failed: 0 });
+  assert.deepEqual(await runPool(['a'], {}), { done: 0, failed: 0 });
+  assert.deepEqual(await runPool(['a'], { limit: 0, worker: async () => 'ok' }), { done: 1, failed: 0 }, 'limit < 1 fällt auf 1');
+});

@@ -309,3 +309,25 @@ test('GET /api/notes/export/markdown streamt ein ZIP als Anhang', async () => {
     assert.deepEqual(calls, [OWNER_ID]);
   });
 });
+
+// v1.10.1 defensive: Der Export darf Notizen, die von der Wurzel aus
+// unerreichbar sind (Eltern geloescht, Zyklus in der DB), nicht still
+// verschlucken und nicht in eine Endlos-Rekursion laufen.
+test('buildMarkdownExport gibt Waisen und Zyklus-Knoten an der Wurzel aus', async () => {
+  const orphanParent = 'o'.repeat(24); // existiert NICHT im Bestand
+  const store = makeNoteStore([
+    { _id: 'x'.repeat(24), userId: OWNER_ID, deletedAt: null, parentId: orphanParent, title: 'Waise', order: 0, isPinned: false, isCode: false, isArchived: false, isTodoList: false, remindAt: null, updatedAt: new Date(), content: 'Verwaist' },
+    // Zyklus A -> B -> A: kein Knoten haengt an der Wurzel
+    { _id: 'a'.repeat(24), userId: OWNER_ID, deletedAt: null, parentId: 'b'.repeat(24), title: 'ZyklusA', order: 0, isPinned: false, isCode: false, isArchived: false, isTodoList: false, remindAt: null, updatedAt: new Date(), content: 'A' },
+    { _id: 'b'.repeat(24), userId: OWNER_ID, deletedAt: null, parentId: 'a'.repeat(24), title: 'ZyklusB', order: 0, isPinned: false, isCode: false, isArchived: false, isTodoList: false, remindAt: null, updatedAt: new Date(), content: 'B' }
+  ]);
+  const service = loadService(store.NoteMock);
+
+  const zipBuffer = await service.buildMarkdownExport(OWNER_ID);
+  const asText = zipBuffer.toString('latin1');
+
+  assert.ok(asText.includes('Waise.md'), 'Waise landet an der Wurzel statt zu fehlen');
+  assert.ok(asText.includes('ZyklusA') && asText.includes('ZyklusB'), 'Zyklus-Knoten werden je einmal ausgegeben');
+  // Zyklus: A als _index-Ordner (hat Kind B) + B als Datei — kein Doppeltaverse.
+  assert.ok(!asText.includes('ZyklusA.md'), 'A wird nur als Ordner-_index geschrieben');
+});

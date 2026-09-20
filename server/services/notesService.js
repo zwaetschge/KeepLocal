@@ -996,7 +996,15 @@ async function buildMarkdownExport(userId) {
     return candidate;
   };
 
-  const writeNode = (note, parentPath) => {
+  // Defensive (v1.10.1): written-Set + Tiefen-Cap. Der PUT-Zyklusschutz haelt
+  // den Bestand normalerweise zyklusfrei, aber direkt in der DB manipulierte
+  // oder vor dem Schutz angelegte Daten duerfen den Export nicht in eine
+  // Endlos-Rekursion schicken.
+  const written = new Set();
+  const writeNode = (note, parentPath, depth = 0) => {
+    const id = String(note._id);
+    if (written.has(id) || depth > 50) return;
+    written.add(id);
     const children = childrenOf.get(String(note._id)) || [];
     if (children.length === 0) {
       const path = uniqueName(parentPath, note.title || 'Ohne-Titel');
@@ -1006,17 +1014,154 @@ async function buildMarkdownExport(userId) {
     const dirPath = uniqueName(parentPath, note.title || 'Ordner');
     zip.add(`${dirPath}/_index.md`, renderMarkdown(note));
     for (const child of children) {
-      writeNode(child, dirPath);
+      writeNode(child, dirPath, depth + 1);
     }
   };
 
   for (const root of childrenOf.get(null) || []) {
-    writeNode(root, '');
+    writeNode(root, '', 0);
+  }
+
+  // Unerreichbare Notizen (Eltern geloescht, Zyklus): oben ausgeben, statt sie
+  // still im Backup verschwinden zu lassen.
+  for (const note of notes) {
+    if (!written.has(String(note._id))) writeNode(note, '', 0);
   }
 
   // Komplett leere Bibliothek: trotzdem ein gueltiges (leeres) Archiv liefern,
   // kein 500 und kein „null"-Body.
   return zip.finish();
+}
+
+// Bulk-Import (v1.10.1): Der Web-Client schickte bisher eine Create-Request
+// pro Datei UND pro Ordnersegment — ein Trilium-Export mit 300 Notizen war
+// eine 300+-Request-Sequenz, bei der ein Netzfehler mitten drin einen
+// halben Import ohne Aufraeumen hinterliess. Der Bulk-Endpoint nimmt den
+// ganzen Chunk in einem Zug an: validiert alles VOR dem ersten Schreiben
+// (kaputter Chunk legt nichts an) und legt Ordner+Notizen mit insertMany an.
+const IMPORT_MAX_ITEMS = 500;
+const IMPORT_MAX_PATH = 400;
+const IMPORT_MAX_DEPTH = 20;
+
+async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) {
+  // 1) Normalisieren und validieren — ein fehlerhafter Chunk bricht komplett
+  //    ab, statt halb angelegt zu enden.
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    throw clientError('Import benötigt eine nicht leere items-Liste');
+  }
+  if (rawItems.length > IMPORT_MAX_ITEMS) {
+    throw clientError(`Pro Aufruf sind maximal ${IMPORT_MAX_ITEMS} Einträge erlaubt`);
+  }
+
+  const items = rawItems.map((raw, index) => {
+    if (!raw || typeof raw !== 'object') throw clientError(`items[${index}] ist kein Objekt`);
+    const path = typeof raw.path === 'string' ? raw.path.replace(/^\/+|\/+$/g, '') : '';
+    if (path.length > IMPORT_MAX_PATH) throw clientError(`items[${index}].path ist zu lang`);
+    const segments = path === '' ? [] : path.split('/');
+    if (segments.length > IMPORT_MAX_DEPTH) {
+      throw clientError(`items[${index}].path ist tiefer als ${IMPORT_MAX_DEPTH} Ebenen`);
+    }
+    for (const segment of segments) {
+      if (segment.trim().length === 0 || segment.length > 200) {
+        throw clientError(`items[${index}].path enthält ein leeres oder zu langes Segment`);
+      }
+    }
+    if (raw.content !== undefined && typeof raw.content !== 'string') {
+      throw clientError(`items[${index}].content muss ein String sein`);
+    }
+    if (raw.content !== undefined && raw.content.length > 10000) {
+      throw clientError(`items[${index}].content ist länger als 10.000 Zeichen`);
+    }
+    const tags = Array.isArray(raw.tags)
+      ? raw.tags.map(tag => (typeof tag === 'string' ? tag.trim().slice(0, 50) : '')).filter(Boolean)
+      : [];
+    if (tags.length > 50) throw clientError(`items[${index}] hat mehr als 50 Tags`);
+    return {
+      path,
+      segments,
+      title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 200) : 'Notiz',
+      content: typeof raw.content === 'string' ? raw.content.slice(0, 10000) : '',
+      tags
+    };
+  });
+
+  // 2) Alle Ordnerpfade sammeln (eindeutig, Wurzel ausgenommen).
+  const folderPathSet = new Set();
+  for (const item of items) {
+    for (let depth = 1; depth <= item.segments.length; depth += 1) {
+      folderPathSet.add(item.segments.slice(0, depth).join('/'));
+    }
+  }
+  // Eltern zuerst: kuerzere Pfade haben weniger Segmente.
+  const orderedFolderPaths = [...folderPathSet].sort(
+    (a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b)
+  );
+
+  // 3) Bestand einmal lesen: Titel+parentId fuer die Ordner-Wiederverwendung.
+  //    Ein erneuter Import desselben Ordners landet so IM selben Knoten statt
+  //    in einem Duplikat. (Jede Notiz mit Kindern ist ein Ordner — auch eine
+  //    bisherige Blattnotiz mit passendem Titel wird zum Elternknoten.)
+  const existingNotes = await Note.find({ userId, deletedAt: null })
+    .select('parentId title')
+    .lean();
+  const idByParentTitle = new Map();
+  for (const note of existingNotes) {
+    idByParentTitle.set(`${note.parentId ? String(note.parentId) : ''}|${note.title}`, String(note._id));
+  }
+
+  // 4) Ordner-IDs aufloesen: vorhandene wiederverwenden, fehlende merken.
+  const folderIdByPath = new Map();
+  const newFolders = [];
+  for (const folderPath of orderedFolderPaths) {
+    const segments = folderPath.split('/');
+    const title = segments[segments.length - 1];
+    const parentPath = segments.slice(0, -1).join('/');
+    const parentId = parentPath === '' ? null : (folderIdByPath.get(parentPath) ?? null);
+    const existingId = idByParentTitle.get(`${parentId ? String(parentId) : ''}|${title}`);
+    if (existingId) {
+      folderIdByPath.set(folderPath, existingId);
+      continue;
+    }
+    const folderId = new mongoose.Types.ObjectId();
+    folderIdByPath.set(folderPath, String(folderId));
+    idByParentTitle.set(`${parentId ? String(folderId) : ''}|${title}`, String(folderId));
+    newFolders.push({ _id: folderId, title, content: '', parentId, userId, order: 0, tags: [] });
+  }
+
+  // 5) Demo-Budget: Einzel-Creates prueft enforceDemoNoteLimit (Bestand < Limit),
+  //    hier muss die Chunk-Groesse mitrechnen, sonst sprengt ein Rutsch das Limit.
+  if (demoLimit != null) {
+    const noteCount = await Note.countDocuments({ userId, deletedAt: null });
+    if (noteCount + items.length + newFolders.length > demoLimit) {
+      const error = new Error(`Die oeffentliche Demo ist auf ${demoLimit} Notizen begrenzt.`);
+      error.statusCode = 429;
+      error.code = 'DEMO_NOTE_LIMIT';
+      throw error;
+    }
+  }
+
+  // 6) Anlegen: Ordner zuerst (Eltern vor Kindern, insertMany haelt die
+  //    Reihenfolge), dann die Notizen mit aufsteigenden order-Werten ab der
+  //    aktuellen Spitze — importierte Notizen stehen oben in Datei-Reihenfolge.
+  if (newFolders.length > 0) {
+    await Note.insertMany(newFolders);
+  }
+  const baseOrder = await nextTopOrder(userId, false);
+  const newNotes = items.map((item, index) => ({
+    title: item.title,
+    content: item.content,
+    tags: item.tags,
+    parentId: item.segments.length === 0 ? null : (folderIdByPath.get(item.segments.join('/')) ?? null),
+    userId,
+    order: baseOrder + index
+  }));
+  await Note.insertMany(newNotes);
+
+  return {
+    created: newNotes.length,
+    foldersCreated: newFolders.length,
+    folderIds: [...folderIdByPath.values()]
+  };
 }
 
 /**
@@ -1292,6 +1437,7 @@ module.exports = {
   revokeSharedNotesBetween,
   getNoteTree,
   buildMarkdownExport,
+  importMarkdownNotes,
   addImages,
   removeImage,
   generateThumbnail, // Export for use in routes

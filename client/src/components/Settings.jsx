@@ -15,6 +15,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
+import { buildMarkdownImportItems, chunkImportItems, IMPORT_CHUNK_SIZE } from '../utils/markdownImport.mjs';
 
 function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported }) {
   const { t, language } = useLanguage();
@@ -162,10 +163,12 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
     }
   };
 
-  // Trilium/Markdown-Import: Der Browser liefert mit webkitdirectory das
-  // ganze Verzeichnis; jedes Verzeichnis-Segment wird zu einer Ordner-Notiz
-  // (angelegt bei Bedarf, bottom-up), jede .md/.txt zu einer Notiz darin.
-  // Nur Text — Bilder und Binärdateien überspringt der Import bewusst.
+  // Trilium/Markdown-Import (v1.10.1): Dateien lokal zu Bulk-Items aufbereiten
+  // (pure Helfer in utils/markdownImport.mjs) und in Server-Chunks senden —
+  // statt einer Create-Request pro Datei und pro Ordnersegment. Ein 300-Notizen-
+  // Export ist jetzt 1 Request statt 300+; ein Validierungsfehler bricht den
+  // ganzen Chunk ab, statt halb angelegt zu enden. Nur Text — Bilder und
+  // Binärdateien überspringt der Import bewusst.
   const handleImportMarkdown = async (event) => {
     const files = Array.from(event.target.files || []);
     if (mdImportInputRef.current) mdImportInputRef.current.value = '';
@@ -173,46 +176,21 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
     setMdBusy('import');
     let created = 0;
     try {
-      const folderIdsByPath = new Map();
-      const ensureFolder = async (dirPath) => {
-        if (!dirPath) return null;
-        if (folderIdsByPath.has(dirPath)) return folderIdsByPath.get(dirPath);
-        const segments = dirPath.split('/');
-        const parentId = await ensureFolder(segments.slice(0, -1).join('/'));
-        const folder = await notesAPI.create({
-          title: segments[segments.length - 1].slice(0, 200),
-          content: '',
-          parentId: parentId ?? undefined
-        });
-        folderIdsByPath.set(dirPath, folder._id);
-        created += 1;
-        return folder._id;
-      };
-
-      // Dateien nach Pfad sortieren, damit Eltern vor Kindern drankommen —
-      // die ensureFolder-Rekursion legt zwar selbst an, aber so stimmt die
-      // Reihenfolge im Baum schon beim Anlegen.
-      files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
-
-      for (const file of files) {
-        if (!/\.(md|markdown|txt)$/i.test(file.name) || file.size > 500_000) continue;
-        const segments = (file.webkitRelativePath || file.name).split('/');
-        const fileName = segments.pop();
-        const parentId = await ensureFolder(segments.join('/'));
-        const text = await file.text();
-        let noteTitle = fileName.replace(/\.(md|markdown|txt)$/i, '').slice(0, 200);
-        // index.md/_index.md (Trilium-Export-Konvention) trägt oft nur einen
-        // Titel in der ersten Überschrift — dann den nehmen.
-        if (noteTitle === 'index' || noteTitle === '_index') {
-          const heading = /^#\s+(.+)$/m.exec(text);
-          noteTitle = (heading ? heading[1] : segments[segments.length - 1] || 'Notiz').trim().slice(0, 200);
+      const { items } = await buildMarkdownImportItems(files);
+      if (items.length === 0) {
+        toastBus.error(t('importMarkdownNoText'));
+        return;
+      }
+      const chunks = chunkImportItems(items);
+      for (let index = 0; index < chunks.length; index += 1) {
+        const result = await notesAPI.importMarkdown(chunks[index]);
+        created += (result.created || 0) + (result.foldersCreated || 0);
+        if (chunks.length > 1) {
+          toastBus.info(t('importMarkdownProgress', {
+            done: Math.min((index + 1) * IMPORT_CHUNK_SIZE, items.length),
+            total: items.length
+          }));
         }
-        await notesAPI.create({
-          title: noteTitle || 'Notiz',
-          content: text.slice(0, 10_000),
-          parentId: parentId ?? undefined
-        });
-        created += 1;
       }
       toastBus.success(t('importMarkdownDone', { count: created }));
       onDataImported?.();

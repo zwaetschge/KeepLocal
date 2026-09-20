@@ -625,6 +625,8 @@ export const en = {
   importMarkdownHint: 'Pick a folder of .md/.txt files — subfolders become folders in the tree. Images and binaries are skipped.',
   importMarkdownDone: '{count} note(s) imported',
   importMarkdownFailed: 'Import failed',
+  importMarkdownNoText: 'No matching text files found (.md/.markdown/.txt up to 500 kB only)',
+  importMarkdownProgress: 'Importing: {done}/{total} notes',
   journalFolderLabel: 'Journal folder',
   journalFolderHint: '"Today" puts the daily note into this folder.',
 };
