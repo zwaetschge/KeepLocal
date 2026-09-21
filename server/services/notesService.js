@@ -370,7 +370,7 @@ function buildNotesQuery({ userId, search, tag, isArchived = false, deleted = fa
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Notes and pagination info
  */
-async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false' }) {
+async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId } = {}) {
   const safePage = normalizePositiveInteger(page, 1, Number.MAX_SAFE_INTEGER);
   const safeLimit = normalizePositiveInteger(limit, 50, 100);
   const isArchived = archived === true || archived === 'true';
@@ -413,6 +413,22 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   const query = buildNotesQuery({ userId, search, tag, isArchived });
   const activeQuery = buildNotesQuery({ userId, isArchived: false });
   const archivedQuery = buildNotesQuery({ userId, isArchived: true });
+
+  // Ordner-Scope (v1.11.1): serverseitig filtern statt im Client — der Client
+  // filterte nur das geladene 50er-Fenster, was ab ein paar hundert Notizen
+  // leere Ordneransichten zeigte (Trilium-Import: Seite 1 voller Kind-Notizen,
+  // Hauptebene leer). 'root' = Hauptebene, sonst die direkten Kinder des
+  // Knotens. Counts und Tag-Cloud bleiben global (Sidebar-Badges); die
+  // Sichtbarkeit regelt die normale eigene-und-geteilte-Query — ein fremder
+  // Ordner liefert also nur Notizen, die eh schon geteilt sind.
+  if (folderId === 'root') {
+    query.parentId = null;
+  } else if (typeof folderId === 'string' && folderId !== '') {
+    if (!/^[a-f0-9]{24}$/i.test(folderId)) {
+      throw clientError('folderId muss „root" oder eine Notiz-ID sein');
+    }
+    query.parentId = folderId;
+  }
 
   const searchTerm = typeof search === 'string' ? search.trim() : '';
   const isSearch = searchTerm !== '';

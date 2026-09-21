@@ -48,8 +48,14 @@ test('search relevance beats manual order, which beats recency', () => {
   assert.match(hook, /const order = \(items\) => \(comparator \? items\.sort\(comparator\) : items\);/);
   assert.match(hook, /pinnedNotes: order\(filtered\.filter\(item => item\.isPinned\)\)/);
   assert.match(hook, /otherNotes: order\(filtered\.filter\(item => !item\.isPinned\)\)/);
-  // v1.10.0: folderScope ist als Abhängigkeit dazugekommen (Ordner-Filter).
-  assert.match(hook, /\}, \[notes, selectedTag, folderScope, searchTerm\]\);/);
+  // v1.11.1: Der Ordner-Scope filtert der SERVER (params.folderId) — hier
+  // steht folderScope nicht mehr in den Memo-Deps, dafür im Fetch-Effekt.
+  assert.match(hook, /\}, \[notes, selectedTag, searchTerm\]\);/);
+  assert.doesNotMatch(hook, /filtered = filtered\.filter\(item => item\.parentId === folderScope\)/,
+    'Ordner-Filter darf nicht mehr clientseitig auf dem geladenen Fenster laufen');
+  assert.match(hook, /if \(!trashView && stateRef\.current\.folderScope\) params\.folderId = stateRef\.current\.folderScope;/);
+  assert.match(hook, /\[isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, fetchNotes, refreshTree\]/,
+    'Scope-Wechsel muss die Liste neu laden');
 });
 
 test('the payload normalizer keeps a numeric order', async () => {

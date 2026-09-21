@@ -95,6 +95,62 @@ test('note pagination clamps invalid public API values', async () => {
   assert.deepEqual(result.pagination, { page: 1, limit: 100, total: 0, pages: 0 });
 });
 
+// Ordner-Scope (v1.11.1): GET /api/notes?folderId= filtert serverseitig —
+// der Client filterte vorher nur das geladene 50er-Fenster und zeigte Ordner
+// ab ein paar hundert Notizen leer. Der Mock fängt alle Queries ab.
+function makeScopeMock() {
+  const observed = { counts: [], finds: [], aggregate: null };
+  const query = {
+    populate() { return this; },
+    sort() { return this; },
+    skip(value) { observed.skip = value; return this; },
+    limit(value) { observed.limit = value; return Promise.resolve([]); }
+  };
+  const NoteMock = {
+    countDocuments: async (q) => { observed.counts.push(q); return 0; },
+    find: (q) => { observed.finds.push(q); return query; },
+    aggregate: async (pipeline) => { observed.aggregate = pipeline[0].$match; return []; }
+  };
+  return { observed, service: loadService(NoteMock) };
+}
+
+test('folderId=root scopes list and total to top level, counts stay global', async () => {
+  const { observed, service } = makeScopeMock();
+
+  await service.getAllNotes({ userId: 'user-id', folderId: 'root' });
+
+  assert.equal(observed.finds.length, 1);
+  assert.equal(observed.finds[0].parentId, null, 'Liste auf Hauptebene begrenzt');
+  assert.equal(observed.counts[0].parentId, null, 'total zählt den Scope mit');
+  for (const globalQuery of observed.counts.slice(1)) {
+    assert.equal('parentId' in globalQuery, false, 'active/archived/trash-Zähler bleiben global');
+  }
+  assert.equal('parentId' in observed.aggregate, false, 'Tag-Cloud bleibt global');
+});
+
+test('folderId with a note id scopes to the direct children of that node', async () => {
+  const { observed, service } = makeScopeMock();
+  const folderId = 'a'.repeat(24);
+
+  await service.getAllNotes({ userId: 'user-id', folderId });
+
+  assert.equal(observed.finds[0].parentId, folderId);
+  assert.equal(observed.counts[0].parentId, folderId);
+});
+
+test('folderId without scope leaves the query untouched, garbage rejects as client error', async () => {
+  const { observed, service } = makeScopeMock();
+  await service.getAllNotes({ userId: 'user-id' });
+  for (const q of [...observed.finds, ...observed.counts]) {
+    assert.equal('parentId' in q, false, 'ohne folderId kein Filter');
+  }
+
+  await assert.rejects(
+    service.getAllNotes({ userId: 'user-id', folderId: 'not-an-id' }),
+    error => error.statusCode === 400
+  );
+});
+
 test('empty notes fail with a client error before reaching MongoDB', async () => {
   class NoteMock {
     async save() {
