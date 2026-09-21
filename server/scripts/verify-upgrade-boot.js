@@ -178,6 +178,8 @@ async function main() {
       'notes.images.filename_1 exists (image serving must not scan)', failures);
     assert(noteIndexes.some((i) => i.name === 'images.thumbnailFilename_1'),
       'notes.images.thumbnailFilename_1 exists (image serving must not scan)', failures);
+    assert(noteIndexes.some((i) => i.name === 'files.filename_1'),
+      'notes.files.filename_1 exists (attachment serving must not scan)', failures);
     assert(!noteIndexes.some((i) => i.name === 'images.filename_1' && i.unique),
       'the image index must not be unique (a failed unique build would kill startup)', failures);
 

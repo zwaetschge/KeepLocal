@@ -51,6 +51,21 @@ const noteSchema = new mongoose.Schema({
     thumbnailFilename: String,
     uploadedAt: Date
   }],
+  // Dateianhänge (v1.12.0, bisher PDF): eigene Directory, eigener Serve-Pfad
+  // mit Content-Disposition statt Inline-Galerie. originalName wird für den
+  // Download-Namen geführt (gesondert vom Zufalls-Speichernamen).
+  files: [{
+    url: String,
+    filename: String,
+    originalName: {
+      type: String,
+      trim: true,
+      maxlength: 255
+    },
+    mimetype: String,
+    size: Number,
+    uploadedAt: Date
+  }],
   isTodoList: {
     type: Boolean,
     default: false
@@ -175,6 +190,9 @@ noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
 // töten (siehe UPGRADE_FIX_2026-09-12.md).
 noteSchema.index({ 'images.filename': 1 });
 noteSchema.index({ 'images.thumbnailFilename': 1 });
+// Dateianhänge: secureFileServe sucht die Notiz zu /uploads/files/* über
+// dieses Feld — gleiche Begründung wie bei images.filename.
+noteSchema.index({ 'files.filename': 1 });
 noteSchema.index({ userId: 1, isPinned: -1, isArchived: 1, order: -1, updatedAt: -1 }); // manuelle Reihenfolge
 // Erinnerungen: „was ist fällig"-Abfragen laufen pro Nutzer über dieses
 // partielle Feld; ohne den Filter würde der Index jede Notiz ohne remindAt

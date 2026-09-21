@@ -8,7 +8,7 @@ const Note = require('../models/Note');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
-const { imagesDir } = require('../config/paths');
+const { imagesDir, filesDir } = require('../config/paths');
 const { ZipWriter } = require('../utils/zipWriter');
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +21,7 @@ const NOTE_COLORS = new Set([
 const TAG_PATTERN = /^[a-zA-Z0-9äöüÄÖÜß\-_]+$/;
 const MAX_IMAGE_PIXELS = 40000000;
 const MAX_IMAGES_PER_NOTE = 25;
+const MAX_FILES_PER_NOTE = 25;
 const NOTE_CONFLICT_MESSAGE = 'Die Notiz wurde inzwischen geändert';
 // Baum (v1.10.0): Zweites Netz unter dem Zyklus-Schutz — siehe assertValidParent.
 const MAX_TREE_DEPTH = 50;
@@ -327,6 +328,25 @@ async function deleteNoteImages(note) {
   });
 
   await Promise.all(deletePromises);
+}
+
+/**
+ * Helper: Delete all file attachments of a note from the filesystem.
+ * @param {Object} note - Note object with files array
+ * @returns {Promise<void>}
+ */
+async function deleteNoteFiles(note) {
+  if (!note.files || note.files.length === 0) {
+    return;
+  }
+  await Promise.all(note.files.map((file) => new Promise((resolve) => {
+    fs.unlink(path.join(filesDir(), file.filename), (err) => {
+      if (err) {
+        console.warn(`Warning: Could not delete attachment ${file.filename}:`, err.message);
+      }
+      resolve();
+    });
+  })));
 }
 
 /**
@@ -888,6 +908,7 @@ async function purgeNote(noteId, userId) {
   await reparentChildren(note, userId);
 
   await deleteNoteImages(note);
+  await deleteNoteFiles(note);
   return note;
 }
 
@@ -897,7 +918,7 @@ async function purgeNote(noteId, userId) {
  * @returns {Promise<number>} Count of permanently removed notes
  */
 async function emptyTrash(userId) {
-  const notes = await Note.find({ userId, deletedAt: { $ne: null } }).select('images parentId');
+  const notes = await Note.find({ userId, deletedAt: { $ne: null } }).select('images files parentId');
   if (notes.length === 0) {
     return 0;
   }
@@ -918,7 +939,7 @@ async function emptyTrash(userId) {
     userId,
     deletedAt: { $ne: null }
   });
-  await Promise.all(notes.map(note => deleteNoteImages(note)));
+  await Promise.all(notes.map(note => Promise.all([deleteNoteImages(note), deleteNoteFiles(note)])));
   return deleted.deletedCount ?? notes.length;
 }
 
@@ -1507,6 +1528,75 @@ async function removeImage(noteId, userId, filename) {
   return note;
 }
 
+/**
+ * Dateianhänge an eine Notiz haengen (v1.12.0, PDF). Konditionales $push mit
+ * $size-Gegenprobe wie bei addImages: Das Limit haelt der atomare Update-
+ * Filter ein, kein Read-Modify-Write-Rennen.
+ */
+async function addFiles(noteId, userId, fileData) {
+  if (!Array.isArray(fileData) || fileData.length < 1 || fileData.length > 5) {
+    throw clientError('Pro Upload sind 1 bis 5 Dateien erlaubt');
+  }
+
+  const note = await Note.findOneAndUpdate(
+    {
+      ...noteEditQuery(noteId, userId),
+      $expr: {
+        $lte: [
+          { $size: { $ifNull: ['$files', []] } },
+          MAX_FILES_PER_NOTE - fileData.length
+        ]
+      }
+    },
+    {
+      $push: { files: { $each: fileData } }
+    },
+    {
+      new: true,
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
+
+  if (!note) {
+    const ownedNoteExists = await Note.exists({ _id: noteId, userId });
+    if (ownedNoteExists) {
+      throw clientError(`Maximal ${MAX_FILES_PER_NOTE} Dateianhänge pro Notiz erlaubt`);
+    }
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
+/** Einzelnen Dateianhang von der Notiz loesen (Datei loescht die Route). */
+async function removeFile(noteId, userId, filename) {
+  const note = await Note.findOneAndUpdate(
+    {
+      ...noteEditQuery(noteId, userId),
+      'files.filename': filename
+    },
+    {
+      $pull: { files: { filename: filename } }
+    },
+    {
+      new: true,
+      runValidators: true
+    }
+  ).populate('userId', 'username email')
+    .populate('sharedWith', 'username email');
+
+  if (!note) {
+    const error = new Error(errorMessages.NOTES.NOT_FOUND);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return note;
+}
+
 module.exports = {
   getAllNotes,
   getNoteById,
@@ -1530,6 +1620,9 @@ module.exports = {
   applyTagOperation,
   addImages,
   removeImage,
+  addFiles,
+  removeFile,
+  deleteNoteFiles,
   generateThumbnail, // Export for use in routes
   validateImageDimensions,
   deleteNoteImages, // Export for use in adminService

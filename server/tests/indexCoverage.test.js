@@ -20,10 +20,12 @@ const secureFileServe = fs.readFileSync(path.join(__dirname, '../middleware/secu
 const schemaIndexes = Note.schema.indexes();
 const indexedFields = new Set(schemaIndexes.flatMap(([keys]) => Object.keys(keys)));
 
-/** Felder, die die Bildauslieferung per Query anspricht. */
+/** Felder, die die Datei-Auslieferung per Query anspricht. */
 function queriedImageFields() {
   const fields = new Set();
-  for (const match of secureFileServe.matchAll(/'((?:images|todoItems)\.[A-Za-z.]+)'/g)) {
+  // v1.12.0: files.filename dazu — /uploads/files/* sucht die Notiz auf
+  // demselben Weg, braucht also denselben COLLSCAN-Schutz.
+  for (const match of secureFileServe.matchAll(/'((?:images|files|todoItems)\.[A-Za-z.]+)'/g)) {
     fields.add(match[1]);
   }
   return [...fields];
@@ -31,7 +33,7 @@ function queriedImageFields() {
 
 test('the image lookup fields are indexed', () => {
   const fields = queriedImageFields();
-  assert.deepEqual(fields.sort(), ['images.filename', 'images.thumbnailFilename'],
+  assert.deepEqual(fields.sort(), ['files.filename', 'images.filename', 'images.thumbnailFilename'],
     'the guard must follow the middleware: adjust this list when the query changes');
 
   for (const field of fields) {
@@ -54,7 +56,7 @@ test('the image indexes are multikey and deliberately not unique', () => {
 test('no array-field index in the schema is unique', () => {
   // Derselbe Startup-Fehlerklasse wie oben: ein Unique-Index auf einem
   // Array-Feld schlägt bei doppelten Werten in Bestandsdaten fehl.
-  const arrayPaths = ['images.filename', 'images.thumbnailFilename', 'tags', 'sharedWith', 'todoItems.text'];
+  const arrayPaths = ['images.filename', 'images.thumbnailFilename', 'files.filename', 'tags', 'sharedWith', 'todoItems.text'];
   for (const [keys, options] of schemaIndexes) {
     for (const field of Object.keys(keys)) {
       if (arrayPaths.includes(field)) {

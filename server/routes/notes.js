@@ -9,14 +9,14 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
-const { upload, uploadAudio, isSafeStoredFilename } = require('../middleware/upload');
+const { upload, uploadAudio, uploadPdf, isSafeStoredFilename } = require('../middleware/upload');
 const { getLinkPreview } = require('../services/linkPreviewService');
 const { acquire } = require('../utils/concurrencyGate');
 const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberValidator');
 const notesService = require('../services/notesService');
 const aiService = require('../services/aiService');
 const { httpStatus } = require('../constants');
-const { imagesDir } = require('../config/paths');
+const { imagesDir, filesDir } = require('../config/paths');
 const {
   blockDemoUser,
   enforceDemoNoteLimit,
@@ -687,6 +687,136 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
       error: 'Fehler beim Löschen des Bildes',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+/**
+ * POST /api/notes/:id/files (v1.12.0) — PDF-Anhang an eine Notiz. Gleiche
+ * Temp-then-move-Pipeline wie Bilder: multer legt in uploads/temp ab, die
+ * Route prueft Magic Bytes (%PDF) und verschiebt erst dann nach uploads/files.
+ */
+router.post('/:id/files', blockDemoUploads, noteValidation.getOne, requireEditableNote, (req, res, next) => {
+  if ((req.ownedNote.files?.length || 0) >= 25) {
+    return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Dateianhänge pro Notiz erlaubt' });
+  }
+
+  uploadPdf.array('files', 5)(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Datei zu groß. Maximale Dateigröße: 25MB'
+        });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(httpStatus.BAD_REQUEST).json({
+          error: 'Zu viele Dateien. Maximal 5 Anhänge pro Upload.'
+        });
+      }
+      if (err.message) {
+        return res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
+      }
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Upload-Fehler' });
+    }
+    next();
+  });
+}, async (req, res, next) => {
+  const path = require('path');
+  const fs = require('fs');
+  const tempFiles = [];
+
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Dateien hochgeladen' });
+    }
+
+    if ((req.ownedNote.files?.length || 0) + req.files.length > 25) {
+      await Promise.all(req.files.map(file => fs.promises.rm(file.path, { force: true })));
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Dateianhänge pro Notiz erlaubt' });
+    }
+
+    // Magic-Byte-Check: %PDF- am Dateianfang. Der Multer-Filter prueft nur
+    // Client-Mime + Endung — ein Umbenanntes duerfe nie in files/ landen.
+    for (const file of req.files) {
+      const header = Buffer.alloc(5);
+      const fd = fs.openSync(file.path, 'r');
+      try {
+        fs.readSync(fd, header, 0, 5, 0);
+      } finally {
+        fs.closeSync(fd);
+      }
+      if (header.toString('latin1') !== '%PDF-') {
+        await Promise.all(req.files.map(f => fs.promises.rm(f.path, { force: true })));
+        return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungültige PDF-Dateien erkannt' });
+      }
+    }
+
+    const fileData = [];
+    for (const file of req.files) {
+      const finalPath = path.join(filesDir(), file.filename);
+      await fs.promises.rename(file.path, finalPath);
+      fileData.push({
+        url: `/uploads/files/${file.filename}`,
+        filename: file.filename,
+        originalName: path.basename(file.originalname || 'anhang.pdf').slice(0, 255),
+        mimetype: 'application/pdf',
+        size: file.size,
+        uploadedAt: new Date()
+      });
+    }
+
+    const note = await notesService.addFiles(req.params.id, req.user._id, fileData);
+    res.json(note);
+  } catch (error) {
+    console.error('[FILE UPLOAD] ✗ Error during upload:', error);
+    tempFiles.forEach(filepath => {
+      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    });
+    if (req.files) {
+      req.files.forEach(file => {
+        const finalPath = path.join(filesDir(), file.filename);
+        if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
+      });
+    }
+
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Serverfehler beim Upload' });
+  }
+});
+
+/**
+ * DELETE /api/notes/:id/files/:filename - Dateianhang von einer Notiz loesen
+ */
+router.delete('/:id/files/:filename', blockDemoUploads, noteValidation.getOne, async (req, res, next) => {
+  try {
+    if (!isSafeStoredFilename(req.params.filename)) {
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungueltiger Dateiname' });
+    }
+
+    const note = await notesService.removeFile(
+      req.params.id,
+      req.user._id,
+      req.params.filename
+    );
+
+    const fs = require('fs');
+    const path = require('path');
+    await fs.promises.rm(path.join(filesDir(), req.params.filename), { force: true });
+
+    res.json(note);
+  } catch (error) {
+    console.error('[FILE DELETE] Error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
   }
 });
 

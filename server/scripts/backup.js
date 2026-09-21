@@ -39,7 +39,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const mongoose = require('mongoose');
-const { backupRoot, uploadsRoot, imagesDir } = require('../config/paths');
+const { backupRoot, uploadsRoot, imagesDir, filesDir } = require('../config/paths');
 
 const BACKUP_DIR = backupRoot();
 const DEFAULT_KEEP = 7;
@@ -94,16 +94,19 @@ function timestamp() {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
-/** Which image files does the database expect to exist? */
+/** Which upload files does the database expect to exist (images + attachments)? */
 async function referencedImageFilenames() {
   const referenced = new Set();
   const exists = await mongoose.connection.db.listCollections({ name: 'notes' }).hasNext();
   if (!exists) return referenced;
-  const cursor = mongoose.connection.db.collection('notes').find({}, { projection: { images: 1 } });
+  const cursor = mongoose.connection.db.collection('notes').find({}, { projection: { images: 1, files: 1 } });
   for await (const doc of cursor) {
     for (const image of doc.images || []) {
       if (image?.filename) referenced.add(image.filename);
       if (image?.thumbnailFilename) referenced.add(image.thumbnailFilename);
+    }
+    for (const file of doc.files || []) {
+      if (file?.filename) referenced.add(file.filename);
     }
   }
   return referenced;
@@ -160,19 +163,24 @@ async function createBackup(keep) {
   const referenced = await referencedImageFilenames();
   manifest.uploads.referenced = referenced.size;
   const copied = new Set();
-  if (fs.existsSync(images)) {
-    const targetImages = path.join(uploadsTarget, 'images');
-    fs.mkdirSync(targetImages, { recursive: true });
-    for (const entry of fs.readdirSync(images)) {
+
+  // Beide Unterverzeichnisse (v1.12.0: images + files) unabhängig voneinander
+  // erfassen — ein Bestand ohne Bilder, aber mit Anhängen, muss genauso
+  // vollständig gesichert werden.
+  for (const [subdir, sourceDir] of [['images', images], ['files', filesDir()]]) {
+    if (!fs.existsSync(sourceDir)) continue;
+    const targetDir = path.join(uploadsTarget, subdir);
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const entry of fs.readdirSync(sourceDir)) {
       if (entry === '.gitkeep') continue;
-      const source = path.join(images, entry);
+      const source = path.join(sourceDir, entry);
       if (!fs.statSync(source).isFile()) continue;
-      const destination = path.join(targetImages, entry);
+      const destination = path.join(targetDir, entry);
       fs.copyFileSync(source, destination);
       copied.add(entry);
       manifest.uploads.files += 1;
       manifest.uploads.bytes += fs.statSync(destination).size;
-      manifest.uploads.entries.push({ name: entry, size: fs.statSync(destination).size, sha256: sha256File(destination) });
+      manifest.uploads.entries.push({ name: entry, dir: subdir, size: fs.statSync(destination).size, sha256: sha256File(destination) });
     }
   }
 
@@ -264,12 +272,15 @@ function verifyBackup(dir) {
     report.documents += lines;
   }
 
-  const uploadsDirInBackup = path.join(target, manifest.uploads?.dir || 'uploads', 'images');
+  // Uploads liegen in zwei Unterverzeichnissen (images, files); der Manifest-
+  // Eintrag sagt seit Format 2 mit `dir`, wo er hingehört (Default: images,
+  // damit Manifeste ohne das Feld lesbar bleiben).
+  const uploadsRootInBackup = path.join(target, manifest.uploads?.dir || 'uploads');
   const entries = manifest.uploads?.entries;
   if (Array.isArray(entries)) {
     const present = new Set();
     for (const entry of entries) {
-      const file = path.join(uploadsDirInBackup, entry.name);
+      const file = path.join(uploadsRootInBackup, entry.dir || 'images', entry.name);
       if (!fs.existsSync(file)) throw new Error(`Upload-Datei fehlt: ${entry.name}`);
       const stats = fs.statSync(file);
       if (stats.size !== entry.size) {
@@ -287,8 +298,11 @@ function verifyBackup(dir) {
     }
   } else {
     report.warnings.push('Manifest format 1: Uploads haben keine Prüfsummen, nur die Dateien werden gezählt');
-    if (fs.existsSync(uploadsDirInBackup)) {
-      report.uploads = fs.readdirSync(uploadsDirInBackup).filter(name => name !== '.gitkeep').length;
+    for (const subdir of ['images', 'files']) {
+      const legacyDir = path.join(uploadsRootInBackup, subdir);
+      if (fs.existsSync(legacyDir)) {
+        report.uploads += fs.readdirSync(legacyDir).filter(name => name !== '.gitkeep').length;
+      }
     }
     if ((manifest.uploads?.files || 0) !== report.uploads) {
       throw new Error(`Upload-Zahl stimmt nicht (erwartet ${manifest.uploads?.files || 0}, gefunden ${report.uploads})`);
@@ -338,15 +352,16 @@ async function restoreBackup(dir) {
     console.log(`  ${entry.name}: ${restored} Dokumente wiederhergestellt`);
   }
 
-  const uploadsSource = path.join(target, manifest.uploads?.dir || 'uploads', 'images');
-  if (fs.existsSync(uploadsSource)) {
-    const images = imagesDir();
-    fs.mkdirSync(images, { recursive: true });
-    let files = 0;
+  const uploadsRootInBackup = path.join(target, manifest.uploads?.dir || 'uploads');
+  let restoredUploads = 0;
+  for (const [subdir, destinationDir] of [['images', imagesDir()], ['files', filesDir()]]) {
+    const uploadsSource = path.join(uploadsRootInBackup, subdir);
+    if (!fs.existsSync(uploadsSource)) continue;
+    fs.mkdirSync(destinationDir, { recursive: true });
     for (const entry of fs.readdirSync(uploadsSource)) {
       const source = path.join(uploadsSource, entry);
       if (!fs.statSync(source).isFile()) continue;
-      const destination = path.join(images, entry);
+      const destination = path.join(destinationDir, entry);
       fs.copyFileSync(source, destination);
       // Auch die Kopie prüfen: eine abgeschnittene Datei wäre sonst ein
       // stilles Loch im Restore.
@@ -354,11 +369,14 @@ async function restoreBackup(dir) {
       if (expected && sha256File(destination) !== expected.sha256) {
         throw new Error(`Prüfsumme stimmt nicht für wiederhergestellte Datei ${entry}`);
       }
-      files += 1;
+      restoredUploads += 1;
     }
-    console.log(`  uploads: ${files} Dateien wiederhergestellt`);
-  } else if ((manifest.uploads?.files || 0) > 0) {
-    throw new Error(`Restore unvollständig: Manifest nennt ${manifest.uploads.files} Uploads, aber ${uploadsSource} fehlt`);
+  }
+  if (restoredUploads === 0 && (manifest.uploads?.files || 0) > 0) {
+    throw new Error(`Restore unvollständig: Manifest nennt ${manifest.uploads.files} Uploads, aber ${uploadsRootInBackup} fehlt`);
+  }
+  if (restoredUploads > 0) {
+    console.log(`  uploads: ${restoredUploads} Dateien wiederhergestellt`);
   }
 
   console.log(`Wiederhergestellt aus ${target} (Backup von ${manifest.createdAt}, ${report.documents} Dokumente, ${report.uploads} Uploads)`);

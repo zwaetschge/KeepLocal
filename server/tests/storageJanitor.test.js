@@ -19,6 +19,7 @@ const now = Date.now();
 
 function loadJanitor({ notes = [], failFind = false } = {}) {
   const deletedImageCalls = [];
+  const deletedFileCalls = [];
   const deleteManyCalls = [];
 
   const chain = (rows) => ({ select: () => ({ lean: async () => rows }) });
@@ -43,7 +44,8 @@ function loadJanitor({ notes = [], failFind = false } = {}) {
   require.cache[notesServicePath] = {
     id: notesServicePath, filename: notesServicePath, loaded: true,
     exports: {
-      deleteNoteImages: async (note) => { deletedImageCalls.push(String(note._id)); }
+      deleteNoteImages: async (note) => { deletedImageCalls.push(String(note._id)); },
+      deleteNoteFiles: async (note) => { deletedFileCalls.push(String(note._id)); }
     }
   };
   require.cache[loggerPath] = {
@@ -51,7 +53,7 @@ function loadJanitor({ notes = [], failFind = false } = {}) {
     exports: { info() {}, warn() {}, error() {}, debug() {} }
   };
 
-  return { janitor: require(janitorPath), deletedImageCalls, deleteManyCalls };
+  return { janitor: require(janitorPath), deletedImageCalls, deletedFileCalls, deleteManyCalls };
 }
 
 function tempDir() {
@@ -67,15 +69,20 @@ function writeFile(dir, name, ageMs, size = 8) {
 }
 
 test('expired trash is purged: files first, then documents', async () => {
-  const old = { _id: 'old', deletedAt: new Date(now - 40 * DAY_MS), images: [{ filename: 'a.png', thumbnailFilename: 'a-thumb.webp' }] };
-  const young = { _id: 'young', deletedAt: new Date(now - 5 * DAY_MS), images: [] };
-  const { janitor, deletedImageCalls, deleteManyCalls } = loadJanitor({ notes: [old, young] });
+  const old = {
+    _id: 'old', deletedAt: new Date(now - 40 * DAY_MS),
+    images: [{ filename: 'a.png', thumbnailFilename: 'a-thumb.webp' }],
+    files: [{ filename: 'b.pdf' }, { filename: 'c.pdf' }]
+  };
+  const young = { _id: 'young', deletedAt: new Date(now - 5 * DAY_MS), images: [], files: [] };
+  const { janitor, deletedImageCalls, deletedFileCalls, deleteManyCalls } = loadJanitor({ notes: [old, young] });
 
   const result = await janitor.purgeExpiredTrash({ now, retentionDays: 30 });
 
   assert.equal(result.notes, 1, 'only the expired note is removed');
-  assert.equal(result.files, 2, 'original and thumbnail are counted');
+  assert.equal(result.files, 4, 'original, thumbnail and both attachments are counted');
   assert.deepEqual(deletedImageCalls, ['old'], 'the files go before the document');
+  assert.deepEqual(deletedFileCalls, ['old'], 'attachments are cleaned with the images');
   assert.equal(deleteManyCalls.length, 1);
   assert.deepEqual(deleteManyCalls[0]._id.$in.map(String), ['old']);
   assert.ok(deleteManyCalls[0].deletedAt?.$lte instanceof Date, 'the retention predicate is repeated on delete');
@@ -105,6 +112,39 @@ test('orphaned images go, referenced and young files stay', async () => {
   assert.equal(result.files, 1, 'only the unreferenced old file is removed');
   assert.equal(result.bytes, 200);
   assert.deepEqual(fs.readdirSync(dir).sort(), ['.gitkeep', 'fresh-orphan.png', 'referenced.png']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('orphaned attachments go, referenced and young ones stay', async () => {
+  const dir = tempDir();
+  writeFile(dir, 'referenced.pdf', 10 * DAY_MS, 100);
+  writeFile(dir, 'orphan.pdf', 10 * DAY_MS, 300);
+  writeFile(dir, 'fresh-orphan.pdf', 60 * 1000, 50);
+  writeFile(dir, '.gitkeep', 10 * DAY_MS, 0);
+
+  const { janitor } = loadJanitor({
+    notes: [{ _id: 'n1', deletedAt: new Date(now - 2 * DAY_MS), files: [{ filename: 'referenced.pdf' }] }]
+  });
+
+  const result = await janitor.removeOrphanedFiles({ now, minAgeHours: 24, filesDir: dir });
+
+  assert.equal(result.files, 1, 'only the unreferenced old attachment is removed');
+  assert.equal(result.bytes, 300);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['.gitkeep', 'fresh-orphan.pdf', 'referenced.pdf']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a trashed note keeps its attachments (it is still a reference)', async () => {
+  const dir = tempDir();
+  writeFile(dir, 'trashed.pdf', 40 * DAY_MS, 10);
+  const { janitor } = loadJanitor({
+    notes: [{ _id: 'n1', deletedAt: new Date(now - 10 * DAY_MS), files: [{ filename: 'trashed.pdf' }] }]
+  });
+
+  const result = await janitor.removeOrphanedFiles({ now, minAgeHours: 24, filesDir: dir });
+
+  assert.equal(result.files, 0);
+  assert.deepEqual(fs.readdirSync(dir), ['trashed.pdf']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -141,9 +181,11 @@ test('a failing step is logged, never thrown, and the run still reports', async 
   writeFile(dir, 'stale.tmp', 5 * 60 * 60 * 1000, 12);
   const { janitor } = loadJanitor({ failFind: true });
 
-  const result = await janitor.runStorageJanitor({ now: Date.now(), tempDir: dir });
+  // filesDir mitgeben: Ohne eigene Dateien kehrt der Schritt vor dem DB-Ruf
+  // zurueck und der Fehlerzaehler waere vom Bestand im Repository abhaengig.
+  const result = await janitor.runStorageJanitor({ now: Date.now(), tempDir: dir, filesDir: dir });
 
-  assert.equal(result.errors.length, 2, 'both database steps fail');
+  assert.equal(result.errors.length, 3, 'all three database steps fail (purge, image orphans, attachment orphans)');
   assert.match(result.errors.join(' '), /mongo down/);
   assert.equal(result.temp.files, 1, 'the filesystem step still runs');
   fs.rmSync(dir, { recursive: true, force: true });
