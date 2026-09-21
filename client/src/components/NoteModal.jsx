@@ -14,6 +14,15 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
+
+// v1.12.0: Anhang-Groesse kompakt anzeigen (1024er-Einheiten, eine Nachkommastelle).
+function formatFileSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
 import {
   readDraft,
   writeDraft,
@@ -63,8 +72,12 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     typeof note?.parentId === 'string' ? note.parentId : (defaultParentId || null)
   );
   const [images, setImages] = useState(note?.images || []);
+  // v1.12.0: PDF-Anhänge — eigene Liste, eigener Upload-Pfad (/files).
+  const [noteFiles, setNoteFiles] = useState(note?.files || []);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [newPdfFiles, setNewPdfFiles] = useState([]);
   const [lightboxImage, setLightboxImage] = useState(null); // {index, url}
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -85,6 +98,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const baseUpdatedAtRef = useRef(note?.updatedAt || null);
   const contentTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -227,6 +241,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     setTodoItems(source.todoItems || []);
     setLinkPreviews(source.linkPreviews || []);
     setImages(source.images || []);
+    setNoteFiles(source.files || []);
   }, [setTodoItems, setLinkPreviews]);
 
   // Update state when note changes
@@ -612,6 +627,58 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       console.error('Fehler beim Löschen des Bildes:', error);
       toastBus.error(resolveApiErrorMessage(error, t, 'errorDeletingImage'));
     }
+  };
+
+  // v1.12.0: PDF-Anhänge — Auswahl/Upload/Löschen gespiegelt zu Bildern.
+  const handlePdfSelect = (e) => {
+    const remainingSlots = Math.max(0, Math.min(5, 25 - noteFiles.length - newPdfFiles.length));
+    const files = Array.from(e.target.files || [])
+      .filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))
+      .slice(0, remainingSlots);
+    if (files.length > 0) {
+      setNewPdfFiles([...newPdfFiles, ...files]);
+    }
+  };
+
+  const handlePdfUpload = async () => {
+    if (!note || newPdfFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    try {
+      const updatedNote = await notesAPI.uploadFiles(note._id, newPdfFiles);
+      setNoteFiles(updatedNote.files || []);
+      if (updatedNote.updatedAt) {
+        baseUpdatedAtRef.current = updatedNote.updatedAt;
+      }
+      setNewPdfFiles([]);
+      if (pdfInputRef.current) {
+        pdfInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Fehler beim Hochladen der Anhänge:', error);
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorUploadingFiles'));
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const handleFileDelete = async (filename) => {
+    if (!note) return;
+
+    try {
+      const updatedNote = await notesAPI.deleteFile(note._id, filename);
+      setNoteFiles(updatedNote.files || []);
+      if (updatedNote.updatedAt) {
+        baseUpdatedAtRef.current = updatedNote.updatedAt;
+      }
+    } catch (error) {
+      console.error('Fehler beim Löschen des Anhangs:', error);
+      toastBus.error(resolveApiErrorMessage(error, t, 'errorDeletingFile'));
+    }
+  };
+
+  const removeNewPdfFile = (index) => {
+    setNewPdfFiles(newPdfFiles.filter((_, i) => i !== index));
   };
 
   const removeNewImageFile = (index) => {
@@ -1101,6 +1168,68 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
             </div>
           )}
 
+          {!isDemo && note && noteFiles.length > 0 && (
+            <div className="note-modal-files">
+              {noteFiles.map((file) => (
+                <div key={file.filename} className="file-attachment">
+                  <a
+                    href={file.url}
+                    download={file.originalName || 'anhang.pdf'}
+                    className="file-attachment-link"
+                    title={t('downloadFile')}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span className="file-attachment-name">{file.originalName || file.filename}</span>
+                    <span className="file-attachment-size">{formatFileSize(file.size)}</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="image-delete-btn"
+                    onClick={() => handleFileDelete(file.filename)}
+                    title={t('deleteFile')}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isDemo && note && newPdfFiles.length > 0 && (
+            <div className="note-modal-files">
+              {newPdfFiles.map((file, index) => (
+                <div key={index} className="file-attachment new">
+                  <span className="file-attachment-link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span className="file-attachment-name">{file.name}</span>
+                    <span className="file-attachment-size">{formatFileSize(file.size)}</span>
+                    <span className="new-badge">{t('newBadge')}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="image-delete-btn"
+                    onClick={() => removeNewPdfFile(index)}
+                    title={t('removeFile')}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {!isDemo && note && newImageFiles.length > 0 && (
             <div className="new-images-preview">
               {newImageFiles.map((file, index) => (
@@ -1138,6 +1267,19 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
               onChange={handleImageSelect}
               style={{ display: 'none' }}
               id="image-upload-input"
+            />
+          )}
+
+          {/* Hidden file input for PDF attachments */}
+          {!isDemo && note && (
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              onChange={handlePdfSelect}
+              style={{ display: 'none' }}
+              id="pdf-upload-input"
             />
           )}
 
@@ -1344,6 +1486,32 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                     {newImageFiles.length > 0 && (
                       <span className="image-count-badge">{newImageFiles.length}</span>
                     )}
+                  </button>
+                )}
+                <label
+                  htmlFor="pdf-upload-input"
+                  className="btn-modal-image-select"
+                  title={t('selectFiles')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                </label>
+                {newPdfFiles.length > 0 && (
+                  <button
+                    type="button"
+                    className={`btn-modal-image-upload ${uploadingFiles ? 'uploading' : ''}`}
+                    onClick={handlePdfUpload}
+                    disabled={uploadingFiles}
+                    title={uploadingFiles ? t('uploadingFiles') : t('uploadFilesCount', { count: newPdfFiles.length })}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <span className="image-count-badge">{newPdfFiles.length}</span>
                   </button>
                 )}
               </>

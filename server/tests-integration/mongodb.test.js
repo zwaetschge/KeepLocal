@@ -46,6 +46,11 @@ test('the schema indexes exist with the options the queries rely on', { skip }, 
   assert.ok(noteIndexes['images.thumbnailFilename_1'], 'images.thumbnailFilename must be indexed');
   assert.notEqual(noteIndexes['images.filename_1'].unique, true, 'a failed unique build would kill startup');
 
+  // v1.12.0: PDF-Anhänge werden über files.filename aufgeloest — gleicher
+  // Schutz, gleiches Muster (bewusst nicht unique).
+  assert.ok(noteIndexes['files.filename_1'], 'files.filename must be indexed');
+  assert.notEqual(noteIndexes['files.filename_1'].unique, true);
+
   // Papierkorb: 31 Tage Backstop hinter dem Janitor (30 Tage Retention).
   assert.equal(noteIndexes.trash_ttl?.expireAfterSeconds, 31 * 24 * 60 * 60);
   assert.deepEqual(noteIndexes.trash_ttl?.partialFilterExpression, { deletedAt: { $type: 'date' } });

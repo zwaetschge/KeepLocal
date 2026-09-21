@@ -13,7 +13,8 @@
  *   (a) Notizen, die länger als die Retention im Papierkorb liegen: erst die
  *       Dateien, dann das Dokument (der TTL-Index bleibt als Backstop einen Tag
  *       länger stehen, damit dieser Pfad das Rennen gewinnt).
- *   (b) Dateien in uploads/images, die älter als ORPHAN_MIN_AGE_HOURS sind und
+ *   (b) Dateien in uploads/images und uploads/files (v1.12.0, PDF-Anhänge),
+ *       die älter als ORPHAN_MIN_AGE_HOURS sind und
  *       von **keiner** Notiz referenziert werden — gelöschte Notizen zählen als
  *       referenziert, sonst würde der Papierkorb seine Bilder verlieren.
  *   (c) uploads/temp älter als TEMP_MIN_AGE_MINUTES (abgebrochene Uploads).
@@ -26,7 +27,7 @@ const path = require('node:path');
 const Note = require('../models/Note');
 const logger = require('../utils/logger');
 const paths = require('../config/paths');
-const { deleteNoteImages } = require('./notesService');
+const { deleteNoteImages, deleteNoteFiles } = require('./notesService');
 
 // Leere Werte muessen den Default behalten: Compose-Dateien reichen Variablen
 // als `${VAR:-}` durch, also als leerer String. `Number('')` ist 0 — bei
@@ -79,7 +80,7 @@ function statAge(filePath, now) {
 async function purgeExpiredTrash({ now = Date.now(), retentionDays = TRASH_RETENTION_DAYS } = {}) {
   const cutoff = new Date(now - retentionDays * DAY_MS);
   const predicate = { deletedAt: { $type: 'date', $lte: cutoff } };
-  const expired = await Note.find(predicate).select('images').lean();
+  const expired = await Note.find(predicate).select('images files').lean();
   if (expired.length === 0) {
     return { notes: 0, files: 0 };
   }
@@ -89,7 +90,9 @@ async function purgeExpiredTrash({ now = Date.now(), retentionDays = TRASH_RETEN
     for (const image of note.images || []) {
       files += image?.thumbnailFilename ? 2 : 1;
     }
+    files += (note.files || []).length;
     await deleteNoteImages(note);
+    await deleteNoteFiles(note);
   }
   const deleted = await Note.deleteMany({ _id: { $in: expired.map((note) => note._id) }, ...predicate });
   return { notes: deleted.deletedCount || 0, files };
@@ -132,6 +135,42 @@ async function removeOrphanedImages({ now = Date.now(), minAgeHours = ORPHAN_MIN
   return { files: removed, bytes };
 }
 
+/**
+ * (b2) Verwaiste Dateianhänge entfernen. Referenziert = als `files.filename`
+ * geführt — identische Regel wie bei Bildern, nur das andere Verzeichnis.
+ */
+async function removeOrphanedFiles({ now = Date.now(), minAgeHours = ORPHAN_MIN_AGE_HOURS, filesDir = paths.filesDir() } = {}) {
+  const diskFiles = listFiles(filesDir);
+  if (diskFiles.length === 0) {
+    return { files: 0, bytes: 0 };
+  }
+
+  const referenced = new Set();
+  const notes = await Note.find({}).select('files.filename').lean();
+  for (const note of notes) {
+    for (const file of note.files || []) {
+      if (file?.filename) referenced.add(file.filename);
+    }
+  }
+
+  let removed = 0;
+  let bytes = 0;
+  for (const name of diskFiles) {
+    if (name === '.gitkeep' || referenced.has(name)) continue;
+    const filePath = path.join(filesDir, name);
+    const stats = statAge(filePath, now);
+    if (!stats || stats.ageMs < minAgeHours * 60 * 60 * 1000) continue;
+    try {
+      fs.unlinkSync(filePath);
+      removed += 1;
+      bytes += stats.size;
+    } catch (error) {
+      logger.warn('storage janitor could not remove an orphaned attachment', { file: name, error: error.message });
+    }
+  }
+  return { files: removed, bytes };
+}
+
 /** (c) uploads/temp leeren (abgebrochene oder gekillte Uploads). */
 function cleanTempUploads({ now = Date.now(), minAgeMinutes = TEMP_MIN_AGE_MINUTES, tempDir = paths.tempDir() } = {}) {
   let removed = 0;
@@ -155,11 +194,18 @@ function cleanTempUploads({ now = Date.now(), minAgeMinutes = TEMP_MIN_AGE_MINUT
 /** Ein Lauf, eine Logzeile. Fehler pro Schritt, nie nach oben. */
 async function runStorageJanitor(options = {}) {
   const started = Date.now();
-  const result = { expiredTrash: { notes: 0, files: 0 }, orphans: { files: 0, bytes: 0 }, temp: { files: 0, bytes: 0 }, errors: [] };
+  const result = {
+    expiredTrash: { notes: 0, files: 0 },
+    orphans: { files: 0, bytes: 0 },
+    orphanFiles: { files: 0, bytes: 0 },
+    temp: { files: 0, bytes: 0 },
+    errors: []
+  };
 
   for (const [key, task] of [
     ['expiredTrash', () => purgeExpiredTrash(options)],
     ['orphans', () => removeOrphanedImages(options)],
+    ['orphanFiles', () => removeOrphanedFiles(options)],
     ['temp', () => Promise.resolve(cleanTempUploads(options))]
   ]) {
     try {
@@ -213,6 +259,7 @@ function startStorageJanitor(options = {}) {
 module.exports = {
   purgeExpiredTrash,
   removeOrphanedImages,
+  removeOrphanedFiles,
   cleanTempUploads,
   runStorageJanitor,
   startStorageJanitor,

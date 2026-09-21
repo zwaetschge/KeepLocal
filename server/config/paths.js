@@ -25,7 +25,7 @@ const SERVER_ROOT = path.resolve(__dirname, '..');
 
 const resolveOr = (value, fallback) => (value ? path.resolve(value) : fallback);
 
-/** Wurzel des Upload-Volumes (enthält `images/` und `temp/`). */
+/** Wurzel des Upload-Volumes (enthält `images/`, `files/` und `temp/`). */
 function uploadsRoot() {
   return resolveOr(process.env.UPLOADS_DIR, path.join(SERVER_ROOT, 'uploads'));
 }
@@ -33,6 +33,11 @@ function uploadsRoot() {
 /** Finale, validierte Nutzerdateien. */
 function imagesDir() {
   return path.join(uploadsRoot(), 'images');
+}
+
+/** Finale Dateianhänge (PDF), getrennt von Bildern — eigener Serve-Pfad. */
+function filesDir() {
+  return path.join(uploadsRoot(), 'files');
 }
 
 /** Eingang für laufende Uploads (vor der Validierung). */
@@ -45,13 +50,15 @@ function backupRoot() {
   return resolveOr(process.env.BACKUP_DIR, path.join(SERVER_ROOT, 'backups'));
 }
 
-/** Legt beide Upload-Verzeichnisse an und liefert die aufgelösten Pfade. */
+/** Legt alle Upload-Verzeichnisse an und liefert die aufgelösten Pfade. */
 function ensureUploadDirs() {
   const images = imagesDir();
+  const files = filesDir();
   const temp = tempDir();
   fs.mkdirSync(images, { recursive: true });
+  fs.mkdirSync(files, { recursive: true });
   fs.mkdirSync(temp, { recursive: true });
-  return { root: uploadsRoot(), images, temp };
+  return { root: uploadsRoot(), images, files, temp };
 }
 
-module.exports = { SERVER_ROOT, uploadsRoot, imagesDir, tempDir, backupRoot, ensureUploadDirs };
+module.exports = { SERVER_ROOT, uploadsRoot, imagesDir, filesDir, tempDir, backupRoot, ensureUploadDirs };

@@ -20,6 +20,7 @@ const STRANGER = 'cccccccccccccccccccccccc';
 
 const uploadsRootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-fileserve-'));
 fs.mkdirSync(path.join(uploadsRootDir, 'images'), { recursive: true });
+fs.mkdirSync(path.join(uploadsRootDir, 'files'), { recursive: true });
 fs.mkdirSync(path.join(uploadsRootDir, 'temp'), { recursive: true });
 
 /**
@@ -33,6 +34,9 @@ function loadServer(notesByFilename) {
   const NoteMock = {
     findOne: async (query) => {
       queries.push(query);
+      if (query['files.filename']) {
+        return notesByFilename[query['files.filename']] || null;
+      }
       const wanted = query.$or.map(rule => rule['images.filename'] || rule['images.thumbnailFilename']);
       for (const name of wanted) {
         if (notesByFilename[name]) return notesByFilename[name];
@@ -60,6 +64,8 @@ async function get(urlPath, userId = OWNER) {
     return {
       status: response.status,
       cacheControl: response.headers.get('cache-control'),
+      contentType: response.headers.get('content-type'),
+      contentDisposition: response.headers.get('content-disposition'),
       body: await response.text()
     };
   } finally {
@@ -72,6 +78,18 @@ function writeImage(name, content = 'image-bytes') {
   fs.writeFileSync(file, content);
   return file;
 }
+
+function writeAttachment(name, content = '%PDF-1.7-bytes') {
+  const file = path.join(uploadsRootDir, 'files', name);
+  fs.writeFileSync(file, content);
+  return file;
+}
+
+/** Notiz mit PDF-Anhang: images leer, files mit Speicher- und Originalnamen. */
+const attachmentNote = (ownerId, filename, originalName = 'Bericht 2026.pdf', extra = {}) => ({
+  ...note(ownerId, [], extra),
+  files: [{ filename, originalName, mimetype: 'application/pdf', size: 42 }]
+});
 
 const note = (ownerId, filenames, extra = {}) => ({
   _id: 'note-1',
@@ -188,9 +206,49 @@ test('a referenced file that is gone answers 404 with a distinct message', async
 test('both traversal guards exist: the path regex and the resolved prefix check', () => {
   const source = fs.readFileSync(path.join(__dirname, '../middleware/secureFileServe.js'), 'utf8');
   assert.ok(source.includes(String.raw`/^images\/[^/\\]+$/`), 'the route only accepts images/<basename>');
-  assert.match(source, /filepath\.startsWith\(imagesDir \+ path\.sep\)/, 'the resolved path must stay inside the images directory');
+  assert.ok(source.includes(String.raw`/^files\/[^/\\]+$/`), 'the route only accepts files/<basename>');
+  assert.match(source, /filepath\.startsWith\(baseDir \+ path\.sep\)/, 'the resolved path must stay inside its base directory');
   assert.match(source, /uploadsRoot\(\)/, 'the directory comes from config/paths, not from a hardcoded relative path');
   assert.match(source, /res\.setHeader\('Cache-Control', 'private, no-store'\)/);
+});
+
+test('attachments download with PDF headers and the original filename', async () => {
+  writeAttachment('report.pdf', '%PDF-1.7');
+  loadServer({ 'report.pdf': attachmentNote(OWNER, 'report.pdf', 'Bericht 2026.pdf', { sharedWith: [FRIEND] }) });
+
+  const owner = await get('/uploads/files/report.pdf', OWNER);
+  assert.equal(owner.status, 200);
+  assert.equal(owner.body, '%PDF-1.7');
+  assert.equal(owner.contentType, 'application/pdf', 'the type is fixed, never sniffed');
+  assert.match(owner.contentDisposition, /^attachment; /, 'PDFs must download, not render inline');
+  assert.match(owner.contentDisposition, /filename\*=UTF-8''Bericht%202026\.pdf/, 'RFC 5987 keeps spaces and umlauts intact');
+  assert.equal(owner.cacheControl, 'private, no-store');
+
+  const friend = await get('/uploads/files/report.pdf', FRIEND);
+  assert.equal(friend.status, 200, 'collaborators reach shared attachments');
+
+  const stranger = await get('/uploads/files/report.pdf', STRANGER);
+  assert.equal(stranger.status, 403);
+  assert.equal(stranger.body.includes('%PDF'), false, 'no bytes for an unauthorized caller');
+});
+
+test('an attachment without originalName still downloads as anhang.pdf', async () => {
+  writeAttachment('hex1234.pdf');
+  loadServer({ 'hex1234.pdf': attachmentNote(OWNER, 'hex1234.pdf', undefined) });
+
+  const result = await get('/uploads/files/hex1234.pdf', OWNER);
+  assert.equal(result.status, 200);
+  assert.match(result.contentDisposition, /filename="anhang\.pdf"/);
+});
+
+test('an unknown attachment is a 404, and traversal into images is not routed', async () => {
+  loadServer({});
+  const missing = await get('/uploads/files/nope.pdf', OWNER);
+  assert.equal(missing.status, 404);
+
+  writeImage('secret.png', 'SECRET');
+  const traversal = await get('/uploads/files/..%2Fimages%2Fsecret.png', OWNER);
+  assert.equal(traversal.status, 404, 'the path regex only accepts files/<basename>');
 });
 
 test.after(() => {

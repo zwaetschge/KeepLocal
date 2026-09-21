@@ -1,15 +1,22 @@
 const path = require('path');
 const fs = require('fs');
 const Note = require('../models/Note');
-const { uploadsRoot } = require('../config/paths');
+const { uploadsRoot, imagesDir, filesDir } = require('../config/paths');
 
 // Uploads-Wurzel aus config/paths (UPLOADS_DIR), nicht hartkodiert: sonst liest
 // dieser Pfad ein anderes Verzeichnis als Backup/Healthcheck.
 const uploadsDir = uploadsRoot();
 
+/** RFC 5987-kodierter Download-Name (attachment/filename*), 255-Zeichen-Limit des Modells. */
+function contentDispositionFor(originalName) {
+  const safe = String(originalName || 'anhang.pdf').slice(0, 255).replace(/[\r\n"]/g, '_');
+  const encoded = encodeURIComponent(safe).replace(/['()]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="anhang.pdf"; filename*=UTF-8''${encoded}`;
+}
+
 /**
- * Secure file serving middleware for uploaded images
- * Ensures users can only access files from notes they own or have access to
+ * Secure file serving middleware for uploaded images and file attachments.
+ * Ensures users can only access files from notes they own or have access to.
  */
 const secureFileServe = async (req, res, next) => {
   try {
@@ -20,26 +27,31 @@ const secureFileServe = async (req, res, next) => {
       return res.status(404).json({ error: 'Datei nicht gefunden' });
     }
 
-    // Only final note images are public through this route. Temp files and
+    // Only final note files are public through this route. Temp files and
     // encoded path traversal attempts must never be reachable.
-    if (!/^images\/[^/\\]+$/.test(rawPath)) {
+    const isImage = /^images\/[^/\\]+$/.test(rawPath);
+    const isAttachment = /^files\/[^/\\]+$/.test(rawPath);
+    if (!isImage && !isAttachment) {
       return res.status(404).json({ error: 'Datei nicht gefunden' });
     }
 
+    const kind = isImage ? 'images' : 'files';
+    const baseDir = isImage ? path.resolve(imagesDir()) : path.resolve(filesDir());
     const basename = path.basename(rawPath);
-    const filepath = path.resolve(uploadsDir, 'images', basename);
-    const imagesDir = path.resolve(uploadsDir, 'images');
-    if (!filepath.startsWith(imagesDir + path.sep)) {
+    const filepath = path.resolve(baseDir, basename);
+    if (!filepath.startsWith(baseDir + path.sep)) {
       return res.status(403).json({ error: 'Zugriff verweigert' });
     }
 
-    // Find note that contains this image
-    const note = await Note.findOne({
-      $or: [
-        { 'images.filename': basename },
-        { 'images.thumbnailFilename': basename }
-      ]
-    });
+    // Find note that contains this file
+    const note = isImage
+      ? await Note.findOne({
+        $or: [
+          { 'images.filename': basename },
+          { 'images.thumbnailFilename': basename }
+        ]
+      })
+      : await Note.findOne({ 'files.filename': basename });
 
     if (!note) {
       return res.status(404).json({ error: 'Datei nicht gefunden' });
@@ -61,6 +73,14 @@ const secureFileServe = async (req, res, next) => {
     }
 
     res.setHeader('Cache-Control', 'private, no-store');
+    if (isAttachment) {
+      // Anhänge (PDF) immer als Download ausliefern: kein Inline-Rendern, kein
+      // Mime-Sniffing — der Typ steht fest, der Name ist der ursprüngliche.
+      const meta = (note.files || []).find(file => file.filename === basename);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', contentDispositionFor(meta?.originalName));
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
     res.sendFile(filepath);
   } catch (error) {
     console.error('[SecureFileServe] Error serving file:', error);

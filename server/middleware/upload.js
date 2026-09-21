@@ -33,7 +33,7 @@ const createStoredFilename = (file) => (
 );
 
 // Temporary upload directory for initial uploads (before validation)
-const { tempDir, imagesDir } = require('../config/paths');
+const { tempDir, imagesDir, filesDir } = require('../config/paths');
 const tempUploadDir = tempDir();
 try {
   if (!fs.existsSync(tempUploadDir)) {
@@ -43,6 +43,17 @@ try {
 } catch (error) {
   console.error('[Upload] CRITICAL: Failed to create temp upload directory:', error.message);
   console.error('[Upload] Image uploads will fail. Please create the directory manually:', tempUploadDir);
+}
+
+// Finale Dateianhänge (PDF) — eigene Directory, eigener Serve-Pfad
+const filesUploadDir = filesDir();
+try {
+  if (!fs.existsSync(filesUploadDir)) {
+    fs.mkdirSync(filesUploadDir, { recursive: true });
+    console.log('[Upload] Created files upload directory:', filesUploadDir);
+  }
+} catch (error) {
+  console.error('[Upload] CRITICAL: Failed to create files upload directory:', error.message);
 }
 
 // Final upload directory (after validation)
@@ -103,6 +114,25 @@ const audioFileFilter = (req, file, cb) => {
   cb(new Error('Ungültiges Audio-Format. Erlaubt: mp3, wav, ogg, m4a, webm'));
 };
 
+// PDF filter - nur echte PDF-Anhänge (Mime UND Endung muessen passen)
+const pdfFileFilter = (req, file, cb) => {
+  const extname = path.extname(file.originalname).toLowerCase() === '.pdf';
+  const mimetype = file.mimetype.toLowerCase() === 'application/pdf';
+  if (extname && mimetype) {
+    return cb(null, true);
+  }
+  cb(new Error('Nur PDF-Dateien sind als Anhang erlaubt'));
+};
+
+// Create multer instance for PDF attachments
+const uploadPdf = multer({
+  storage: storage,
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB max file size
+  },
+  fileFilter: pdfFileFilter
+});
+
 // Create multer instance for images
 const upload = multer({
   storage: storage,
@@ -125,8 +155,10 @@ const uploadAudio = multer({
 module.exports = {
   upload,           // Image upload (default)
   uploadAudio,      // Audio upload (NEW)
+  uploadPdf,        // PDF attachments (v1.12.0)
   tempUploadDir,
   finalUploadDir,
+  filesUploadDir,
   isSafeStoredFilename,
   createStoredFilename,
   extensionForMimeType

@@ -128,15 +128,19 @@ test('a backup is only written when every referenced image was captured', () => 
   const source = fs.readFileSync(path.join(__dirname, '../scripts/backup.js'), 'utf8');
 
   assert.match(source, /async function referencedImageFilenames\(\)/);
-  assert.match(source, /projection: \{ images: 1 \}/);
+  assert.match(source, /projection: \{ images: 1, files: 1 \}/, 'referenced = images + attachments');
   assert.match(source, /Backup unvollständig: \$\{missing\.length\} von \$\{referenced\.size\}/);
   assert.match(source, /passt UPLOADS_DIR\?/, 'the error must point at the likely cause');
   // Ein verworfenes Backup darf nicht als Recovery Point liegen bleiben.
   assert.equal(source.match(/fs\.rmSync\(target, \{ recursive: true, force: true \}\);/g)?.length, 2);
   assert.match(source, /referenced\.size > 0 && manifest\.uploads\.files === 0/, 'the silent empty-uploads case fails too');
 
-  // Manifest: pro Datei Name, Größe und Prüfsumme.
-  assert.match(source, /manifest\.uploads\.entries\.push\(\{ name: entry, size: [^}]+sha256: sha256File\(destination\) \}\)/);
+  // Manifest: pro Datei Name, Unterverzeichnis, Größe und Prüfsumme — ohne
+  // `dir` sucht verifyBackup Anhänge unter images/ und verwirft das Backup.
+  assert.match(source, /manifest\.uploads\.entries\.push\(\{ name: entry, dir: subdir, size: [^}]+sha256: sha256File\(destination\) \}\)/);
+  assert.match(source, /\[\['images', images\], \['files', filesDir\(\)\]\]/, 'both upload subdirectories are captured independently');
+  assert.match(source, /entry\.dir \|\| 'images'/, 'verify resolves the subdir, defaulting to images for old manifests');
+  assert.match(source, /\[\['images', imagesDir\(\)\], \['files', filesDir\(\)\]\]/, 'restore writes both subdirectories back');
   assert.match(source, /format: MANIFEST_FORMAT/);
 });
 

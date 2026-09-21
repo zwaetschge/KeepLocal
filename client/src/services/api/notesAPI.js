@@ -279,6 +279,34 @@ const notesAPI = {
     }),
 
   /**
+   * Upload PDF attachments to a note (v1.12.0)
+   * @param {string} id - Note ID
+   * @param {FileList|Array} files - PDF files to upload (max 5 per request)
+   * @returns {Promise<Object>} Updated note with files
+   */
+  uploadFiles: async (id, files) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('files', file));
+
+    return fetchMultipart(
+      `${API_ENDPOINTS.NOTES.BY_ID(id)}/files`,
+      formData,
+      'Datei-Upload fehlgeschlagen'
+    );
+  },
+
+  /**
+   * Delete an attachment from a note
+   * @param {string} id - Note ID
+   * @param {string} filename - Stored filename to remove
+   * @returns {Promise<Object>} Updated note without the attachment
+   */
+  deleteFile: (id, filename) =>
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/files/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    }),
+
+  /**
    * Transcribe audio to text using AI service
    * @param {string} id - Note ID
    * @param {Blob} audioBlob - Audio blob to transcribe
