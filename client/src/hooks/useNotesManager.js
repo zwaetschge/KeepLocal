@@ -337,7 +337,7 @@ export function useNotesManager({
   const stateRef = useRef({});
   stateRef.current = {
     notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm,
-    treeNodes, selectedIds
+    treeNodes, selectedIds, folderScope
   };
 
   // Läuft ein Fetch mit älterer Sequenz ein, wird sein Ergebnis verworfen.
@@ -436,6 +436,9 @@ export function useNotesManager({
       // Im Papierkorb gibt es keine Tag-Filter (der Server liefert dort keine
       // Tag-Counts), die Suche bleibt verfügbar.
       if (!trashView && stateRef.current.selectedTag) params.tag = stateRef.current.selectedTag;
+      // Ordner-Scope (v1.11.1): der Server filtert — clientseitiges Filtern
+      // des geladenen Fensters zeigte Ordner ab ein paar hundert Notizen leer.
+      if (!trashView && stateRef.current.folderScope) params.folderId = stateRef.current.folderScope;
 
       const response = await api.getAll(params, { signal: controller.signal });
       if (requestSequence !== fetchSequenceRef.current) return;
@@ -509,7 +512,7 @@ export function useNotesManager({
       fetchNotes(searchTerm, 1, { background });
       refreshTree();
     }
-  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, fetchNotes, refreshTree]);
+  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, fetchNotes, refreshTree]);
 
   // Beim Logout: Zustand zurücksetzen und laufende Fetches entwerten.
   useEffect(() => {
@@ -1017,19 +1020,15 @@ export function useNotesManager({
     };
   }, [isLoggedIn, refreshInBackground, refreshTree]);
 
-  // Notizen nach Tag/Ordner filtern und in angeheftete/sonstige Sektionen trennen
+  // Notizen nach Tag filtern und in angeheftete/sonstige Sektionen trennen.
+  // Der Ordner-Scope (v1.11.1) filtert der Server (params.folderId) — hier
+  // clientseitig zu filtern hieß, nur das geladene 50er-Fenster einzugrenzen:
+  // Ab ein paar hundert Notizen bestand jede Seite aus Kindern anderer Ordner
+  // und die Ansicht lief leer, obwohl der Ordner voll war.
   const { pinnedNotes, otherNotes } = useMemo(() => {
     let filtered = notes;
     if (selectedTag) {
       filtered = filtered.filter(item => item.tags && item.tags.includes(selectedTag));
-    }
-    // Ordner-Scope (v1.10.0): 'root' = nur Hauptebene, sonst die direkten
-    // Kinder des gewählten Knotens. Wie der Tag-Filter ein clientseitiger
-    // Filter auf dem geladenen Fenster — die Baum-Projektion trägt die Vollständigkeit.
-    if (folderScope === 'root') {
-      filtered = filtered.filter(item => !item.parentId);
-    } else if (folderScope) {
-      filtered = filtered.filter(item => item.parentId === folderScope);
     }
     const byRecency = (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
     // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
@@ -1048,7 +1047,7 @@ export function useNotesManager({
       pinnedNotes: order(filtered.filter(item => item.isPinned)),
       otherNotes: order(filtered.filter(item => !item.isPinned)),
     };
-  }, [notes, selectedTag, folderScope, searchTerm]);
+  }, [notes, selectedTag, searchTerm]);
 
   const emptyStateReason = useMemo(() => getEmptyStateReason({
     hasNotes: pinnedNotes.length > 0 || otherNotes.length > 0,

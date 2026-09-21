@@ -218,7 +218,7 @@ router.post(
  */
 router.get('/', noteValidation.search, async (req, res, next) => {
   try {
-    const { search, tag, page, limit, archived, deleted } = req.query;
+    const { search, tag, page, limit, archived, deleted, folderId } = req.query;
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
@@ -227,7 +227,8 @@ router.get('/', noteValidation.search, async (req, res, next) => {
       page,
       limit,
       archived,
-      deleted
+      deleted,
+      folderId
     });
 
     res.json(result);

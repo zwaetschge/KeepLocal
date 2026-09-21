@@ -313,6 +313,13 @@ const noteValidationRules = {
       .isIn(['true', 'false'])
       .withMessage('deleted muss true oder false sein'),
 
+    // v1.11.1: Ordner-Scope der Notizliste — 'root' (Hauptebene) oder die ID
+    // des Ordnerknotens, dessen direkte Kinder geladen werden sollen.
+    query('folderId')
+      .optional()
+      .custom((value) => value === 'root' || /^[a-f0-9]{24}$/i.test(value))
+      .withMessage('folderId muss "root" oder eine Notiz-ID sein'),
+
     handleValidationErrors
   ],
 
