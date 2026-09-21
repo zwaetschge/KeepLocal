@@ -114,6 +114,20 @@ const noteSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  // Notiz-Historie (v1.13.0): updateNote snapshottet die VORHERige Fassung,
+  // bevor content/title/todoItems ueberschrieben werden — genau dann, wenn sie
+  // sich aendert. Capped auf REVISIONS_LIMIT via $push+$slice in derselben
+  // findOneAndUpdate (atomar mit dem Edit). savedAt ist das updatedAt der
+  // gespeicherten Fassung; Restore waehlt darueber (Array-Indizes verschieben
+  // sich beim $slice), siehe restoreNoteRevision.
+  revisions: [{
+    title: { type: String, default: '' },
+    content: { type: String, default: '' },
+    isTodoList: { type: Boolean, default: false },
+    todoItems: { type: Array, default: [] },
+    savedAt: { type: Date, required: true },
+    editorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+  }],
   // Papierkorb: weiches Löschen. `null` = aktiv, Datum = gelöscht am.
   // Ein partieller TTL-Index lässt MongoDB die Dokumente nach 30 Tagen selbst
   // entfernen; die Bilddateien räumt der Purge-Pfad bzw. der Start auf.

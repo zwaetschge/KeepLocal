@@ -142,6 +142,25 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
+// Markdown-ZIP-Import (v1.13.0): Round-trip zu GET /api/notes/export/markdown.
+// Nach Endung filtern (MIME-Typen fuer ZIP sind im Browser wild), Grenze hoch
+// genug fuer einen Voll-Export inklusive Anhaenge — die Route liest das Archiv
+// in den Speicher und entfernt die Temp-Datei sofort danach.
+const zipFileFilter = (req, file, cb) => {
+  if (path.extname(file.originalname).toLowerCase() === '.zip') {
+    return cb(null, true);
+  }
+  cb(new Error('Nur ZIP-Archive sind erlaubt'));
+};
+
+const uploadZip = multer({
+  storage: storage,
+  limits: {
+    fileSize: 512 * 1024 * 1024, // 512MB — ein Voll-Export mit Anhaengen
+  },
+  fileFilter: zipFileFilter
+});
+
 // Create separate multer instance for audio
 const uploadAudio = multer({
   storage: storage, // Uses same temp directory
@@ -156,6 +175,7 @@ module.exports = {
   upload,           // Image upload (default)
   uploadAudio,      // Audio upload (NEW)
   uploadPdf,        // PDF attachments (v1.12.0)
+  uploadZip,        // Markdown-ZIP-Import (v1.13.0)
   tempUploadDir,
   finalUploadDir,
   filesUploadDir,

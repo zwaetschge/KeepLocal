@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const mongoose = require('mongoose');
-const { imagesDir } = require('../config/paths');
+const { imagesDir, uploadsRoot, backupRoot } = require('../config/paths');
 
 /**
  * Readiness checks that go beyond mongoose's cached connection state.
@@ -26,9 +26,18 @@ const AI_TIMEOUT_MS = Number(process.env.AI_HEALTH_TIMEOUT_MS || 2000);
 // synchronen Schreibtest plus einen ausgehenden Fetch zum AI-Dienst - ein
 // Aufrufer ohne Auth könnte daraus kostenlose I/O-Verstärkung machen.
 const PROBE_TTL_MS = Number(process.env.HEALTH_PROBE_TTL_MS || 30000); // '' -> Default, nicht 0
+// Im All-in-One-Image teilen sich mongod (/data/db) und die Uploads denselben
+// Wirtsdatenträger — der Janitor-Kommentar sagt es selbst: „ein voller
+// Datenträger legt gleich die ganze Instanz lahm". Trotzdem prüfte bisher
+// niemand den freien Platz: Health und Admin blieben grün, bis Uploads mit
+// ENOSPC sterben. Unterhalb der Schwelle wird der Status „degraded" (nicht
+// not-ready — Lesen funktioniert noch); HEALTH_DISK_FATAL=true macht es fatal.
+const HEALTH_MIN_FREE_MB = Number(process.env.HEALTH_MIN_FREE_MB || 500);
+const DISK_FATAL = process.env.HEALTH_DISK_FATAL === 'true';
 
 const uploadsProbeCache = { at: 0, value: null };
 const aiProbeCache = { at: 0, value: null };
+const diskProbeCache = { at: 0, value: null };
 
 /** Cache leeren (Tests, erzwungene Neu-Probe). */
 function resetHealthCaches() {
@@ -36,6 +45,8 @@ function resetHealthCaches() {
   uploadsProbeCache.value = null;
   aiProbeCache.at = 0;
   aiProbeCache.value = null;
+  diskProbeCache.at = 0;
+  diskProbeCache.value = null;
 }
 
 /** Real round trip instead of trusting the driver's cached state. */
@@ -107,20 +118,61 @@ async function checkAiService() {
   return aiProbeCache.value;
 }
 
+/** Ein Volume: freier/gesamter Platz via statfs (Node >= 18.15), low = unter Schwelle. */
+function probeVolume(root, minFreeBytes) {
+  try {
+    const stats = fs.statfsSync(root);
+    return {
+      ok: true,
+      path: root,
+      freeBytes: stats.bavail * stats.bsize,
+      totalBytes: stats.blocks * stats.bsize,
+      low: stats.bavail * stats.bsize < minFreeBytes
+    };
+  } catch (error) {
+    // Ein fehlendes Backup-Verzeichnis ist keine Disk-Frage — ok:false meldet
+    // es, ohne `low` zu setzen (und ohne die Readiness zu kippen).
+    return { ok: false, path: root, error: error.message, low: false };
+  }
+}
+
+/** Freier Platz auf allen Volumes, auf die die App schreibt. */
+function probeDiskSpace() {
+  const minFreeBytes = HEALTH_MIN_FREE_MB * 1024 * 1024;
+  return {
+    uploads: probeVolume(uploadsRoot(), minFreeBytes),
+    backups: probeVolume(backupRoot(), minFreeBytes)
+  };
+}
+
+/** Cached disk probe; see PROBE_TTL_MS. */
+function checkDiskSpace() {
+  const now = Date.now();
+  if (diskProbeCache.value && now - diskProbeCache.at < PROBE_TTL_MS) {
+    return diskProbeCache.value;
+  }
+  diskProbeCache.value = probeDiskSpace();
+  diskProbeCache.at = now;
+  return diskProbeCache.value;
+}
+
 /**
  * @returns {Promise<{status: string, database: Object, uploads: Object, ai: Object, uptime: number, timestamp: string}>}
  */
 async function collectHealth() {
   const [database, ai] = await Promise.all([pingDatabase(), checkAiService()]);
   const uploads = checkUploadsWritable();
+  const storage = checkDiskSpace();
   const aiFatal = process.env.REQUIRE_AI_FOR_READY === 'true';
+  const storageLow = Object.values(storage).some((volume) => volume.low);
 
-  const ready = database.ok && uploads.ok && (!aiFatal || ai.ok);
+  const ready = database.ok && uploads.ok && (!aiFatal || ai.ok) && (!DISK_FATAL || !storageLow);
   return {
-    status: ready ? 'ok' : 'degraded',
+    status: ready && !storageLow ? 'ok' : 'degraded',
     ready,
     database: { status: database.ok ? 'connected' : 'disconnected', detail: database.detail },
     uploads: { writable: uploads.ok, detail: uploads.detail },
+    storage,
     ai: { reachable: ai.ok, checked: Boolean(ai.checked), detail: ai.detail, fatal: aiFatal },
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
@@ -135,11 +187,18 @@ async function collectHealth() {
  * caller. Operators get the full object with HEALTH_DETAILS=true.
  */
 function publicHealth(health) {
+  const storage = {};
+  for (const [key, volume] of Object.entries(health.storage || {})) {
+    // Freie/gesamte Bytes verraten Partitionierungs- und Auslastungsdetails —
+    // dieselbe Regel wie bei uploads.detail: Zahlen nur mit HEALTH_DETAILS.
+    storage[key] = { ok: volume.ok, low: volume.low };
+  }
   return {
     status: health.status,
     ready: health.ready,
     database: { status: health.database.status },
     uploads: { writable: health.uploads.writable },
+    storage,
     ai: { reachable: health.ai.reachable, checked: health.ai.checked, fatal: health.ai.fatal },
     uptime: health.uptime,
     timestamp: health.timestamp
@@ -152,6 +211,8 @@ module.exports = {
   pingDatabase,
   checkUploadsWritable,
   checkAiService,
+  probeDiskSpace,
+  checkDiskSpace,
   resetHealthCaches,
   PROBE_TTL_MS,
   UPLOADS_DIR

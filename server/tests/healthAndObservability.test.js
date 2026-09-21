@@ -311,6 +311,51 @@ test('the AI service call forwards the request id', () => {
   assert.match(python, /request_id=%s/);
 });
 
+// v1.13.0 Nr. 4 — Freiplatz-Wächter: Health und Admin blieben grün, bis Uploads
+// mit ENOSPC sterben (All-in-One: mongod und Uploads teilen eine Disk).
+test('disk space is probed per volume and degrades status below the threshold', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  // Schwelle jenseits jeder realen Platte: `low` wird deterministisch true.
+  const health = loadHealth({ HEALTH_MIN_FREE_MB: '99999999' });
+  const result = await health.collectHealth();
+
+  assert.equal(result.storage.uploads.low, true, 'uploads volume is below the absurd threshold');
+  assert.ok(result.storage.uploads.freeBytes > 0);
+  assert.ok(result.storage.uploads.totalBytes > 0);
+  assert.equal(result.status, 'degraded', 'low disk degrades the status');
+  assert.equal(result.ready, true, 'low disk is not fatal by default — reads still work');
+
+  const exposed = health.publicHealth(result);
+  assert.equal(exposed.storage.uploads.low, true, 'the low flag is public');
+  assert.equal(exposed.storage.uploads.freeBytes, undefined, 'byte counts stay internal');
+  assert.equal(exposed.storage.uploads.path, undefined, 'volume paths stay internal');
+});
+
+test('HEALTH_DISK_FATAL=true makes low disk space fatal for readiness', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const health = loadHealth({ HEALTH_MIN_FREE_MB: '99999999', HEALTH_DISK_FATAL: 'true' });
+  const result = await health.collectHealth();
+
+  assert.equal(result.ready, false);
+  assert.equal(result.status, 'degraded');
+
+  const healthy = loadHealth({ HEALTH_MIN_FREE_MB: '1', HEALTH_DISK_FATAL: 'true' });
+  const fine = await healthy.collectHealth();
+  assert.equal(fine.storage.uploads.low, false);
+  assert.equal(fine.ready, true);
+  assert.equal(fine.status, 'ok');
+});
+
+test('a missing backup directory is reported without flipping low', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const health = loadHealth({ BACKUP_DIR: path.join(uploadsDir, 'does-not-exist') });
+  const result = await health.collectHealth();
+
+  assert.equal(result.storage.backups.ok, false, 'statfs on a missing dir fails');
+  assert.equal(result.storage.backups.low, false, 'a config problem is not a disk-space problem');
+  assert.equal(result.ready, true, 'and it must not affect readiness');
+});
+
 test('temporary upload probe files are cleaned up', () => {
   const leftovers = fs.readdirSync(uploadsDir).filter(name => name.startsWith('.health-'));
   assert.deepEqual(leftovers, []);

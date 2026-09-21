@@ -28,6 +28,7 @@ const swaggerSpec = require('./config/swagger');
 const mongoose = require('mongoose');
 const { ensureNoteTextIndex } = require('./config/indexMigration');
 const { startStorageJanitor } = require('./services/storageJanitor');
+const { startBackupScheduler } = require('./services/backupScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -291,6 +292,11 @@ async function startServer() {
   // STORAGE_JANITOR_INITIAL_DELAY_MS (Default 60 s) verzoegert und die Timer
   // sind unref'd — der Start wird also weder blockiert noch offen gehalten.
   startStorageJanitor();
+
+  // Backup-Scheduler (v1.13.0): dasselbe Muster — erster Lauf nach 5 Minuten,
+  // danach alle 24 h, Timer unref'd. Backup-Status landet als JSON in der
+  // Backup-Wurzel, sichtbar ueber /api/admin/backups.
+  startBackupScheduler();
 
   return (httpServer = app.listen(PORT, HOST, () => {
     console.log(`Server laeuft auf ${HOST}:${PORT}`);

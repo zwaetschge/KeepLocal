@@ -164,3 +164,65 @@ test('empty notes fail with a client error before reaching MongoDB', async () =>
     error => error.statusCode === 400 && error.message === 'Inhalt ist erforderlich'
   );
 });
+
+// Delta-Sync (v1.13.0): GET /api/notes?since=ISO filtert Liste+Total auf
+// geänderte Dokumente; Counts und Tag-Cloud bleiben global.
+test('since scopes list and pagination total, counts stay global', async () => {
+  const { observed, service } = makeScopeMock();
+  const since = '2026-09-21T00:00:00.000Z';
+
+  await service.getAllNotes({ userId: 'user-id', since });
+
+  assert.equal(observed.finds[0].updatedAt.$gt instanceof Date, true, 'Liste auf Änderungen begrenzt');
+  assert.equal(observed.finds[0].updatedAt.$gt.toISOString(), since);
+  assert.equal(observed.counts[0].updatedAt.$gt instanceof Date, true, 'Pagination-Total zählt den Delta-Scope');
+  for (const globalQuery of observed.counts.slice(1)) {
+    assert.equal('updatedAt' in globalQuery, false, 'active/archived/trash-Zähler bleiben global');
+  }
+  assert.equal('updatedAt' in observed.aggregate, false, 'Tag-Cloud bleibt global');
+
+  await assert.rejects(
+    service.getAllNotes({ userId: 'user-id', since: 'gestern' }),
+    (error) => error.statusCode === 400 && /ISO-8601/.test(error.message),
+    'ungültige since-Werte sind 400, kein stilles Ignorieren'
+  );
+});
+
+test('getNotesMeta: eine Aggregation, Bucket-Semantik wie getAllNotes', async () => {
+  const maxUpdatedAt = new Date('2026-09-21T12:00:00.000Z');
+  const observed = { pipeline: null };
+  const userId = 'a'.repeat(24);
+  const NoteMock = {
+    aggregate: async (pipeline) => {
+      observed.pipeline = pipeline;
+      return [{ _id: null, active: 676, archived: 3, trash: 2, maxUpdatedAt }];
+    }
+  };
+  const service = loadService(NoteMock);
+
+  const meta = await service.getNotesMeta(userId);
+  assert.deepEqual(meta, { active: 676, archived: 3, trash: 2, maxUpdatedAt });
+
+  const match = observed.pipeline[0].$match;
+  assert.equal(String(match.$or[0].userId), userId, 'eigene Notizen');
+  assert.equal(String(match.$or[1].sharedWith), userId, 'und geteilte');
+  const group = observed.pipeline[1].$group;
+  const activeCond = group.active.$sum.$cond[0].$and;
+  assert.equal(activeCond[0].$eq[0].$ifNull[0], '$deletedAt', 'fehlendes deletedAt zählt als aktiv');
+  assert.equal(activeCond[1].$eq[0].$ifNull[0], '$isArchived', 'fehlendes isArchived zählt als aktiv');
+  assert.ok(group.maxUpdatedAt, 'max(updatedAt) ist der Änderungs-Taktgeber');
+
+  const empty = await loadService({ aggregate: async () => [] }).getNotesMeta(userId);
+  assert.deepEqual(empty, { active: 0, archived: 0, trash: 0, maxUpdatedAt: null });
+});
+
+test('die meta-Route ist vor /:id registriert und reicht since durch', () => {
+  const routes = fs.readFileSync(path.join(__dirname, '../routes/notes.js'), 'utf8');
+  const metaAt = routes.indexOf("router.get('/meta'");
+  const treeAt = routes.indexOf("router.get('/tree'");
+  const singleAt = routes.indexOf("router.get('/:id'");
+  assert.ok(metaAt > -1 && metaAt < singleAt, '/meta muss vor /:id registriert sein');
+  assert.ok(treeAt < singleAt);
+  assert.match(routes, /getNoteTree\(req\.user\._id, req\.query\.since\)/);
+  assert.match(routes, /folderId,\s*\n\s*since\s*\n\s*\}\);/);
+});

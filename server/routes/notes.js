@@ -9,7 +9,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const noteValidation = require('../middleware/validators');
 const { authenticateToken } = require('../middleware/auth');
-const { upload, uploadAudio, uploadPdf, isSafeStoredFilename } = require('../middleware/upload');
+const { upload, uploadAudio, uploadPdf, uploadZip, isSafeStoredFilename } = require('../middleware/upload');
 const { getLinkPreview } = require('../services/linkPreviewService');
 const { acquire } = require('../utils/concurrencyGate');
 const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberValidator');
@@ -167,8 +167,20 @@ async function requireEditableNote(req, res, next) {
  */
 router.get('/tree', async (req, res, next) => {
   try {
-    const tree = await notesService.getNoteTree(req.user._id);
+    const tree = await notesService.getNoteTree(req.user._id, req.query.since);
     res.json(tree);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/notes/meta - Billige Änderungs-Sonde für den 60s-Poll (v1.13.0):
+ * {active, archived, trash, maxUpdatedAt}. Muss VOR /:id registriert sein.
+ */
+router.get('/meta', async (req, res, next) => {
+  try {
+    res.json(await notesService.getNotesMeta(req.user._id));
   } catch (error) {
     next(error);
   }
@@ -214,11 +226,46 @@ router.post(
 );
 
 /**
+ * POST /api/notes/import/markdown-zip (v1.13.0) — der Empfangsteil des
+ * Round-trips zu GET /export/markdown: Export-ZIP (oder fremder Markdown-
+ * Ordner als ZIP) als multipart-Datei, serverseitig gelesen inklusive
+ * Frontmatter, Anhaengen und Baumstruktur. Demo-Konten bleiben draussen —
+ * der Import schreibt Bilddateien auf die Platte (blockDemoUploads wie bei
+ * den Upload-Routen), das reine Text-Import-Ersatzlicht bleibt /import/markdown.
+ */
+router.post('/import/markdown-zip', blockDemoUploads, (req, res, next) => {
+  // Wrap multer, um Dateigroessen-/Filter-Fehler als normalen Fehlerweg zu
+  // fassen (Muster wie /:id/images).
+  uploadZip.single('archive')(req, res, (err) => {
+    if (err) return next(err);
+    Promise.resolve()
+      .then(async () => {
+        const fs = require('fs');
+        if (!req.file) {
+          return res.status(httpStatus.BAD_REQUEST).json({ message: 'archive (ZIP-Datei) ist erforderlich' });
+        }
+        const buffer = fs.readFileSync(req.file.path);
+        const result = await notesService.importMarkdownZip(req.user._id, buffer, {
+          demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null
+        });
+        res.status(httpStatus.CREATED).json(result);
+      })
+      .catch(next)
+      .finally(() => {
+        // Temp-Datei immer weg — auch bei Fehlern bleibt nichts liegen.
+        if (req.file?.path) {
+          require('fs').unlink(req.file.path, () => {});
+        }
+      });
+  });
+});
+
+/**
  * GET /api/notes - Get all notes with optional filtering and pagination
  */
 router.get('/', noteValidation.search, async (req, res, next) => {
   try {
-    const { search, tag, page, limit, archived, deleted, folderId } = req.query;
+    const { search, tag, page, limit, archived, deleted, folderId, since } = req.query;
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
@@ -228,11 +275,65 @@ router.get('/', noteValidation.search, async (req, res, next) => {
       limit,
       archived,
       deleted,
-      folderId
+      folderId,
+      since
     });
 
     res.json(result);
   } catch (error) {
+    next(error);
+  }
+});
+
+// -------------------------------------------------------------------------
+// Notiz-Historie (v1.13.0)
+// -------------------------------------------------------------------------
+
+/**
+ * GET /api/notes/:id/revisions - Revisionsliste (Metadaten) oder mit ?at=ISO
+ * den Volltext einer Fassung. Muss VOR /:id registriert sein.
+ */
+router.get('/:id/revisions', noteValidation.getOne, async (req, res, next) => {
+  try {
+    if (req.query.at) {
+      const revision = await notesService.getNoteRevision(req.params.id, req.user._id, String(req.query.at));
+      return res.json(revision);
+    }
+    const revisions = await notesService.getNoteRevisions(req.params.id, req.user._id);
+    res.json(revisions);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * POST /api/notes/:id/revisions/restore - Fassung wiederherstellen.
+ * Läuft als normales updateNote: Der aktuelle Stand wird selbst zur jüngsten
+ * Revision, Konflikte (409) inklusive.
+ */
+router.post('/:id/revisions/restore', rejectDemoNoteCapabilities, noteValidation.getOne, async (req, res, next) => {
+  try {
+    if (!req.body || typeof req.body.at !== 'string' || req.body.at.trim() === '') {
+      return res.status(httpStatus.BAD_REQUEST).json({ error: 'at (ISO-Zeitpunkt der Fassung) ist erforderlich' });
+    }
+    const note = await notesService.restoreNoteRevision(req.params.id, req.user._id, req.body.at);
+    res.json(note);
+  } catch (error) {
+    if (error.statusCode === httpStatus.CONFLICT) {
+      return res.status(httpStatus.CONFLICT).json({ error: error.message, currentNote: error.currentNote });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
     next(error);
   }
 });

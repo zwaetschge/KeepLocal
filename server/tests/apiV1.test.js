@@ -228,3 +228,72 @@ test('the whole v1 surface sits behind the API key gate', async () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// v1.13.0 Nr. 10 — v1-API-Parität: Ordner-Scope, Delta-Sync, Baum, Meta-Sonde,
+// Export und Bulk-Import. Sync-Scripts sind die Hauptnutzer der v1, hatten
+// aber keinen Zugriff auf alles, was die Web-App kann.
+// ---------------------------------------------------------------------------
+
+test('the v1 note list passes folderId and since through to the service', async () => {
+  const { app, calls } = loadApi();
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/v1/notes?folderId=root&since=2026-09-01T00:00:00.000Z`);
+    assert.equal(response.status, 200);
+  });
+  assert.equal(calls[0].options.folderId, 'root');
+  assert.equal(calls[0].options.since, '2026-09-01T00:00:00.000Z');
+});
+
+test('the v1 surface exposes tree, meta, export and bulk import', async () => {
+  const { app, calls } = loadApi({
+    serviceOverrides: {
+      getNoteTree: async (userId, since) => { calls.push({ op: 'getNoteTree', userId, since }); return [{ id: NOTE_ID, shared: true }]; },
+      getNotesMeta: async (userId) => { calls.push({ op: 'getNotesMeta', userId }); return { active: 5, archived: 1, trash: 0, maxUpdatedAt: null }; },
+      buildMarkdownExport: async (userId) => { calls.push({ op: 'buildMarkdownExport', userId }); return Buffer.from('PK-fake'); },
+      importMarkdownNotes: async (userId, items, options) => { calls.push({ op: 'importMarkdownNotes', userId, items, options }); return { created: items.length, foldersCreated: 0, folderIds: [] }; }
+    }
+  });
+
+  await withServer(app, async (base) => {
+    const tree = await fetch(`${base}/api/v1/notes/tree?since=2026-09-01T00:00:00.000Z`);
+    assert.equal(tree.status, 200);
+    const treeBody = await tree.json();
+    assert.deepEqual(treeBody.data, [{ id: NOTE_ID, shared: true }]);
+
+    const meta = await fetch(`${base}/api/v1/notes/meta`);
+    assert.equal(meta.status, 200);
+    assert.equal((await meta.json()).data.active, 5);
+
+    const exported = await fetch(`${base}/api/v1/notes/export/markdown`);
+    assert.equal(exported.status, 200);
+    assert.equal(exported.headers.get('content-type'), 'application/zip');
+
+    const imported = await fetch(`${base}/api/v1/notes/import/markdown`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items: [{ path: 'A', title: 'a', content: 'x' }] })
+    });
+    assert.equal(imported.status, 201);
+    assert.equal((await imported.json()).data.created, 1);
+
+    const noItems = await fetch(`${base}/api/v1/notes/import/markdown`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items: 'nope' })
+    });
+    assert.equal(noItems.status, 400);
+  });
+
+  assert.equal(calls.find((c) => c.op === 'getNoteTree').since, '2026-09-01T00:00:00.000Z');
+});
+
+test('the new v1 routes are registered before /:id', () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync(notesRouterPath, 'utf8');
+  const last = source.lastIndexOf("router.get('/:id'");
+  for (const pattern of ["router.get('/tree'", "router.get('/meta'", "router.get('/export/markdown'", "router.post('/import/markdown'"]) {
+    const at = source.indexOf(pattern);
+    assert.ok(at > -1 && at < last, `${pattern} muss vor /:id registriert sein`);
+  }
+});

@@ -201,6 +201,17 @@ const { httpStatus } = require('../../constants');
  *           default: "false"
  *         description: Papierkorb anzeigen (nur eigene, gelöschte Notizen)
  *       - in: query
+ *         name: folderId
+ *         schema:
+ *           type: string
+ *         description: 'Ordner-Scope (v1.13.0) — "root" oder eine Notiz-ID; liefert nur die direkten Kinder dieses Knotens'
+ *       - in: query
+ *         name: since
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Delta-Sync (v1.13.0) — nur Notizen mit updatedAt nach diesem Zeitpunkt. Ungültige Werte sind 400.
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -225,7 +236,7 @@ const { httpStatus } = require('../../constants');
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { search, tag, page, limit, archived, deleted } = req.query;
+    const { search, tag, page, limit, archived, deleted, folderId, since } = req.query;
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
@@ -236,7 +247,11 @@ router.get('/', async (req, res, next) => {
       archived: archived || 'false',
       // Ohne diesen Filter konnte ein Sync-Script den Papierkorb nicht lesen —
       // und damit eine Löschung über die API nie rückgängig machen.
-      deleted: deleted || 'false'
+      deleted: deleted || 'false',
+      // Parität mit der Web-API (v1.13.0): Ordner-Scope und Delta-Sync —
+      // beides fehlte hier, obwohl Sync-Scripts die Hauptnutzer der v1 sind.
+      folderId: folderId || undefined,
+      since: since || undefined
     });
 
     res.json({
@@ -245,6 +260,144 @@ router.get('/', async (req, res, next) => {
       pagination: result.pagination
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/tree:
+ *   get:
+ *     summary: Notiz-Baum abrufen (v1.13.0)
+ *     description: Flache Liste aller aktiven/archivierten Knoten (inklusive geteilter, mit shared-Flag) zum clientseitigen Verschachteln.
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: since
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Nur geänderte Knoten (Delta-Sync)
+ *     responses:
+ *       200:
+ *         description: Baum-Knoten
+ */
+router.get('/tree', async (req, res, next) => {
+  try {
+    const nodes = await notesService.getNoteTree(req.user._id, req.query.since);
+    res.json({ success: true, data: nodes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/meta:
+ *   get:
+ *     summary: Änderungs-Sonde (v1.13.0)
+ *     description: Zaehlungen (aktiv/archiviert/Papierkorb) und max(updatedAt) in einer einzigen Aggregation — ein Sync-Script kann daran einen vollen Abruf aufhaengen.
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Metadaten des Bestands
+ */
+router.get('/meta', async (req, res, next) => {
+  try {
+    const meta = await notesService.getNotesMeta(req.user._id);
+    res.json({ success: true, data: meta });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/export/markdown:
+ *   get:
+ *     summary: Gesamten Baum als Markdown-ZIP exportieren (v1.13.0)
+ *     description: Round-trip-faehiges Volldaten-Backup — YAML-Frontmatter, Anhaenge unter assets/, Manifest. Gegenstueck ist POST /api/v1/notes/import/markdown (JSON-Items; Frontmatter wird geparst).
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: ZIP-Archiv
+ *         content:
+ *           application/zip:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.get('/export/markdown', async (req, res, next) => {
+  try {
+    const archive = await notesService.buildMarkdownExport(req.user._id);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="keeplocal-export.zip"');
+    res.end(archive);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/import/markdown:
+ *   post:
+ *     summary: Markdown-Ordner-Chunk als JSON importieren (v1.13.0)
+ *     description: 'Bulk-Anlage in einem Zug — { items: [{ path, title, content, tags? }] }, bis 500 Eintraege. Frontmatter im content wird geparst (Metadaten-Round-trip).'
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [items]
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 maxItems: 500
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     path:
+ *                       type: string
+ *                       description: Ordnerpfad (leer = Wurzel), /-getrennt
+ *                     title:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *                     tags:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *     responses:
+ *       201:
+ *         description: Importiert (created, foldersCreated, folderIds)
+ *       400:
+ *         description: Ungueltige items
+ */
+router.post('/import/markdown', async (req, res, next) => {
+  try {
+    if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.items)) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        success: false,
+        error: 'items (Array) ist erforderlich'
+      });
+    }
+    const result = await notesService.importMarkdownNotes(req.user._id, req.body.items, {});
+    res.status(httpStatus.CREATED).json({ success: true, data: result });
+  } catch (error) {
+    if (error.statusCode === 400) {
+      return res.status(httpStatus.BAD_REQUEST).json({ success: false, error: error.message });
+    }
     next(error);
   }
 });
