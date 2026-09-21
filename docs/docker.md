@@ -153,9 +153,10 @@ docker compose -f docker-compose.yml exec server \
 
 Environment: `MONGODB_URI` (required for create/restore), `BACKUP_DIR` (default
 `server/backups`), `UPLOADS_DIR` (default `server/uploads`). `UPLOADS_DIR` is the
-**root** that contains `images/` and `temp/`; application, readiness probe and
-backup script all resolve it through `server/config/paths.js`, so they cannot
-disagree. Retention defaults to the newest seven backups.
+**root** that contains `images/`, `files/` (PDF-Anhänge, v1.12.0) and `temp/`;
+application, readiness probe and backup script all resolve it through
+`server/config/paths.js`, so they cannot disagree. Retention defaults to the
+newest seven backups.
 
 **Mount `BACKUP_DIR` on a volume.** The compose files ship a `backups_data`
 volume for exactly this reason — a recovery point inside the container layer is
@@ -165,8 +166,9 @@ is not a backup.
 
 What the script guarantees:
 
-- A backup is only reported as written when **every image the database
-  references** was captured, with size and SHA-256 per file in the manifest. A
+- A backup is only reported as written when **every referenced upload**
+  (images and PDF attachments) was captured, with size and SHA-256 per file in
+  the manifest; each entry records its subdirectory (`images`/`files`). A
   wrong `UPLOADS_DIR` used to produce a successful-looking backup with zero
   files; it now fails with the offending filenames and the resolved path, and the
   incomplete directory is removed.
