@@ -383,6 +383,34 @@ const noteValidationRules = {
       .withMessage('Jeder Tag muss zwischen 1 und 50 Zeichen lang sein'),
 
     handleValidationErrors
+  ],
+
+  // PATCH /api/notes/tags (v1.11.0) — Umbenennen/Zusammenführen/Löschen über
+  // alle sichtbaren Notizen. Tag-Muster prüft der Service (gleiche Regel wie
+  // beim Notiz-Anlegen).
+  tagOperation: [
+    body('action')
+      .isIn(['rename', 'merge', 'delete'])
+      .withMessage('action muss rename, merge oder delete sein'),
+
+    body('from')
+      .isArray({ min: 1, max: 50 })
+      .withMessage('from muss ein Array mit 1 bis 50 Tags sein'),
+
+    body('from.*')
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage('Jeder Tag muss zwischen 1 und 50 Zeichen lang sein'),
+
+    body('to')
+      .optional({ checkFalsy: true })
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage('Der Ziel-Tag muss zwischen 1 und 50 Zeichen lang sein'),
+
+    handleValidationErrors
   ]
 };
 

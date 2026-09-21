@@ -118,6 +118,21 @@ const notesAPI = {
     }),
 
   /**
+   * Tag-Pflege über alle sichtbaren Notizen (v1.11.0): Umbenennen,
+   * Zusammenführen oder Löschen als eine Server-Operation statt einer
+   * Update-Request pro Notiz.
+   * @param {'rename'|'merge'|'delete'} action
+   * @param {string[]} from - Quell-Tags
+   * @param {string} [to] - Ziel-Tag (rename/merge)
+   * @returns {Promise<{action: string, modified: number}>}
+   */
+  tagOperation: (action, from, to) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.TAGS, {
+      method: 'PATCH',
+      body: JSON.stringify({ action, from, to }),
+    }),
+
+  /**
    * Update an existing note
    * @param {string} id - Note ID
    * @param {Object} noteData - Updated note data

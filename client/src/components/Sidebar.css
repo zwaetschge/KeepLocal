@@ -682,3 +682,116 @@
 .sidebar-item .sidebar-tag-dot + .count {
   margin-left: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   v1.11.0: Tag-Pflege — Zeile mit Menü-Button plus aufklappbares Panel
+   --------------------------------------------------------------------------- */
+
+.sidebar-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-tag-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-tag-main span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-tag-menu-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.sidebar-tag-menu-toggle:hover,
+.sidebar-tag-menu-toggle[aria-expanded='true'] {
+  background: var(--accent-light);
+  color: var(--text-primary, inherit);
+}
+
+.sidebar-tag-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 6px 26px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.sidebar-tag-manage-row {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-tag-rename-input,
+.sidebar-tag-merge-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, inherit);
+  font: inherit;
+  font-size: 13px;
+}
+
+.sidebar-tag-manage-action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-color);
+  color: var(--accent-contrast, #fff);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sidebar-tag-manage-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sidebar-tag-manage-delete {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--error-color, #DC2626);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sidebar-tag-manage-delete:hover,
+.sidebar-tag-manage-delete.confirm {
+  background: var(--error-color, #DC2626);
+  color: #fff;
+}
+
+.sidebar-tag-manage-delete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Eingeklappte Sidebar: Menü-Button und Panel verbergen wie die anderen Extras */
+.sidebar.collapsed .sidebar-tag-menu-toggle,
+.sidebar.collapsed .sidebar-tag-manage {
+  display: none;
+}

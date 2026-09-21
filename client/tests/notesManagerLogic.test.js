@@ -446,8 +446,8 @@ test('Nr. 26: operationLoading schreibt keine false-Leichen mehr', () => {
   assert.doesNotMatch(manager, /\.\.\.prev, \[id\]: false \}\)/, 'Einträge werden entfernt, nicht auf false gesetzt');
   assert.doesNotMatch(manager, /\.\.\.prev, (create|trash): false \}\)/);
   const uses = (manager.match(/setOperationLoading\(prev => withoutOperation\(prev, /g) || []).length;
-  // v1.10.0: moveNote und runBulkAction kommen dazu (10 statt 8).
-  assert.ok(uses === 10, `alle zehn Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
+  // v1.10.0: moveNote und runBulkAction kamen dazu (10 statt 8); v1.11.0: manageTag (11).
+  assert.ok(uses === 11, `alle elf Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -535,4 +535,36 @@ test('runPool toleriert leere/degenerierte Eingaben', async () => {
   assert.deepEqual(await runPool(null, { worker }), { done: 0, failed: 0 });
   assert.deepEqual(await runPool(['a'], {}), { done: 0, failed: 0 });
   assert.deepEqual(await runPool(['a'], { limit: 0, worker: async () => 'ok' }), { done: 1, failed: 0 }, 'limit < 1 fällt auf 1');
+});
+
+// ---------------------------------------------------------------------------
+// v1.11.0: Tag-Verwaltung — ein Bulk-Endpoint statt Update-Request pro Notiz
+// ---------------------------------------------------------------------------
+
+test('manageTag schreibt einen Bulk-Call und räumt operationLoading ab', () => {
+  const manager = readClientFile('src/hooks/useNotesManager.js');
+  assert.match(manager, /const manageTag = useCallback\(async \(action, from, to\) =>/);
+  // Eine Server-Operation für alle Notizen — kein api.update in der Tag-Pflege.
+  assert.match(manager, /await api\.tagOperation\(action, from, to\)/);
+  assert.match(manager, /withoutOperation\(prev, 'bulk'\)/);
+  const api = readClientFile('src/services/api/notesAPI.js');
+  assert.match(api, /tagOperation: \(action, from, to\) =>/);
+  assert.match(api, /API_ENDPOINTS\.NOTES\.TAGS/);
+  const endpoints = readClientFile('src/constants/api.js');
+  assert.match(endpoints, /TAGS: '\/api\/notes\/tags'/);
+});
+
+test('Sidebar TagRow: Umbenennen/Zusammenführen/Löschen ohne Button-in-Button', () => {
+  const sidebar = readClientFile('src/components/Sidebar.jsx');
+  assert.match(sidebar, /function TagRow\(\{ tag, tagNames, selected, color, busy, onSelect, onManage, onMobileClose, t \}\)/);
+  // Zeile ist ein div mit Geschwister-Buttons (wie FolderRow), kein Button im Button.
+  assert.match(sidebar, /className="sidebar-tag-row"/);
+  assert.match(sidebar, /run\('rename', renameValue\.trim\(\)\)/);
+  assert.match(sidebar, /run\('merge', mergeTarget\)/);
+  // Löschen fragt zweimal nach statt eines nativen Confirm-Dialogs.
+  assert.match(sidebar, /confirmDelete \? run\('delete'\) : setConfirmDelete\(true\)/);
+  // App.jsx verdrahtet den Handler und gibt den Busy-Zustand weiter.
+  const app = readClientFile('src/App.jsx');
+  assert.match(app, /onTagManage=\{handleTagManage\}/);
+  assert.match(app, /const handleTagManage = useCallback/);
 });

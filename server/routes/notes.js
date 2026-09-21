@@ -320,6 +320,25 @@ router.delete('/trash', async (req, res, next) => {
 });
 
 /**
+ * PATCH /api/notes/tags (v1.11.0) — Tag umbenennen/zusammenführen/überall
+ * löschen. Ein updateMany über alle sichtbaren Notizen statt N Einzel-Updates;
+ * registriert vor '/:id'-Mustern, damit 'tags' nicht als ID geroutet wird.
+ */
+router.patch('/tags', noteValidation.tagOperation, async (req, res, next) => {
+  try {
+    const result = await notesService.applyTagOperation({
+      userId: req.user._id,
+      action: req.body.action,
+      from: req.body.from,
+      to: req.body.to
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * PATCH /api/notes/reorder - manuelle Reihenfolge nach Drag & Drop speichern.
  * Vor '/:id' registriert, damit 'reorder' nicht als ID geprüft wird.
  */

@@ -1164,6 +1164,79 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) 
   };
 }
 
+// Tag-Verwaltung (v1.11.0): Umbenennen/Zusammenfuehren/Loeschen ueber alle
+// sichtbaren Notizen — der Web-Client hatte gar keine Tag-Pflege, und die
+// Android-App schreibt jede Notiz einzeln. Ein updateMany pro Operation macht
+// daraus einen Rutsch; der Scope entspricht der Sidebar-Tag-Liste: eigene +
+// geteilte, nicht geloeschte Notizen (aktiv UND archiviert, wie die App zaehlt).
+const TAG_OPERATION_ACTIONS = new Set(['rename', 'merge', 'delete']);
+
+async function applyTagOperation({ userId, action, from, to }) {
+  if (!TAG_OPERATION_ACTIONS.has(action)) {
+    throw clientError('action muss rename, merge oder delete sein');
+  }
+  if (!Array.isArray(from) || from.length === 0 || from.length > 50) {
+    throw clientError('from muss ein Array mit 1 bis 50 Tags sein');
+  }
+  const fromTags = [...new Set(from
+    .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+    .filter(Boolean)
+  )];
+  if (fromTags.length === 0) throw clientError('from enthält keine gültigen Tags');
+  for (const tag of fromTags) {
+    if (tag.length > 50 || !TAG_PATTERN.test(tag)) throw clientError(`Ungültiger Tag: ${tag}`);
+  }
+
+  let target = null;
+  if (action !== 'delete') {
+    if (typeof to !== 'string') throw clientError('to muss für rename/merge ein Tag sein');
+    target = to.trim().toLowerCase();
+    if (!target || target.length > 50 || !TAG_PATTERN.test(target)) {
+      throw clientError('Ungültiger Ziel-Tag');
+    }
+  }
+
+  // Sichtbarkeit wie Sidebar/Tag-Liste: eigene + geteilte, nicht gelöschte
+  // (archiviert eingeschlossen — so zählt auch die Android-Übersicht).
+  const baseQuery = {
+    deletedAt: null,
+    $or: [{ userId }, { sharedWith: userId }]
+  };
+
+  // Umbenennen auf einen Tag, der (als einzige Quelle) bereits das Ziel ist:
+  // reiner No-Op, kein updateMany.
+  const sources = target === null ? fromTags : fromTags.filter(tag => tag !== target);
+  if (sources.length === 0) return { action, modified: 0 };
+
+  const editedAt = new Date();
+  if (action === 'delete') {
+    const result = await Note.updateMany(
+      { ...baseQuery, tags: { $in: sources } },
+      [{ $set: {
+        tags: { $filter: { input: '$tags', cond: { $not: [{ $in: ['$$this', sources] }] } } },
+        updatedAt: editedAt,
+        lastEditedBy: userId
+      } }]
+    );
+    return { action, modified: result.modifiedCount };
+  }
+
+  // rename/merge: Quell-Tags herausfiltern, Ziel per setUnion dazugeben —
+  // eine Notiz mit zwei Quell-Tags endet mit genau einem Ziel-Tag.
+  const result = await Note.updateMany(
+    { ...baseQuery, tags: { $in: sources } },
+    [{ $set: {
+      tags: { $setUnion: [
+        { $filter: { input: '$tags', cond: { $not: [{ $in: ['$$this', sources] }] } } },
+        [target]
+      ] },
+      updatedAt: editedAt,
+      lastEditedBy: userId
+    } }]
+  );
+  return { action, modified: result.modifiedCount };
+}
+
 /**
  * Toggle pin status of a note
  * @param {string} noteId - Note ID
@@ -1438,6 +1511,7 @@ module.exports = {
   getNoteTree,
   buildMarkdownExport,
   importMarkdownNotes,
+  applyTagOperation,
   addImages,
   removeImage,
   generateThumbnail, // Export for use in routes

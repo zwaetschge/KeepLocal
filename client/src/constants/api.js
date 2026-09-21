@@ -44,6 +44,8 @@ export const API_ENDPOINTS = {
     EXPORT_MARKDOWN: '/api/notes/export/markdown',
     // v1.10.1: Bulk-Import (Ordner-Chunk) statt Create-Request pro Datei
     IMPORT_MARKDOWN: '/api/notes/import/markdown',
+    // v1.11.0: Tag umbenennen/zusammenführen/löschen über alle sichtbaren Notizen
+    TAGS: '/api/notes/tags',
   },
 
   // Friends endpoints
