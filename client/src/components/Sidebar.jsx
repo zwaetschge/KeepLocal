@@ -18,6 +18,136 @@ const FOLDER_ICON = (
 );
 
 /**
+ * Eine Zeile in der Tag-Liste (v1.11.0): Auswahl-Button plus Menü für die
+ * Tag-Pflege — Umbenennen, Zusammenführen mit einem anderen Tag oder überall
+ * Löschen. Jede Aktion geht als eine Server-Operation über alle sichtbaren
+ * Notizen, nicht als Update-Request pro Notiz. Hauptbutton und Menü-Button
+ * sind Geschwister (kein Button-in-Button), wie im Ordner-Baum. Löschen
+ * fragt zweimal nach (kein window.confirm im Client).
+ */
+function TagRow({ tag, tagNames, selected, color, busy, onSelect, onManage, onMobileClose, t }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(tag.name);
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const others = tagNames.filter((name) => name !== tag.name);
+  const renameValid = /^[a-zA-Z0-9äöüÄÖÜß\-_]{1,50}$/.test(renameValue.trim()) && renameValue.trim() !== tag.name;
+
+  const run = (action, to) => {
+    setMenuOpen(false);
+    setConfirmDelete(false);
+    onManage(action, [tag.name], to);
+  };
+
+  return (
+    <>
+      <div className="sidebar-tag-row">
+        <button
+          type="button"
+          className={`sidebar-item sidebar-tag-main ${selected ? 'active' : ''}`}
+          onClick={() => {
+            onSelect(tag.name);
+            onMobileClose();
+          }}
+          draggable="true"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('application/keeplocal-tag', tag.name);
+            e.currentTarget.classList.add('dragging');
+          }}
+          onDragEnd={(e) => {
+            e.currentTarget.classList.remove('dragging');
+          }}
+          aria-label={`Label: ${tag.name}`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+          </svg>
+          <span>{tag.name}</span>
+          {color && <span className="sidebar-tag-dot" style={{ backgroundColor: color }} aria-hidden="true" />}
+          <span className="count">{tag.count}</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-tag-menu-toggle"
+          onClick={() => {
+            setMenuOpen(prev => !prev);
+            setConfirmDelete(false);
+          }}
+          aria-expanded={menuOpen}
+          aria-label={t('tagManage', { tag: tag.name })}
+          title={t('tagManage', { tag: tag.name })}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="5" r="1"/>
+            <circle cx="12" cy="12" r="1"/>
+            <circle cx="12" cy="19" r="1"/>
+          </svg>
+        </button>
+      </div>
+      {menuOpen && (
+        <div className="sidebar-tag-manage" role="group" aria-label={t('tagManage', { tag: tag.name })}>
+          <div className="sidebar-tag-manage-row">
+            <input
+              type="text"
+              className="sidebar-tag-rename-input"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameValid && !busy) run('rename', renameValue.trim());
+                if (e.key === 'Escape') setMenuOpen(false);
+              }}
+              maxLength={50}
+              aria-label={t('tagRenameLabel')}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              className="sidebar-tag-manage-action"
+              disabled={!renameValid || busy}
+              onClick={() => run('rename', renameValue.trim())}
+            >
+              {t('tagRenameButton')}
+            </button>
+          </div>
+          {others.length > 0 && (
+            <div className="sidebar-tag-manage-row">
+              <select
+                className="sidebar-tag-merge-select"
+                value={mergeTarget}
+                onChange={(e) => setMergeTarget(e.target.value)}
+                aria-label={t('tagMergeLabel')}
+                disabled={busy}
+              >
+                <option value="">{t('tagMergePick')}</option>
+                {others.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <button
+                type="button"
+                className="sidebar-tag-manage-action"
+                disabled={!mergeTarget || busy}
+                onClick={() => run('merge', mergeTarget)}
+              >
+                {t('tagMergeButton')}
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            className={`sidebar-tag-manage-delete ${confirmDelete ? 'confirm' : ''}`}
+            disabled={busy}
+            onClick={() => (confirmDelete ? run('delete') : setConfirmDelete(true))}
+          >
+            {confirmDelete ? t('tagDeleteConfirm') : t('tagDeleteButton', { count: tag.count })}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
  * Eine Zeile im Ordner-Baum (v1.10.0). Jede Notiz mit Kindern ist ein Ordner;
  * Klick scope-t die Liste auf die direkten Kinder, Drop verschiebt die
  * gezogene Notiz hinein. Caret und Zeile sind getrennte Buttons (kein
@@ -121,6 +251,10 @@ function Sidebar({
   canSaveSearch = false,
   tagColors = {},
   onTagColorSelect,
+  // v1.11.0: Tag-Pflege (Umbenennen/Zusammenführen/Löschen) über einen
+  // Server-Bulk-Endpoint; tagManageBusy zeigt den laufenden Zustand in der Zeile.
+  onTagManage,
+  tagManageBusy = false,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { t } = useLanguage();
@@ -482,34 +616,18 @@ function Sidebar({
               </div>
             )}
             {allTags.map((tag) => (
-              <button
+              <TagRow
                 key={tag.name}
-                className={`sidebar-item ${selectedTag === tag.name ? 'active' : ''}`}
-                onClick={() => {
-                  onTagSelect(tag.name);
-                  onMobileClose();
-                }}
-                draggable="true"
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'copy';
-                  e.dataTransfer.setData('application/keeplocal-tag', tag.name);
-                  e.currentTarget.classList.add('dragging');
-                }}
-                onDragEnd={(e) => {
-                  e.currentTarget.classList.remove('dragging');
-                }}
-                aria-label={`Label: ${tag.name}`}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
-                  <line x1="7" y1="7" x2="7.01" y2="7"/>
-                </svg>
-                <span>{tag.name}</span>
-                {tagColors[tag.name] && (
-                  <span className="sidebar-tag-dot" style={{ backgroundColor: tagColors[tag.name] }} aria-hidden="true" />
-                )}
-                <span className="count">{tag.count}</span>
-              </button>
+                tag={tag}
+                tagNames={allTags.map((entry) => entry.name)}
+                selected={selectedTag === tag.name}
+                color={tagColors[tag.name]}
+                busy={Boolean(tagManageBusy)}
+                onSelect={onTagSelect}
+                onManage={onTagManage}
+                onMobileClose={onMobileClose}
+                t={t}
+              />
             ))}
           </>
         )}

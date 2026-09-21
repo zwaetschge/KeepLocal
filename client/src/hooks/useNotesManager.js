@@ -867,6 +867,34 @@ export function useNotesManager({
   }, [runBulkAction, api, showToast, t]);
 
   /**
+   * Tag-Pflege über alle sichtbaren Notizen (v1.11.0): Umbenennen, Zusammen-
+   * führen oder Löschen als EINE Server-Operation (updateMany-Endpoint) statt
+   * einer Update-Request pro Notiz. Liste und Baum danach nachziehen.
+   * @returns {Promise<{action: string, modified: number}|null>} null bei Fehler
+   */
+  const manageTag = useCallback(async (action, from, to) => {
+    setOperationLoading(prev => ({ ...prev, bulk: true }));
+    try {
+      const result = await api.tagOperation(action, from, to);
+      invalidateInFlightFetches();
+      refreshInBackground(stateRef.current.searchTerm, 1, { silent: true });
+      refreshTree();
+      if (result?.modified > 0) {
+        const message = action === 'delete'
+          ? t('tagDeletedToast', { count: result.modified, tag: from[0] })
+          : t(action === 'merge' ? 'tagMergedToast' : 'tagRenamedToast', { count: result.modified, tag: from[0], to: to || '' });
+        showToast(message, 'success');
+      }
+      return result ?? { action, modified: 0 };
+    } catch (error) {
+      showToast(error?.message || t('errorUpdating'), 'error');
+      return null;
+    } finally {
+      setOperationLoading(prev => withoutOperation(prev, 'bulk'));
+    }
+  }, [api, invalidateInFlightFetches, refreshInBackground, refreshTree, showToast, t]);
+
+  /**
    * Journal „Heute" (v1.10.0): liefert die Tages-Notiz — Titel ist das ISO-
    * Datum, sie liegt im konfigurierten Journal-Ordner — und legt sie beim ersten
    * Zugriff des Tages an. Identisch zur Android-App, damit „Heute" auf beiden
@@ -1070,6 +1098,8 @@ export function useNotesManager({
     bulkDelete,
     bulkAddTag,
     bulkMove,
+    // v1.11.0: Tag umbenennen/zusammenführen/löschen über alle sichtbaren Notizen
+    manageTag,
     findOrCreateTodayNote,
   };
 }

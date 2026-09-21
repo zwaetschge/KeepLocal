@@ -92,7 +92,7 @@ function AppContent() {
     // v1.10.0: Baum, Ordner-Scope, Mehrfachauswahl, Journal
     noteTree, treeNodes, folderScope, selectedIds, selectFolder, refreshTree, moveNote,
     toggleNoteSelection, clearSelection, bulkSetPinned, bulkArchive, bulkDelete, bulkAddTag, bulkMove,
-    findOrCreateTodayNote, draggedNoteId,
+    manageTag, findOrCreateTodayNote, draggedNoteId,
   } = useNotesManager({
     api: notesAPI, isLoggedIn, authLoading, showToast, t,
     showArchived, showTrash, selectedTag, searchTerm,
@@ -151,6 +151,16 @@ function AppContent() {
     if (tag) setShowTrash(false);
     setSelectedTag(tag);
   }, []);
+
+  // v1.11.0: Tag-Pflege aus der Sidebar — der aktive Tag-Filter wandert mit.
+  const handleTagManage = useCallback(async (action, from, to) => {
+    const result = await manageTag(action, from, to);
+    if (!result) return;
+    const affected = from.map((tag) => tag.toLowerCase());
+    const current = selectedTag?.toLowerCase();
+    if (!current || !affected.includes(current)) return;
+    setSelectedTag(action === 'delete' ? null : (to?.toLowerCase() ?? null));
+  }, [manageTag, selectedTag]);
 
   // v1.10.0: Ordner-Baum, Journal, gespeicherte Suchen, Wiki-Links — die
   // Ableitungen und Handler leben im eigenen Hook, damit App.jsx Verdrahtung
@@ -364,6 +374,7 @@ function AppContent() {
           canSaveSearch={Boolean(searchTerm.trim() || selectedTag)}
           tagColors={settings.tagColors}
           onTagColorSelect={setTagColor}
+          onTagManage={handleTagManage} tagManageBusy={Boolean(operationLoading.bulk)}
         />
 
         {/* tabIndex=-1 (Skip-Link-Standard): Fragment-Ziel sonst ohne echten Fokus. */}
