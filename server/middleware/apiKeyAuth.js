@@ -1,6 +1,5 @@
 const ApiKey = require('../models/ApiKey');
 const User = require('../models/User');
-const { authenticateToken, AUTH_COOKIE_NAME } = require('./auth');
 
 /**
  * Authenticate requests via API key (X-API-Key header)
@@ -81,8 +80,17 @@ const requireApiKeyWrite = (req, res, next) => {
  * Reihenfolge: X-API-Key gewinnt, wenn beide present sind (explizit vor
  * implizit; Browser senden den Header nie). Ohne beides: 401 mit Hinweis auf
  * beide Wege.
+ *
+ * ./auth wird LAZY geladen: Das Modul validiert JWT_SECRET beim require und
+ * wirft dann. apiKeyAuth allein (Key-Gate der v1-API) braucht die Session-
+ * Mechanik nicht — ein top-level-require machte jedes Test-Bundle, das die
+ * echte Middleware lädt, von einem gesetzten JWT_SECRET abhängig (CI-Fail
+ * nach v1.15.0, lokal grün, weil die Shell ihn exportiert hatte). Der
+ * require.cache-Eintrag der Tests greift auch hier: Wer auth mockt, seeded
+ * den Cache VOR dem ersten Aufruf.
  */
 const authenticateSessionOrApiKey = (req, res, next) => {
+  const { authenticateToken, AUTH_COOKIE_NAME } = require('./auth');
   if (req.headers['x-api-key']) {
     return authenticateApiKey(req, res, next);
   }
