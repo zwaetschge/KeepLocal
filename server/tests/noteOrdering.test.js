@@ -163,6 +163,7 @@ test('the list is sorted by manual order before recency', async () => {
   const seen = {};
   const chain = {
     populate() { return this; },
+    select() { return this; },
     sort(value) { seen.sort = value; return this; },
     skip() { return this; },
     limit() { return Promise.resolve([]); }

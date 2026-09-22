@@ -131,13 +131,22 @@ test('a backup is only written when every referenced image was captured', () => 
   assert.match(source, /projection: \{ images: 1, files: 1 \}/, 'referenced = images + attachments');
   assert.match(source, /Backup unvollständig: \$\{missing\.length\} von \$\{referenced\.size\}/);
   assert.match(source, /passt UPLOADS_DIR\?/, 'the error must point at the likely cause');
-  // Ein verworfenes Backup darf nicht als Recovery Point liegen bleiben.
-  assert.equal(source.match(/fs\.rmSync\(target, \{ recursive: true, force: true \}\);/g)?.length, 2);
+  // Ein verworfenes Backup darf nicht als Recovery Point liegen bleiben —
+  // seit dem Review-Fix (v1.14.0) deckt EIN catch-all in createBackup jeden
+  // Abbruchpfad ab (vorher: zwei Inline-rmSync nur für zwei Spezialfälle,
+  // jeder andere Fehler hinterließ ein Verzeichnis, das einen Retention-Slot belegte).
+  const discards = source.match(/fs\.rmSync\(target, \{ recursive: true, force: true \}\);/g)?.length ?? 0;
+  assert.ok(discards >= 1, 'failed runs discard their directory');
+  assert.match(source, /Abgebrochen, \$\{target\} verworfen/, 'der Abbruch wird geloggt');
   assert.match(source, /referenced\.size > 0 && manifest\.uploads\.files === 0/, 'the silent empty-uploads case fails too');
 
   // Manifest: pro Datei Name, Unterverzeichnis, Größe und Prüfsumme — ohne
   // `dir` sucht verifyBackup Anhänge unter images/ und verwirft das Backup.
-  assert.match(source, /manifest\.uploads\.entries\.push\(\{ name: entry, dir: subdir, size: [^}]+sha256: sha256File\(destination\) \}\)/);
+  // v1.14.0: Der Backup läuft im Serverprozess — Hash/Kopie sind async
+  // (fs.promises + Streaming-Hash), damit der Event-Loop nicht blockiert.
+  assert.match(source, /manifest\.uploads\.entries\.push\(\{ name: entry, dir: subdir, size: stats\.size, sha256: await sha256File\(destination\) \}\)/);
+  assert.match(source, /await fs\.promises\.copyFile\(source, destination\)/, 'Kopieren ist async');
+  assert.match(source, /fs\.createReadStream\(file\)/, 'Hash läuft als Stream');
   assert.match(source, /\[\['images', images\], \['files', filesDir\(\)\]\]/, 'both upload subdirectories are captured independently');
   assert.match(source, /entry\.dir \|\| 'images'/, 'verify resolves the subdir, defaulting to images for old manifests');
   assert.match(source, /\[\['images', imagesDir\(\)\], \['files', filesDir\(\)\]\]/, 'restore writes both subdirectories back');

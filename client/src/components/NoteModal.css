@@ -1873,3 +1873,165 @@
 .file-attachment .new-badge {
   flex-shrink: 0;
 }
+
+/* v1.14.0 Nr. 7: Revisions-Historie (NoteHistory.jsx) — kollabierter Toggle
+   unter dem Editor, ausgeklappt Liste + Vorschau + Restore. */
+.note-history {
+  margin-top: 10px;
+  border: 1px dashed var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.02));
+  padding: 6px 10px;
+}
+
+.note-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 4px 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.note-history-toggle:hover { color: var(--text-primary, inherit); }
+
+.note-history-count {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--border-color, rgba(0, 0, 0, 0.12));
+  color: var(--text-primary, inherit);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.note-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 6px;
+}
+
+.note-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.note-history-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--text-primary, inherit);
+}
+
+.note-history-entry:hover { background: var(--bg-hover, rgba(0, 0, 0, 0.05)); }
+.note-history-entry.is-selected {
+  background: var(--accent-soft, rgba(25, 118, 210, 0.12));
+  font-weight: 600;
+}
+
+.note-history-entry-title {
+  font-size: 0.86rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-history-entry-meta {
+  font-size: 0.74rem;
+  color: var(--text-secondary, #666);
+}
+
+.note-history-hint,
+.note-history-error,
+.note-history-restored {
+  margin: 2px 0;
+  font-size: 0.8rem;
+}
+
+.note-history-error { color: var(--danger, #c62828); }
+.note-history-restored { color: var(--success, #2e7d32); }
+
+.note-history-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary, rgba(255, 255, 255, 0.6));
+}
+
+.note-history-preview-title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.note-history-preview-content {
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  color: var(--text-primary, inherit);
+}
+
+.note-history-preview-todos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.82rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.note-history-preview-todos .is-done {
+  text-decoration: line-through;
+  color: var(--text-secondary, #666);
+}
+
+.note-history-restore {
+  align-self: flex-start;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary, #fff);
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: var(--text-primary, inherit);
+}
+
+.note-history-restore:hover:not(:disabled) {
+  background: var(--accent-soft, rgba(25, 118, 210, 0.12));
+}
+
+.note-history-restore:disabled { opacity: 0.6; cursor: default; }

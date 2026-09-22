@@ -34,4 +34,16 @@ class MediaLimitsTest {
         assertEquals(5, MediaLimits.MAX_IMAGES_PER_REQUEST)
         assertEquals(25, MediaLimits.MAX_IMAGES_PER_NOTE)
     }
+
+    // v1.14.0 Nr. 5: PDF-Anhänge — gleiche Budget-Logik wie Bilder.
+
+    @Test
+    fun `file budget truncates and exhausts like the image budget`() {
+        assertEquals(25, MediaLimits.MAX_FILES_PER_NOTE)
+        assertEquals(5, MediaLimits.MAX_FILES_PER_REQUEST)
+        assertEquals(5, MediaLimits.allowedFilePickCount(currentCount = 0, picked = 5))
+        assertEquals(2, MediaLimits.allowedFilePickCount(currentCount = 23, picked = 5))
+        assertEquals(0, MediaLimits.allowedFilePickCount(currentCount = 25, picked = 3))
+        assertEquals(0, MediaLimits.allowedFilePickCount(currentCount = 1, picked = -2))
+    }
 }

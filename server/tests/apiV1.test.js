@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Audit 2026-09-12 (Top-30 Nr. 21): Die externe v1-API (755 Zeilen) hatte keinen
 // einzigen Verhaltenstest — nur eine Doku-Assertion. Und sie war seit dem
@@ -50,7 +52,12 @@ function loadApi({ withRealKeyGate = false, serviceOverrides = {} } = {}) {
   if (!withRealKeyGate) {
     require.cache[apiKeyAuthPath] = {
       id: apiKeyAuthPath, filename: apiKeyAuthPath, loaded: true,
-      exports: { authenticateApiKey: (req, _res, next) => { req.user = { _id: USER, username: 'api' }; next(); } }
+      // v1.14.0: requireApiKeyWrite kam dazu (Scopes) — der Stub reicht ihn als
+      // Pass-Through durch; die Scope-Logik selbst testet apiKeyAuth.test.js.
+      exports: {
+        authenticateApiKey: (req, _res, next) => { req.user = { _id: USER, username: 'api' }; next(); },
+        requireApiKeyWrite: (_req, _res, next) => next()
+      }
     };
   } else {
     require.cache[apiKeyModelPath] = {
@@ -296,4 +303,27 @@ test('the new v1 routes are registered before /:id', () => {
     const at = source.indexOf(pattern);
     assert.ok(at > -1 && at < last, `${pattern} muss vor /:id registriert sein`);
   }
+});
+
+// v1.14.0 Nr. 8 + Nr. 10: Die v1-Antwort enthielt counts/tags nie — die vier
+// Zusaetzqueries pro Listenaufruf entfallen (includeMeta: false). Und alle
+// neun mutierenden Routen tragen den Write-Guard für Scopes.
+
+test('the v1 note list never pays for counts or the tag cloud', async () => {
+  const { app, calls } = loadApi();
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/v1/notes?page=1&limit=10`);
+    assert.equal(response.status, 200);
+  });
+  assert.equal(calls[0].options.includeMeta, false, 'v1 fragt includeMeta:false an');
+});
+
+test('every mutating v1 route sits behind the API-key write guard', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../routes/v1/notes.js'), 'utf8');
+  const guarded = source.match(/router\.(post|put|delete)\('[^']+', requireApiKeyWrite,/g) || [];
+  assert.equal(guarded.length, 9, 'neun Write-Routes: create/update/delete/restore/pin/archive/share×2/import');
+  // Lese-Routen bleiben bewusst ohne Guard — ein read-only Key bleibt nützlich.
+  const plain = source.match(/router\.(get)\('[^']+',\s*async/g) || [];
+  assert.ok(plain.length >= 5, 'die GET-Routen tragen keinen Write-Guard');
+  assert.doesNotMatch(source, /router\.get\('[^']+', requireApiKeyWrite/);
 });

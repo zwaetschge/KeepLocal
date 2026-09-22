@@ -15,12 +15,16 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { validateImageFile } = require('../utils/magicNumberValidator');
 
 const NOTE_COLORS = new Set([
   '#ffffff', '#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb',
   '#cbf0f8', '#aecbfa', '#d7aefb', '#fdcfe8', '#e6c9a8', '#e8eaed'
 ]);
 const TAG_PATTERN = /^[a-zA-Z0-9äöüÄÖÜß\-_]+$/;
+// ZIP-Import (v1.14.0): erlaubte Bild-Endungen — konsistent zu den Formaten,
+// die validateImageFile per Magic Bytes erkennt (jpg/png/gif/webp).
+const ZIP_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 const MAX_IMAGE_PIXELS = 40000000;
 const MAX_IMAGES_PER_NOTE = 25;
 const MAX_FILES_PER_NOTE = 25;
@@ -72,8 +76,17 @@ function throwNoteConflict(note) {
   const error = new Error(NOTE_CONFLICT_MESSAGE);
   error.statusCode = 409;
   // The stored note travels with the error so the route can return it in the
-  // same serialized form as a regular PUT response.
-  error.currentNote = note;
+  // same serialized form as a regular PUT response. Hat die Notiz Revisionen,
+  // reisen sie als Kopie ohne die Historie mit (review v1.14.0: sonst bis zu
+  // 10 Volltext-Snapshots pro 409-Antwort); ohne Revisionen bleibt die
+  // Referenz unverändert — als Null-Kosten-Fall.
+  if (note && Array.isArray(note.revisions) && note.revisions.length > 0) {
+    const plain = typeof note.toJSON === 'function' ? note.toJSON() : { ...note };
+    delete plain.revisions;
+    error.currentNote = plain;
+  } else {
+    error.currentNote = note;
+  }
   throw error;
 }
 
@@ -394,11 +407,17 @@ function buildNotesQuery({ userId, search, tag, isArchived = false, deleted = fa
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Notes and pagination info
  */
-async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId, since } = {}) {
+async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId, since, includeMeta = true } = {}) {
   const safePage = normalizePositiveInteger(page, 1, Number.MAX_SAFE_INTEGER);
   const safeLimit = normalizePositiveInteger(limit, 50, 100);
   const isArchived = archived === true || archived === 'true';
   const isDeleted = deleted === true || deleted === 'true';
+  // includeMeta=false (v1.14.0): Counts + Tag-Cloud weglassen. Der Aufruf war
+  // sechs Queries stark (4x countDocuments + Tag-Aggregation + Find) und
+  // wiederholte die globalen Counts auf jeder Folgeseite, obwohl sie dort
+  // niemand auswertet — Android-Paging ab Seite 2 und v1-Clients (deren
+  // Antwort counts/tags ohnehin nie enthielt) zahlen sie jetzt nicht mehr mit.
+  const withMeta = !(includeMeta === false || includeMeta === 'false');
 
   // Delta-Sync (v1.13.0): Nur Dokumente mit updatedAt > since. Ungültige Werte
   // sind 400er, kein stillses Ignorieren — sonst cached ein Client einen
@@ -420,17 +439,36 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
       ...(typeof search === 'string' && search.trim() !== '' ? { $text: { $search: search.trim() } } : {})
     };
     const skip = (safePage - 1) * safeLimit;
+    // includeMeta=false (v1.14.0): Folgeseiten brauchen die globalen Zähler
+    // nicht — die Sidebar hat sie von Seite 1. Spart zwei countDocuments.
     const [trashTotal, trashNotes, activeCount, archivedCount] = await Promise.all([
       Note.countDocuments(trashQuery),
       Note.find(trashQuery)
+        .select('-revisions')
         .populate('userId', 'username email')
         .populate('sharedWith', 'username email')
         .sort({ deletedAt: -1 })
         .skip(skip)
         .limit(safeLimit),
-      Note.countDocuments(buildNotesQuery({ userId, isArchived: false })),
-      Note.countDocuments(buildNotesQuery({ userId, isArchived: true }))
+      withMeta
+        ? Note.countDocuments(buildNotesQuery({ userId, isArchived: false }))
+        : null,
+      withMeta
+        ? Note.countDocuments(buildNotesQuery({ userId, isArchived: true }))
+        : null
     ]);
+
+    if (!withMeta) {
+      return {
+        notes: trashNotes,
+        pagination: {
+          page: safePage,
+          limit: safeLimit,
+          total: trashTotal,
+          pages: Math.ceil(trashTotal / safeLimit)
+        }
+      };
+    }
 
     return {
       notes: trashNotes,
@@ -466,7 +504,13 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   if (sinceDate) {
-    query.updatedAt = { $gt: sinceDate };
+    // $gte statt $gt (Review v1.14.0): updatedAt hat Millisekunden-Aufloesung
+    // und Bulk-Operationen (z. B. Tag-Rename) schreiben HUNDERTEN Notizen
+    // denselben Zeitstempel. Ein striktes $gt ueberspringt eine Notiz, die im
+    // selben Millisekunden-Tick wie der Cursor geaendert wurde, dauerhaft —
+    // der Client-Upsert ist idempotent, Redelivery der Grenz-Zeilen ist
+    // daher billiger als ihr stiller Verlust.
+    query.updatedAt = { $gte: sinceDate };
   }
 
   const searchTerm = typeof search === 'string' ? search.trim() : '';
@@ -481,26 +525,35 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   const skip = (safePage - 1) * safeLimit;
+  // total ist Teil der Pagination und bleibt immer; die drei globalen Counts
+  // und die Tag-Aggregation fallen bei includeMeta=false weg (siehe oben).
   const [total, activeCount, archivedCount, trashCount, tags] = await Promise.all([
     Note.countDocuments(query),
-    Note.countDocuments(activeQuery),
-    Note.countDocuments(archivedQuery),
-    Note.countDocuments({ userId, deletedAt: { $ne: null } }),
-    Note.aggregate([
-      { $match: tagMatch },
-      { $unwind: '$tags' },
-      { $group: { _id: '$tags', count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-      { $project: { _id: 0, name: '$_id', count: 1 } }
-    ])
+    withMeta ? Note.countDocuments(activeQuery) : null,
+    withMeta ? Note.countDocuments(archivedQuery) : null,
+    withMeta ? Note.countDocuments({ userId, deletedAt: { $ne: null } }) : null,
+    withMeta
+      ? Note.aggregate([
+        { $match: tagMatch },
+        { $unwind: '$tags' },
+        { $group: { _id: '$tags', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+        { $project: { _id: 0, name: '$_id', count: 1 } }
+      ])
+      : null
   ]);
 
   // Bei einer Suche zählt Relevanz (gewichteter textScore) mehr als Recency;
   // angeheftete Notizen bleiben oben. Ohne Suche gilt die gewohnte Ordnung.
+  // revisions ist bewusstprojiziert weg (v1.14.0): Bis zu 10 Volltext-Snapshots
+  // pro Notiz reisten in jeder Listen-Antwort mit, die kein Client liest — die
+  // Historie hat ihre eigenen Endpunkte (/revisions, /revisions?at=, Restore).
+  // $meta-Projektion + Feld-Ausschluss sind in MongoDB kombinierbar.
   const listQuery = isSearch
     ? Note.find(query, { score: { $meta: 'textScore' } })
     : Note.find(query);
   const notes = await listQuery
+    .select('-revisions')
     .populate('userId', 'username email')
     .populate('sharedWith', 'username email')
     .populate('lastEditedBy', 'username')
@@ -512,6 +565,18 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
       : { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(safeLimit);
+
+  if (!withMeta) {
+    return {
+      notes,
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        pages: Math.ceil(total / safeLimit)
+      }
+    };
+  }
 
   return {
     notes,
@@ -542,7 +607,10 @@ async function getNoteById(noteId, userId) {
     ]
   }).populate('userId', 'username email')
     .populate('sharedWith', 'username email')
-    .populate('lastEditedBy', 'username');
+    .populate('lastEditedBy', 'username')
+    // Wie die Liste: Die Detail-Antwort trägt die Historie nicht mit —
+    // GET /:id/revisions liefert sie bewusst als Metadaten (v1.13.0).
+    .select('-revisions');
 
   if (!note) {
     const error = new Error(errorMessages.NOTES.NOT_FOUND);
@@ -881,7 +949,7 @@ async function updateNote(noteId, noteData, userId) {
       ...(updatedAtPrecondition && { updatedAt: updatedAtPrecondition })
     },
     $pushRevision ? { $set, $push: $pushRevision } : { $set },
-    { new: true, runValidators: true }
+    { new: true, projection: { revisions: 0 }, runValidators: true }
   );
 
   if (!updatedNote) {
@@ -910,7 +978,7 @@ async function deleteNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, deletedAt: null },
     { $set: { deletedAt: new Date() } },
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -936,7 +1004,7 @@ async function restoreNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, deletedAt: { $ne: null } },
     { $set: { deletedAt: null } },
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   ).populate('userId', 'username email')
     .populate('sharedWith', 'username email');
 
@@ -1145,7 +1213,8 @@ async function getNoteTree(userId, since) {
   const notes = await Note.find({
     $or: [{ userId }, { sharedWith: userId }],
     deletedAt: null,
-    ...(sinceDate ? { updatedAt: { $gt: sinceDate } } : {})
+    // $gte aus demselben Grund wie im Listing (s. dort): Bulk-Timestamps.
+    ...(sinceDate ? { updatedAt: { $gte: sinceDate } } : {})
   })
     .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt userId')
     .sort({ isPinned: -1, order: -1, updatedAt: -1 })
@@ -1730,37 +1799,67 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
   fs.mkdirSync(imagesDir(), { recursive: true });
   fs.mkdirSync(filesDir(), { recursive: true });
   const assetMap = new Map();
-  for (const [name, bytes] of entries) {
-    const kind = name.startsWith('assets/images/') ? 'images' : name.startsWith('assets/files/') ? 'files' : null;
-    if (!kind) continue;
-    const meta = (manifest[name] && typeof manifest[name] === 'object') ? manifest[name] : {};
-    const extension = path.extname(name).toLowerCase() || '.bin';
-    if (kind === 'images') {
-      const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
-      const filepath = path.join(imagesDir(), filename);
-      fs.writeFileSync(filepath, bytes);
-      let thumbnailFilename = '';
-      try {
-        thumbnailFilename = await generateThumbnail(filename, filepath);
-      } catch (_error) {
-        thumbnailFilename = ''; // kein Thumbnail: Galerie faellt aufs Original zurueck
+  // Bereits geschriebene Dateien sammeln: Lehnt die Validierung einen Anhang
+  // ab, darf kein orphan file zurueckbleiben — der Import ist alles-oder-nichts.
+  const written = [];
+  try {
+    for (const [name, bytes] of entries) {
+      const kind = name.startsWith('assets/images/') ? 'images' : name.startsWith('assets/files/') ? 'files' : null;
+      if (!kind) continue;
+      const meta = (manifest[name] && typeof manifest[name] === 'object') ? manifest[name] : {};
+      const extension = path.extname(name).toLowerCase() || '.bin';
+      if (kind === 'images') {
+        // Geschaerfter als vorher (v1.14.0): Bild-Eintraege aus einem Fremd-ZIP
+        // bekamen ihre Endung vom Angreifer gewaehlt und wurden ohne Magic-Byte-
+        // Pruefung nach uploads/images geschrieben — secureFileServe stellt per
+        // sendFile nach Endung aus, ein .html/.svg-Eintrag war Stored XSS.
+        // Der Multipart-Bildupload validiert beides bereits; der ZIP-Import
+        // zieht jetzt nach: Endungs-Whitelist + Magic Bytes, sonst 400er.
+        if (!ZIP_IMAGE_EXTENSIONS.has(extension)) {
+          throw clientError(`Anhang ${name}: keine erlaubte Bild-Endung (${[...ZIP_IMAGE_EXTENSIONS].join(', ')})`);
+        }
+        const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
+        const filepath = path.join(imagesDir(), filename);
+        fs.writeFileSync(filepath, bytes);
+        written.push(filepath);
+        if (!(await validateImageFile(filepath))) {
+          throw clientError(`Anhang ${name}: Inhalt entspricht keinem bekannten Bildformat (Magic-Bytes-Prüfung)`);
+        }
+        // Dritte Pruefung des Multipart-Pfads (Review v1.14.0): Endung + Magic
+        // Bytes reichen nicht — eine 20000x20000-PNG ist komprimiert wenige MB
+        // gross, dekodiert aber ~1,6 GB im Client. Der Multipart-Upload lehnt
+        // sie ab (>40 MP), der ZIP-Import muss dasselbe tun.
+        await validateImageDimensions([filepath]);
+        let thumbnailFilename = '';
+        try {
+          thumbnailFilename = await generateThumbnail(filename, filepath);
+          if (thumbnailFilename) written.push(path.join(imagesDir(), thumbnailFilename));
+        } catch (_error) {
+          thumbnailFilename = ''; // kein Thumbnail: Galerie faellt aufs Original zurueck
+        }
+        assetMap.set(name, {
+          kind, filename, url: `/uploads/images/${filename}`,
+          thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : ''
+        });
+      } else {
+        const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
+        fs.writeFileSync(path.join(filesDir(), filename), bytes);
+        written.push(path.join(filesDir(), filename));
+        assetMap.set(name, {
+          kind, filename, url: `/uploads/files/${filename}`,
+          originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
+            ? meta.originalName.slice(0, 255)
+            : path.basename(name),
+          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : guessAssetMimetype(name),
+          size: bytes.length
+        });
       }
-      assetMap.set(name, {
-        kind, filename, url: `/uploads/images/${filename}`,
-        thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : ''
-      });
-    } else {
-      const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
-      fs.writeFileSync(path.join(filesDir(), filename), bytes);
-      assetMap.set(name, {
-        kind, filename, url: `/uploads/files/${filename}`,
-        originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
-          ? meta.originalName.slice(0, 255)
-          : path.basename(name),
-        mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : guessAssetMimetype(name),
-        size: bytes.length
-      });
     }
+  } catch (error) {
+    for (const filepath of written) {
+      try { fs.rmSync(filepath, { force: true }); } catch (_cleanupError) { /* best effort */ }
+    }
+    throw error;
   }
 
   // 2) .md-Eintraege zu Items formen. Pfad = Verzeichnis im Archiv (die
@@ -1883,7 +1982,7 @@ async function togglePinNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     noteEditQuery(noteId, userId),
     [{ $set: { isPinned: { $not: ['$isPinned'] }, lastEditedBy } }],
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -1914,7 +2013,7 @@ async function toggleArchiveNote(noteId, userId) {
       deletedAt: null
     },
     [{ $set: { isArchived: { $not: ['$isArchived'] }, lastEditedBy } }],
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -1966,7 +2065,7 @@ async function shareNote(noteId, userId, targetUserId) {
       $addToSet: { sharedWith: targetUserId }
     },
     {
-      new: true, // Return updated document
+      new: true, projection: { revisions: 0 }, // Return updated document
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2000,7 +2099,7 @@ async function unshareNote(noteId, userId, targetUserId) {
       $pull: { sharedWith: targetUserId }
     },
     {
-      new: true, // Return updated document
+      new: true, projection: { revisions: 0 }, // Return updated document
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2068,7 +2167,7 @@ async function addImages(noteId, userId, imageData) {
       $push: { images: { $each: imageData } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2104,7 +2203,7 @@ async function removeImage(noteId, userId, filename) {
       $pull: { images: { filename: filename } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2143,7 +2242,7 @@ async function addFiles(noteId, userId, fileData) {
       $push: { files: { $each: fileData } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2173,7 +2272,7 @@ async function removeFile(noteId, userId, filename) {
       $pull: { files: { filename: filename } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')

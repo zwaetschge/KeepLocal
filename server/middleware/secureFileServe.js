@@ -73,13 +73,16 @@ const secureFileServe = async (req, res, next) => {
     }
 
     res.setHeader('Cache-Control', 'private, no-store');
+    // Bilder werden inline per sendFile ausgeliefert, dessen Content-Type von
+    // der Endung kommt — nosniff (v1.14.0) verhindert, dass ein Browser einen
+    // andersartigen Inhalt errät. Die Endungen selbst begrenzt der Upload.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     if (isAttachment) {
       // Anhänge (PDF) immer als Download ausliefern: kein Inline-Rendern, kein
       // Mime-Sniffing — der Typ steht fest, der Name ist der ursprüngliche.
       const meta = (note.files || []).find(file => file.filename === basename);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', contentDispositionFor(meta?.originalName));
-      res.setHeader('X-Content-Type-Options', 'nosniff');
     }
     res.sendFile(filepath);
   } catch (error) {

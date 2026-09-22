@@ -5,6 +5,7 @@ import com.keeplocal.android.data.api.dto.ReorderNotesDto
 import com.keeplocal.android.data.api.dto.NoteDto
 import com.keeplocal.android.data.api.dto.LinkPreviewRequestDto
 import com.keeplocal.android.data.api.dto.ShareNoteDto
+import com.keeplocal.android.data.api.dto.TagOperationRequestDto
 import com.keeplocal.android.data.api.dto.toDomain
 import com.keeplocal.android.data.api.dto.toCreateDto
 import com.keeplocal.android.data.api.dto.toUpdateDto
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.io.OutputStream
 import java.time.Instant
 import java.time.LocalDate
@@ -349,6 +351,72 @@ class NoteRepositoryImpl @Inject constructor(
         val removed = response.body()?.removed ?: 0
         fileLogger.log("NoteRepo", "emptyTrash: removed=$removed")
         removed
+    }
+
+    override suspend fun applyTagOperation(action: String, from: List<String>, to: String?): Result<Int> {
+        fileLogger.log("NoteRepo", "applyTagOperation: action=$action sources=${from.size} to=${to != null}")
+        return try {
+            val response = api.tagOperation(
+                TagOperationRequestDto(action = action, from = from, to = to)
+            )
+            if (!response.isSuccessful) {
+                val body = try { response.errorBody()?.string()?.take(300) } catch (_: Exception) { null }
+                fileLogger.error("NoteRepo", "tagOperation failed: code=${response.code()} body=$body", null)
+                Result.Error(errorMessage("Tag operation", response.code(), body))
+            } else {
+                val modified = response.body()?.modified ?: 0
+                // Room-Spiegel: Die Tag-Übersicht liest aus dem Cache — ohne
+                // Spiegel bliebe der alte Tag sichtbar bis zum nächsten getNotes.
+                mirrorTagOperation(from, to)
+                Result.Success(modified)
+            }
+        } catch (e: IOException) {
+            // Offline: alter Einzel-Notiz-Pfad — updateNote schreibt Room und
+            // queued die Offline-Operation, genau wie vor v1.14.0.
+            fileLogger.log("NoteRepo", "tagOperation offline, per-note fallback")
+            offlineTagRewrite(from, to)
+        }
+    }
+
+    /** Best-effort mirror of a successful server tag operation into Room. */
+    private suspend fun mirrorTagOperation(from: List<String>, to: String?) {
+        runCatching {
+            val sources = from.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+            if (sources.isEmpty()) return@runCatching
+            // Server speichert das Ziel lowercased — Spiegel genauso.
+            val target = to?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            val cached = noteDao.getAllLiveNotesSync() + noteDao.getAllArchivedNotesSync()
+            cached.forEach { entity ->
+                val note = entity.entityToDomain()
+                if (note.tags.any { tag -> tag.lowercase() in sources }) {
+                    val newTags = (
+                        note.tags.filterNot { tag -> tag.lowercase() in sources } +
+                            listOfNotNull(target)
+                        ).distinct()
+                    noteDao.insertNote(note.copy(tags = newTags).toEntity())
+                }
+            }
+        }.onFailure { fileLogger.error("NoteRepo", "tag mirror failed", it as? Exception) }
+    }
+
+    /** Legacy path for offline tag operations: one queued update per note. */
+    private suspend fun offlineTagRewrite(from: List<String>, to: String?): Result<Int> {
+        val sources = from.map { it.trim() }.filter { it.isNotEmpty() }
+        val target = to?.trim()?.takeIf { it.isNotEmpty() }
+        var updated = 0
+        val cached = noteDao.getAllLiveNotesSync() + noteDao.getAllArchivedNotesSync()
+        for (entity in cached) {
+            val note = entity.entityToDomain()
+            if (note.tags.none { tag -> sources.any { it.equals(tag, ignoreCase = true) } }) continue
+            val newTags = (
+                note.tags.filterNot { tag -> sources.any { it.equals(tag, ignoreCase = true) } } +
+                    listOfNotNull(target)
+                ).distinct()
+            if (newTags == note.tags) continue
+            val result = updateNote(note.copy(tags = newTags))
+            if (result is Result.Success) updated++
+        }
+        return Result.Success(updated)
     }
 
     override suspend fun togglePin(id: String): Result<Note> {

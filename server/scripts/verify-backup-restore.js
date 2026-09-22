@@ -130,17 +130,17 @@ async function main() {
     // Prüfsumme muss anschlagen.
     fs.writeFileSync(backupImage, 'PNG-TAMPERED-CONTENT');
     let corrupted = null;
-    try { backupScript.verifyBackup(target); } catch (error) { corrupted = error.message; }
+    try { await backupScript.verifyBackup(target); } catch (error) { corrupted = error.message; }
     check(/Prüfsumme stimmt nicht/.test(corrupted || ''), `a tampered upload fails verification (got: ${corrupted})`);
     fs.writeFileSync(backupImage, 'PNG-ORIGINAL-CONTENT');
 
     const backupThumb = path.join(target, 'uploads', 'images', 'seed-thumb.webp');
     fs.rmSync(backupThumb);
     let missing = null;
-    try { backupScript.verifyBackup(target); } catch (error) { missing = error.message; }
+    try { await backupScript.verifyBackup(target); } catch (error) { missing = error.message; }
     check(/Upload-Datei fehlt/.test(missing || ''), 'a missing upload fails verification');
     fs.writeFileSync(backupThumb, 'WEBP-THUMB-CONTENT');
-    check(backupScript.verifyBackup(target).uploads === 2, 'the untouched recovery point verifies again');
+    check((await backupScript.verifyBackup(target)).uploads === 2, 'the untouched recovery point verifies again');
 
     // --- 3) Unvollständiges Backup darf nicht entstehen --------------------
     fs.rmSync(original);

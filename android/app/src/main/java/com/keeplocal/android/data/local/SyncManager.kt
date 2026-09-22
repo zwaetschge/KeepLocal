@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
@@ -32,6 +33,9 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Page size for the background delta pull — matches the server-side list limit. */
+private const val PULL_PAGE_LIMIT = 100
 
 /** Snapshot of the offline queue, collected by the notes UI for its sync banner. */
 data class SyncStatus(
@@ -47,7 +51,8 @@ data class SyncStatus(
 class SyncManager @Inject constructor(
     private val api: KeepLocalApi,
     private val noteDao: NoteDao,
-    private val pendingOperationDao: PendingOperationDao
+    private val pendingOperationDao: PendingOperationDao,
+    private val settingsDataStore: SettingsDataStore
 ) {
     private val _syncStatus = MutableStateFlow(SyncStatus())
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
@@ -124,6 +129,125 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun hasPendingOperations(): Boolean = pendingOperationDao.getCount() > 0
+
+    /**
+     * Pull half of the background sync (v1.14.0 Nr. 6): draining the offline
+     * queue only ever PUSHED — notes edited in the web UI or on another
+     * device never reached a backgrounded app. Meta probe first (one cheap
+     * aggregation): an unchanged signature skips the whole pull. Otherwise:
+     *  1. full tree → local server-id notes missing from the tree AND without
+     *     queued ops were deleted server-side → remove them from Room
+     *     (the tree excludes trash but includes archived + shared notes);
+     *  2. paged ?since= delta for active AND archived notes, upserting into
+     *     Room while skipping notes with pending ops (their Room row is
+     *     newer than anything the server knows about them).
+     * Signature + since are persisted only after a clean pull, so a torn
+     * run retries completely next period. Returns how many rows changed.
+     */
+    suspend fun pullRemoteChanges(): Int = withContext(Dispatchers.IO) {
+        try {
+            val storedSignature = settingsDataStore.syncSignature.first()
+            val metaResponse = api.getNotesMeta()
+            if (metaResponse.code() == 401) return@withContext 0
+            if (!metaResponse.isSuccessful) return@withContext 0
+            val meta = metaResponse.body() ?: return@withContext 0
+            val signature = meta.signature()
+            if (signature == storedSignature) return@withContext 0
+
+            val pendingIds = pendingOperationDao.getAllOperations().map { it.noteId }.toSet()
+            var changed = 0
+
+            // 1) Deletion cleanup over the full tree projection.
+            val treeIds = try {
+                val tree = api.getNoteTree()
+                if (!tree.isSuccessful) null
+                else tree.body().orEmpty().map { it.id }.toSet()
+            } catch (_: Exception) {
+                null
+            }
+            if (treeIds != null) {
+                val localServerIds = (noteDao.getAllLiveNotesSync() + noteDao.getAllArchivedNotesSync())
+                    .map { it.id }
+                    .filter { ServerContract.isServerId(it) }
+                localServerIds.forEach { id ->
+                    if (id !in treeIds && id !in pendingIds) {
+                        noteDao.deleteNoteById(id)
+                        changed++
+                    }
+                }
+            }
+
+            // 2) Delta upsert in two sweeps (since=null → full pull: exactly
+            // what a cold cache needs); a torn pull keeps the old signature
+            // so the next period retries from the same since.
+            val since = settingsDataStore.syncSince.first().takeIf { it.isNotBlank() }
+            var pullClean = treeIds != null
+            var maxSeenUpdatedAt: String? = null
+            run {
+                for (archived in listOf(false, true)) {
+                    var page = 1
+                    var pages = 1
+                    while (page <= pages) {
+                        val response = try {
+                            api.getNotes(archived = archived, page = page, limit = PULL_PAGE_LIMIT, since = since)
+                        } catch (_: Exception) {
+                            pullClean = false
+                            break
+                        }
+                        if (response.code() == 401) {
+                            pullClean = false
+                            break
+                        }
+                        if (!response.isSuccessful) {
+                            pullClean = false
+                            break
+                        }
+                        val body = response.body() ?: break
+                        pages = body.pages ?: 1
+                        for (dto in body.getNotesList()) {
+                            val domain = dto.toDomain()
+                            maxSeenUpdatedAt = newerIso(dto.updatedAt, maxSeenUpdatedAt)
+                            // pendingIds is only the fast path from before the
+                            // pull started — an offline edit queued WHILE this
+                            // multi-second loop runs must also be honored, or
+                            // the REPLACE upsert below would wipe it and the
+                            // still-queued UPDATE would push the server content
+                            // back (silent loss, no conflict copy). Live check
+                            // per note (indexed COUNT, sub-millisecond).
+                            if (domain.id in pendingIds ||
+                                pendingOperationDao.getCountForNote(domain.id) > 0
+                            ) continue
+                            noteDao.insertNote(domain.toEntity().copy(baseUpdatedAt = dto.updatedAt))
+                            changed++
+                        }
+                        page++
+                    }
+                    if (!pullClean) break
+                }
+            }
+
+            if (pullClean) {
+                settingsDataStore.setSyncSignature(signature)
+                // Next delta starts strictly after the newest change seen —
+                // server maxUpdatedAt as the floor, the delta itself may
+                // have raced ahead of the probe.
+                val newSince = maxSeenUpdatedAt ?: meta.maxUpdatedAt
+                if (newSince != null) settingsDataStore.setSyncSince(newSince)
+            }
+            changed
+        } catch (_: Exception) {
+            // Pull is best-effort: a crashing pull must never take the
+            // queue drain (its caller) down with it.
+            0
+        }
+    }
+
+    /** Lexicographic max over uniform Mongo ISO strings ("…Z", ms precision). */
+    private fun newerIso(candidate: String?, champion: String?): String? = when {
+        candidate.isNullOrBlank() -> champion
+        champion == null -> candidate
+        else -> if (candidate > champion) candidate else champion
+    }
 
     private enum class OpOutcome { SYNCED, FAILED, SKIPPED, AUTH_REQUIRED }
 

@@ -2,6 +2,7 @@ package com.keeplocal.android.data.local.entity
 
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
+import com.keeplocal.android.domain.model.NoteFile
 import com.keeplocal.android.domain.model.NoteImage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

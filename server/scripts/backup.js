@@ -86,7 +86,17 @@ function decode(value) {
   return value;
 }
 
-const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+// Streaming-Hash statt readFileSync (v1.14.0): Der Backup-Scheduler läuft seit
+// v1.13.0 im Serverprozess — der alte Hash lud jede Datei komplett in den
+// Speicher und blockierte dabei den Event-Loop; bei hunderten MB Uploads
+// answered der Server während des gesamten Backups keine Requests mehr.
+const sha256File = (file) => new Promise((resolve, reject) => {
+  const hash = crypto.createHash('sha256');
+  fs.createReadStream(file)
+    .on('error', reject)
+    .on('data', chunk => hash.update(chunk))
+    .on('end', () => resolve(hash.digest('hex')));
+});
 
 function timestamp() {
   const now = new Date();
@@ -124,89 +134,99 @@ async function createBackup(keep) {
   // Point gelöscht. Genau das ist in CI passiert.
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   const target = fs.mkdtempSync(path.join(BACKUP_DIR, `${PREFIX}${timestamp()}-`));
-  const dbDir = path.join(target, 'db');
-  const uploadsTarget = path.join(target, 'uploads');
-  const images = imagesDir();
-  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    const dbDir = path.join(target, 'db');
+    const uploadsTarget = path.join(target, 'uploads');
+    const images = imagesDir();
+    fs.mkdirSync(dbDir, { recursive: true });
 
-  console.log(`Backup-Ziel: ${target}`);
-  console.log(`  Uploads-Wurzel: ${uploadsRoot()} (Bilder: ${images})`);
+    console.log(`Backup-Ziel: ${target}`);
+    console.log(`  Uploads-Wurzel: ${uploadsRoot()} (Bilder: ${images})`);
 
-  const collections = (await mongoose.connection.db.listCollections().toArray())
-    .map(entry => entry.name)
-    .filter(name => !name.startsWith('system.'))
-    .sort();
+    const collections = (await mongoose.connection.db.listCollections().toArray())
+      .map(entry => entry.name)
+      .filter(name => !name.startsWith('system.'))
+      .sort();
 
-  const manifest = {
-    createdAt: new Date().toISOString(),
-    format: MANIFEST_FORMAT,
-    database: mongoose.connection.name,
-    collections: [],
-    uploads: { dir: path.relative(target, uploadsTarget), files: 0, bytes: 0, referenced: 0, entries: [] }
-  };
+    const manifest = {
+      createdAt: new Date().toISOString(),
+      format: MANIFEST_FORMAT,
+      database: mongoose.connection.name,
+      collections: [],
+      uploads: { dir: path.relative(target, uploadsTarget), files: 0, bytes: 0, referenced: 0, entries: [] }
+    };
 
-  for (const name of collections) {
-    const file = path.join(dbDir, `${name}.ndjson`);
-    const stream = fs.createWriteStream(file);
-    let count = 0;
-    const cursor = mongoose.connection.db.collection(name).find({});
-    for await (const doc of cursor) {
-      stream.write(`${JSON.stringify(encode(doc))}\n`);
-      count += 1;
+    for (const name of collections) {
+      const file = path.join(dbDir, `${name}.ndjson`);
+      const stream = fs.createWriteStream(file);
+      let count = 0;
+      const cursor = mongoose.connection.db.collection(name).find({});
+      for await (const doc of cursor) {
+        stream.write(`${JSON.stringify(encode(doc))}\n`);
+        count += 1;
+      }
+      await new Promise(resolve => stream.end(resolve));
+      manifest.collections.push({ name, count, file: path.relative(target, file), sha256: await sha256File(file) });
+      console.log(`  ${name}: ${count} documents`);
     }
-    await new Promise(resolve => stream.end(resolve));
-    manifest.collections.push({ name, count, file: path.relative(target, file), sha256: sha256File(file) });
-    console.log(`  ${name}: ${count} documents`);
-  }
 
-  // Uploads: images and nothing else (temp files are transient).
-  const referenced = await referencedImageFilenames();
-  manifest.uploads.referenced = referenced.size;
-  const copied = new Set();
+    // Uploads: images and nothing else (temp files are transient).
+    const referenced = await referencedImageFilenames();
+    manifest.uploads.referenced = referenced.size;
+    const copied = new Set();
 
-  // Beide Unterverzeichnisse (v1.12.0: images + files) unabhängig voneinander
-  // erfassen — ein Bestand ohne Bilder, aber mit Anhängen, muss genauso
-  // vollständig gesichert werden.
-  for (const [subdir, sourceDir] of [['images', images], ['files', filesDir()]]) {
-    if (!fs.existsSync(sourceDir)) continue;
-    const targetDir = path.join(uploadsTarget, subdir);
-    fs.mkdirSync(targetDir, { recursive: true });
-    for (const entry of fs.readdirSync(sourceDir)) {
-      if (entry === '.gitkeep') continue;
-      const source = path.join(sourceDir, entry);
-      if (!fs.statSync(source).isFile()) continue;
-      const destination = path.join(targetDir, entry);
-      fs.copyFileSync(source, destination);
-      copied.add(entry);
-      manifest.uploads.files += 1;
-      manifest.uploads.bytes += fs.statSync(destination).size;
-      manifest.uploads.entries.push({ name: entry, dir: subdir, size: fs.statSync(destination).size, sha256: sha256File(destination) });
+    // Beide Unterverzeichnisse (v1.12.0: images + files) unabhängig voneinander
+    // erfassen — ein Bestand ohne Bilder, aber mit Anhängen, muss genauso
+    // vollständig gesichert werden.
+    for (const [subdir, sourceDir] of [['images', images], ['files', filesDir()]]) {
+      if (!fs.existsSync(sourceDir)) continue;
+      const targetDir = path.join(uploadsTarget, subdir);
+      fs.mkdirSync(targetDir, { recursive: true });
+      for (const entry of fs.readdirSync(sourceDir)) {
+        if (entry === '.gitkeep') continue;
+        const source = path.join(sourceDir, entry);
+        if (!fs.statSync(source).isFile()) continue;
+        const destination = path.join(targetDir, entry);
+        // Async I/O für den heissen Pfad (v1.14.0): copyFileSync + zwei statSync
+        // + Full-File-Hash pro Datei hielten den Event-Loop pro Datei fest.
+        await fs.promises.copyFile(source, destination);
+        const stats = await fs.promises.stat(destination);
+        copied.add(entry);
+        manifest.uploads.files += 1;
+        manifest.uploads.bytes += stats.size;
+        manifest.uploads.entries.push({ name: entry, dir: subdir, size: stats.size, sha256: await sha256File(destination) });
+      }
     }
-  }
 
-  // Vollständigkeit: Jede von der Datenbank referenzierte Datei muss im Backup
-  // sein. Ohne diese Prüfung entstand bei falsch gesetztem UPLOADS_DIR ein
-  // „erfolgreiches" Backup ohne ein einziges Bild.
-  const missing = [...referenced].filter(name => !copied.has(name));
-  if (missing.length > 0) {
+    // Vollständigkeit: Jede von der Datenbank referenzierte Datei muss im Backup
+    // sein. Ohne diese Prüfung entstand bei falsch gesetztem UPLOADS_DIR ein
+    // „erfolgreiches" Backup ohne ein einziges Bild.
+    const missing = [...referenced].filter(name => !copied.has(name));
+    if (missing.length > 0) {
+      throw new Error(
+        `Backup unvollständig: ${missing.length} von ${referenced.size} referenzierten Bilddateien fehlen `
+        + `(z. B. ${missing.slice(0, 3).join(', ')}). Quelle: ${images} — passt UPLOADS_DIR? `
+        + 'Das unvollständige Backup wurde verworfen.'
+      );
+    }
+    if (referenced.size > 0 && manifest.uploads.files === 0) {
+      throw new Error(`Backup unvollständig: Datenbank referenziert ${referenced.size} Bilder, aber keine Datei wurde erfasst (${images}).`);
+    }
+
+    fs.writeFileSync(path.join(target, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    applyRetention(keep);
+
+    console.log(`Backup geschrieben: ${target}`);
+    console.log(`  ${manifest.collections.length} Collections, ${manifest.uploads.files} Upload-Dateien (${manifest.uploads.bytes} Bytes), ${referenced.size} referenziert`);
+    return target;
+  } catch (error) {
+    // Review v1.14.0: Ein fehlgeschlagener Lauf darf kein keeplocal-* -
+    // Verzeichnis hinterlassen — es belegte einen Retention-Slot und
+    // verdraengte so die letzten guten Recovery Points.
     fs.rmSync(target, { recursive: true, force: true });
-    throw new Error(
-      `Backup unvollständig: ${missing.length} von ${referenced.size} referenzierten Bilddateien fehlen `
-      + `(z. B. ${missing.slice(0, 3).join(', ')}). Quelle: ${images} — passt UPLOADS_DIR? `
-      + 'Das unvollständige Backup wurde verworfen.'
-    );
+    console.error(`  Abgebrochen, ${target} verworfen: ${error.message}`);
+    throw error;
   }
-  if (referenced.size > 0 && manifest.uploads.files === 0) {
-    fs.rmSync(target, { recursive: true, force: true });
-    throw new Error(`Backup unvollständig: Datenbank referenziert ${referenced.size} Bilder, aber keine Datei wurde erfasst (${images}).`);
-  }
-
-  fs.writeFileSync(path.join(target, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  applyRetention(keep);
-
-  console.log(`Backup geschrieben: ${target}`);
-  console.log(`  ${manifest.collections.length} Collections, ${manifest.uploads.files} Upload-Dateien (${manifest.uploads.bytes} Bytes), ${referenced.size} referenziert`);
-  return target;
 }
 
 function listBackups() {
@@ -252,7 +272,7 @@ function readManifest(target) {
  * checksums and document counts, upload files with size and checksum, and (for
  * format >= 2) that every image the database references is present.
  */
-function verifyBackup(dir) {
+async function verifyBackup(dir) {
   const target = resolveBackupDir(dir);
   const manifest = readManifest(target);
   const report = { target, format: manifest.format || 1, collections: 0, documents: 0, uploads: 0, warnings: [] };
@@ -260,7 +280,7 @@ function verifyBackup(dir) {
   for (const entry of manifest.collections) {
     const file = path.join(target, entry.file);
     if (!fs.existsSync(file)) throw new Error(`Collection-Datei fehlt: ${entry.file}`);
-    const checksum = sha256File(file);
+    const checksum = await sha256File(file);
     if (checksum !== entry.sha256) {
       throw new Error(`Prüfsumme stimmt nicht für ${entry.file} (erwartet ${entry.sha256}, gefunden ${checksum})`);
     }
@@ -286,7 +306,7 @@ function verifyBackup(dir) {
       if (stats.size !== entry.size) {
         throw new Error(`Upload-Größe stimmt nicht für ${entry.name} (erwartet ${entry.size}, gefunden ${stats.size})`);
       }
-      const checksum = sha256File(file);
+      const checksum = await sha256File(file);
       if (checksum !== entry.sha256) {
         throw new Error(`Prüfsumme stimmt nicht für Upload ${entry.name} (erwartet ${entry.sha256}, gefunden ${checksum})`);
       }
@@ -316,7 +336,7 @@ async function restoreBackup(dir) {
   const target = resolveBackupDir(dir);
   // Alles prüfen, BEVOR das erste deleteMany läuft: ein halbleer restaurierter
   // Zustand ist schlechter als gar keiner.
-  const report = verifyBackup(target);
+  const report = await verifyBackup(target);
   const manifest = readManifest(target);
   for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
 
@@ -362,11 +382,11 @@ async function restoreBackup(dir) {
       const source = path.join(uploadsSource, entry);
       if (!fs.statSync(source).isFile()) continue;
       const destination = path.join(destinationDir, entry);
-      fs.copyFileSync(source, destination);
+      await fs.promises.copyFile(source, destination);
       // Auch die Kopie prüfen: eine abgeschnittene Datei wäre sonst ein
       // stilles Loch im Restore.
       const expected = manifest.uploads?.entries?.find(item => item.name === entry);
-      if (expected && sha256File(destination) !== expected.sha256) {
+      if (expected && await sha256File(destination) !== expected.sha256) {
         throw new Error(`Prüfsumme stimmt nicht für wiederhergestellte Datei ${entry}`);
       }
       restoredUploads += 1;
@@ -403,7 +423,7 @@ async function main() {
 
   // --verify und --list brauchen keine Datenbank.
   if (args.verify) {
-    const report = verifyBackup(args.verify);
+    const report = await verifyBackup(args.verify);
     for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
     console.log(`Recovery Point OK: ${report.target}`);
     console.log(`  ${report.collections} Collections, ${report.documents} Dokumente, ${report.uploads} Uploads (Format ${report.format})`);

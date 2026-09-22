@@ -15,10 +15,14 @@ import org.junit.Before
 import org.junit.Test
 import java.time.Instant
 
+// v1.14.0 Nr. 4: Rename/Merge/Delete laufen als EIN applyTagOperation pro
+// Aktion (Server-updateMany) statt einem updateNote pro Notiz. Gepinnt ist
+// die Delegation — was die Notizen am Ende tragen, entscheidet der Server.
+
 class TagUseCasesTest {
 
     private lateinit var repository: NoteRepository
-    private lateinit var updatedNotes: MutableList<Note>
+    private val bulkCalls = mutableListOf<Triple<String, List<String>, String?>>()
 
     private fun note(id: String, vararg tags: String) = Note(
         id = id,
@@ -37,84 +41,67 @@ class TagUseCasesTest {
         updatedAt = Instant.EPOCH
     )
 
-    private fun tagFlow(vararg notes: Note) = flowOf(Result.Success(notes.toList()))
-
     @Before
     fun setUp() {
         repository = mockk(relaxed = true)
-        updatedNotes = mutableListOf()
-        coEvery { repository.updateNote(capture(updatedNotes)) } answers {
-            Result.Success(firstArg<Note>())
+        coEvery { repository.applyTagOperation(any(), any(), any()) } answers {
+            bulkCalls += Triple(firstArg(), secondArg(), thirdArg())
+            Result.Success(3)
         }
     }
 
     @Test
-    fun `rename rewrites the tag on every affected note`() = runTest {
-        coEvery { repository.getNotes(tag = "einkauf") } returns tagFlow(
-            note("a", "einkauf", "privat"),
-            note("b", "einkauf")
-        )
+    fun `rename delegates one bulk call and passes the count through`() = runTest {
+        val result = RenameTagUseCase(repository)("  einkauf ", "Einkauf 2026")
 
-        val result = RenameTagUseCase(repository)("einkauf", "Einkauf 2026")
-
-        assertEquals(Result.Success(2), result)
-        assertEquals(2, updatedNotes.size)
-        assertTrue(updatedNotes.any { it.id == "a" && it.tags == listOf("privat", "Einkauf 2026") })
-        assertTrue(updatedNotes.any { it.id == "b" && it.tags == listOf("Einkauf 2026") })
+        assertEquals(Result.Success(3), result)
+        assertEquals(listOf(Triple("rename", listOf("einkauf"), "Einkauf 2026")), bulkCalls)
+        coVerify(exactly = 0) { repository.updateNote(any()) }
     }
 
     @Test
-    fun `rename onto an existing tag merges instead of duplicating`() = runTest {
-        coEvery { repository.getNotes(tag = "shop") } returns tagFlow(
-            note("a", "shop", "einkauf")
+    fun `merge sends all sources in one request`() = runTest {
+        MergeTagsUseCase(repository)(listOf(" Einkauf ", "shopping", "Einkauf"), "einkauf")
+
+        // Getrimmt und distinct — Quell-Tags, die dem Ziel entsprechen,
+        // filtert der Server selbst heraus (setUnion, kein Doppeltag).
+        assertEquals(
+            listOf(Triple("merge", listOf("Einkauf", "shopping"), "einkauf")),
+            bulkCalls
         )
-
-        RenameTagUseCase(repository)("shop", "einkauf")
-
-        assertEquals(listOf("einkauf"), updatedNotes.single().tags)
     }
 
     @Test
-    fun `rename rejects identical names and blanks`() = runTest {
+    fun `merge with only the target as source delegates as a server-side no-op`() = runTest {
+        // Vor v1.14.0 war das ein lokaler Fehler; der Server behandelt es als
+        // No-Op mit modified=0 — ehrlicher als eine Fehlermeldung.
+        val result = MergeTagsUseCase(repository)(listOf("einkauf"), "einkauf")
+
+        assertEquals(Result.Success(3), result)
+        assertEquals(1, bulkCalls.size)
+    }
+
+    @Test
+    fun `rename rejects identical names and blanks before any request`() = runTest {
         val useCase = RenameTagUseCase(repository)
         assertTrue(useCase("x", "x") is Result.Error)
         assertTrue(useCase(" ", "y") is Result.Error)
         assertTrue(useCase("x", " ") is Result.Error)
-        coVerify(exactly = 0) { repository.updateNote(any()) }
+        assertTrue(bulkCalls.isEmpty())
     }
 
     @Test
-    fun `merge collapses several source tags into the target`() = runTest {
-        coEvery { repository.getNotes(tag = "Einkauf") } returns tagFlow(note("a", "Einkauf", "privat"))
-        coEvery { repository.getNotes(tag = "shopping") } returns tagFlow(
-            note("b", "shopping", "Einkauf"), // carries two source tags
-            note("c", "shopping")
-        )
-
-        val result = MergeTagsUseCase(repository)(listOf("Einkauf", "shopping"), "einkauf")
+    fun `delete delegates one bulk call without a target`() = runTest {
+        val result = DeleteTagUseCase(repository)("  alt ")
 
         assertEquals(Result.Success(3), result)
-        val byId = updatedNotes.associateBy { it.id }
-        assertEquals(listOf("privat", "einkauf"), byId.getValue("a").tags)
-        assertEquals(listOf("einkauf"), byId.getValue("b").tags) // single target tag, not two
-        assertEquals(listOf("einkauf"), byId.getValue("c").tags)
+        assertEquals(listOf(Triple("delete", listOf("alt"), null)), bulkCalls)
     }
 
     @Test
-    fun `merge with only the target as source is rejected`() = runTest {
-        val result = MergeTagsUseCase(repository)(listOf("einkauf"), "einkauf")
-        assertTrue(result is Result.Error)
-        coVerify(exactly = 0) { repository.updateNote(any()) }
-    }
-
-    @Test
-    fun `delete removes the tag but keeps the notes`() = runTest {
-        coEvery { repository.getNotes(tag = "alt") } returns tagFlow(note("a", "alt", "bleibt"))
-
-        val result = DeleteTagUseCase(repository)("alt")
-
-        assertEquals(Result.Success(1), result)
-        assertEquals(listOf("bleibt"), updatedNotes.single().tags)
+    fun `delete rejects blanks before any request`() = runTest {
+        assertTrue(DeleteTagUseCase(repository)("  ") is Result.Error)
+        assertTrue(bulkCalls.isEmpty())
     }
 
     @Test

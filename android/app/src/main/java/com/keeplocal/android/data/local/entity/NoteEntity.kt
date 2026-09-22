@@ -37,5 +37,8 @@ data class NoteEntity(
     val parentId: String? = null,
     // Code note (v1.10.0): monospace rendering. Boolean with SQL DEFAULT 0
     // keeps the v5 migration a single ALTER TABLE like v4 before it.
-    val isCode: Boolean = false
+    val isCode: Boolean = false,
+    // PDF attachments serialized as JSON (v1.14.0 Nr. 5), same pattern as
+    // imagesJson: DEFAULT '[]' keeps the v6 migration one ADD COLUMN.
+    val filesJson: String = "[]"
 )

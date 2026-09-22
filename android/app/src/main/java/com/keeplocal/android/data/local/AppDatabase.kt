@@ -12,7 +12,7 @@ import com.keeplocal.android.data.local.entity.PendingOperationEntity
 
 @Database(
     entities = [NoteEntity::class, PendingOperationEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -59,6 +59,17 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE notes ADD COLUMN parentId TEXT")
                 db.execSQL("ALTER TABLE notes ADD COLUMN isCode INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * v6 adds `filesJson` (PDF attachments, v1.14.0 Nr. 5). One additive
+         * column with DEFAULT '[]' — existing rows simply have no attachments,
+         * which is what the app showed before the field existed at all.
+         */
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN filesJson TEXT NOT NULL DEFAULT '[]'")
             }
         }
     }

@@ -30,6 +30,9 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyExpiry, setNewKeyExpiry] = useState('never');
+  // v1.14.0 Nr. 10: Scopes — neuer Default ist read-only, Schreibzugriff
+  // muss beim Erteilen ausdrücklich gewählt werden.
+  const [newKeyScopes, setNewKeyScopes] = useState('read');
   const [createdKey, setCreatedKey] = useState(null);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
@@ -107,10 +110,15 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
     }
     try {
       setApiKeyError('');
-      const result = await createApiKey(newKeyName.trim(), newKeyExpiry);
+      const result = await createApiKey(
+        newKeyName.trim(),
+        newKeyExpiry,
+        newKeyScopes === 'write' ? ['read', 'write'] : ['read']
+      );
       setCreatedKey(result.data.key);
       setNewKeyName('');
       setNewKeyExpiry('never');
+      setNewKeyScopes('read');
       loadApiKeys();
     } catch (err) {
       setApiKeyError(resolveApiErrorMessage(err, t));
@@ -402,9 +410,19 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
                   aria-label={t('apiKeyExpiryLabel')}
                 >
                   <option value="never">{t('apiKeyExpiryNever')}</option>
-                  <option value="30">{t('apiKeyExpiry30')}</option>
-                  <option value="90">{t('apiKeyExpiry90')}</option>
-                  <option value="365">{t('apiKeyExpiryYear')}</option>
+                  <option value="30d">{t('apiKeyExpiry30')}</option>
+                  <option value="90d">{t('apiKeyExpiry90')}</option>
+                  <option value="365d">{t('apiKeyExpiryYear')}</option>
+                </select>
+                <select
+                  className="settings-input api-key-scope-select"
+                  value={newKeyScopes}
+                  onChange={(e) => setNewKeyScopes(e.target.value)}
+                  aria-label={t('apiKeyScopesLabel')}
+                  title={t('apiKeyScopeHint')}
+                >
+                  <option value="read">{t('apiKeyScopeRead')}</option>
+                  <option value="write">{t('apiKeyScopeWrite')}</option>
                 </select>
                 <button className="btn-create-key" onClick={handleCreateKey}>
                   {t('create')}
@@ -423,7 +441,23 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
                 {apiKeys.map((key) => (
                   <div key={key._id} className="api-key-item">
                     <div className="api-key-item-info">
-                      <span className="api-key-item-name">{key.name}</span>
+                      <span className="api-key-item-name">
+                        {key.name}
+                        <span
+                          className={
+                            Array.isArray(key.scopes) && key.scopes.includes('write')
+                              ? 'api-key-scope-badge is-write'
+                              : Array.isArray(key.scopes)
+                                ? 'api-key-scope-badge is-read'
+                                : 'api-key-scope-badge is-legacy'
+                          }
+                          title={t('apiKeyScopeHint')}
+                        >
+                          {Array.isArray(key.scopes)
+                            ? (key.scopes.includes('write') ? t('apiKeyScopeBadgeWrite') : t('apiKeyScopeBadgeRead'))
+                            : t('apiKeyScopeBadgeLegacy')}
+                        </span>
+                      </span>
                       <span className="api-key-item-meta">
                         {key.prefix}... &middot; {t('apiKeyCreatedMeta')} {new Date(key.createdAt).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-GB')}
                         {key.lastUsedAt && (

@@ -705,15 +705,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun createApiKey(name: String, expiresInDays: Int?) {
+    fun createApiKey(name: String, expiresInDays: Int?, allowWrite: Boolean = false) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) {
             _uiState.update { it.copy(message = context.getString(R.string.api_key_name_required)) }
             return
         }
+        // The dialog works in day counts; the server only understands its
+        // own '30d'|'90d'|'365d'|'never' vocabulary (sending the bare number
+        // was a 400 on every time-limited key).
+        val expiresIn = when (expiresInDays) {
+            30 -> "30d"; 90 -> "90d"; 365 -> "365d"; else -> "never"
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingApiKeys = true) }
-            when (val result = apiKeyRepository.createApiKey(trimmedName, expiresInDays)) {
+            when (val result = apiKeyRepository.createApiKey(trimmedName, expiresIn, allowWrite)) {
                 is Result.Success -> {
                     // The plaintext key exists only in this response; surface
                     // it once, then it is gone forever.

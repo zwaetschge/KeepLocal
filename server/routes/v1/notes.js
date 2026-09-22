@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const notesService = require('../../services/notesService');
 const { httpStatus } = require('../../constants');
+const { requireApiKeyWrite } = require('../../middleware/apiKeyAuth');
 
 /**
  * @swagger
@@ -251,7 +252,10 @@ router.get('/', async (req, res, next) => {
       // Parität mit der Web-API (v1.13.0): Ordner-Scope und Delta-Sync —
       // beides fehlte hier, obwohl Sync-Scripts die Hauptnutzer der v1 sind.
       folderId: folderId || undefined,
-      since: since || undefined
+      since: since || undefined,
+      // v1.14.0: Die v1-Antwort enthaelt counts/tags ohnehin nie — die vier
+      // Zusaetzqueries pro Aufruf waren reine Verschwendung und entfallen.
+      includeMeta: false
     });
 
     res.json({
@@ -384,7 +388,7 @@ router.get('/export/markdown', async (req, res, next) => {
  *       400:
  *         description: Ungueltige items
  */
-router.post('/import/markdown', async (req, res, next) => {
+router.post('/import/markdown', requireApiKeyWrite, async (req, res, next) => {
   try {
     if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.items)) {
       return res.status(httpStatus.BAD_REQUEST).json({
@@ -488,7 +492,7 @@ router.get('/:id', async (req, res, next) => {
  *       400:
  *         description: Ungültige Daten
  */
-router.post('/', async (req, res, next) => {
+router.post('/', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.createNote(req.body, req.user._id);
     res.status(httpStatus.CREATED).json({
@@ -532,7 +536,7 @@ router.post('/', async (req, res, next) => {
  *       404:
  *         description: Notiz nicht gefunden
  */
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.updateNote(req.params.id, req.body, req.user._id);
     res.json({
@@ -592,7 +596,7 @@ router.put('/:id', async (req, res, next) => {
  *       404:
  *         description: Notiz nicht gefunden
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireApiKeyWrite, async (req, res, next) => {
   try {
     // Ehrliche Semantik: Seit dem Papierkorb (PR #106) ist deleteNote ein Soft
     // Delete. Die v1-API antwortete weiter „Notiz gelöscht“ und bot weder
@@ -641,7 +645,7 @@ router.delete('/:id', async (req, res, next) => {
  *       404:
  *         description: Notiz nicht gefunden oder nicht im Papierkorb
  */
-router.post('/:id/restore', async (req, res, next) => {
+router.post('/:id/restore', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.restoreNote(req.params.id, req.user._id);
     res.json({
@@ -678,7 +682,7 @@ router.post('/:id/restore', async (req, res, next) => {
  *       200:
  *         description: Pin-Status geändert
  */
-router.post('/:id/pin', async (req, res, next) => {
+router.post('/:id/pin', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.togglePinNote(req.params.id, req.user._id);
     res.json({
@@ -714,7 +718,7 @@ router.post('/:id/pin', async (req, res, next) => {
  *       200:
  *         description: Archiv-Status geändert
  */
-router.post('/:id/archive', async (req, res, next) => {
+router.post('/:id/archive', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.toggleArchiveNote(req.params.id, req.user._id);
     res.json({
@@ -761,7 +765,7 @@ router.post('/:id/archive', async (req, res, next) => {
  *       200:
  *         description: Notiz geteilt
  */
-router.post('/:id/share', async (req, res, next) => {
+router.post('/:id/share', requireApiKeyWrite, async (req, res, next) => {
   try {
     const { userId: targetUserId } = req.body;
     if (!targetUserId) {
@@ -809,7 +813,7 @@ router.post('/:id/share', async (req, res, next) => {
  *       200:
  *         description: Freigabe aufgehoben
  */
-router.delete('/:id/share/:userId', async (req, res, next) => {
+router.delete('/:id/share/:userId', requireApiKeyWrite, async (req, res, next) => {
   try {
     const note = await notesService.unshareNote(req.params.id, req.user._id, req.params.userId);
     res.json({

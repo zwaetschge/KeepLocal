@@ -465,7 +465,7 @@ function AppContent() {
           <NoteModal
             note={noteModal.note}
             serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
-            onSave={handleModalSave} onClose={closeNoteModal}
+            onSave={handleModalSave} onClose={closeNoteModal} onRestored={() => fetchNotes(searchTerm, pagination.page, { background: true })}
             onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
             onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
             availableTags={allKnownTags}

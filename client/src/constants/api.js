@@ -50,6 +50,10 @@ export const API_ENDPOINTS = {
     META: '/api/notes/meta',
     // v1.11.0: Tag umbenennen/zusammenführen/löschen über alle sichtbaren Notizen
     TAGS: '/api/notes/tags',
+    // v1.14.0: Revisions-Historie — Liste (Metadaten), Volltext via ?at=,
+    // Restore als normales updateNote (aktueller Stand wird selbst Revision).
+    REVISIONS: (id) => `/api/notes/${id}/revisions`,
+    RESTORE_REVISION: (id) => `/api/notes/${id}/revisions/restore`,
   },
 
   // Friends endpoints

@@ -114,6 +114,30 @@ const notesAPI = {
   getMeta: (options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.META, { signal: options.signal }),
 
   /**
+   * Revisions-Historie (v1.14.0 Nr. 7): Liste der gespeicherten Fassungen
+   * (nur Metadaten — neueste zuerst) und Volltext einer Fassung via ?at=.
+   * `at` ist exakt das savedAt, das die Liste geliefert hat.
+   */
+  getRevisions: (id, options = {}) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.REVISIONS(id), { signal: options.signal }),
+
+  getRevision: (id, at, options = {}) =>
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.REVISIONS(id)}?at=${encodeURIComponent(at)}`, {
+      signal: options.signal,
+    }),
+
+  /**
+   * Fassung wiederherstellen: läuft serverseitig als normales updateNote —
+   * der aktuelle Stand wird dabei selbst zur jüngsten Revision (Undo des
+   * Undo funktioniert), 409-Konfliktbehandlung inklusive.
+   */
+  restoreRevision: (id, at) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.RESTORE_REVISION(id), {
+      method: 'POST',
+      body: JSON.stringify({ at }),
+    }),
+
+  /**
    * Markdown-ZIP-Round-trip-Import (v1.13.0 Nr. 7): Das Archiv des
    * Volldaten-Exports inklusive Anhaenge zurueckspielen. Der Server liest
    * das ZIP selbst (Fresh-Namen, Zip-Slip unmöglich) — der Client schickt

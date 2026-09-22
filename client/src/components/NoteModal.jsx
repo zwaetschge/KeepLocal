@@ -13,6 +13,7 @@ import { useLinkPreview, useTodoList, useModalShortcuts } from '../hooks';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
+import NoteHistory from './NoteHistory';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 // v1.12.0: Anhang-Groesse kompakt anzeigen (1024er-Einheiten, eine Nachkommastelle).
@@ -49,7 +50,7 @@ function isNoteConflictError(error) {
   );
 }
 
-function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], backlinks = [], onOpenNote, folders = [], defaultParentId = null }) {
+function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], backlinks = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -132,6 +133,22 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     handleItemKeyDown: handleTodoItemKeyDown,
     getCleanedItems,
   } = useTodoList(note?.todoItems || []);
+
+  // v1.14.0 Nr. 7: Restore aus der Revisions-Historie. Der Server läuft über
+  // updateNote und liefert die frische Note — lokalen State UND baseUpdatedAt
+  // übernehmen, sonst 409-t der nächste manuelle Save gegen den alten Stand.
+  const handleRevisionRestored = useCallback((updatedNote) => {
+    if (!updatedNote || typeof updatedNote !== 'object') return;
+    setTitle(updatedNote.title || '');
+    setContent(updatedNote.content || '');
+    setTags(Array.isArray(updatedNote.tags) ? updatedNote.tags : []);
+    setIsTodoList(Boolean(updatedNote.isTodoList));
+    if (Array.isArray(updatedNote.todoItems)) setTodoItems(updatedNote.todoItems);
+    setIsPinned(Boolean(updatedNote.isPinned));
+    setConflict(null);
+    baseUpdatedAtRef.current = updatedNote.updatedAt || null;
+    onRestored?.();
+  }, [setTodoItems, onRestored]);
 
   // Beim Öffnen: gibt es einen neueren, ungespeicherten Entwurf?
   useEffect(() => {
@@ -1069,6 +1086,14 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 </button>
               ))}
             </div>
+          )}
+
+          {/* v1.14.0 Nr. 7: Revisions-Historie — der Server speichert seit
+              v1.13.0 Fassungen, aber keine UI zeigte sie. Demo-Konten sind
+              serverseitig vom Restore ausgesperrt (rejectDemoNoteCapabilities)
+              — die Historie bleibt ihnen erspart. */}
+          {!isDemo && note && (
+            <NoteHistory noteId={note._id} onRestored={handleRevisionRestored} />
           )}
 
           {/* v1.10.0: Verlinkte Notizen (aus `[[Titel]]` im Inhalt) und

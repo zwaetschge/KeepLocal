@@ -31,6 +31,7 @@ test('regular list queries exclude trashed notes', async () => {
   const seen = { counts: [], aggregates: [] };
   const chain = {
     populate() { return this; },
+    select() { return this; },
     sort(value) { seen.sort = value; return this; },
     skip() { return this; },
     limit() { return Promise.resolve([]); }
@@ -58,6 +59,7 @@ test('the trash view lists only own deleted notes, newest first', async () => {
   const seen = {};
   const chain = {
     populate() { return this; },
+    select() { return this; },
     sort(value) { seen.sort = value; return this; },
     skip() { return this; },
     limit() { return Promise.resolve([{ _id: NOTE_ID, deletedAt: new Date() }]); }

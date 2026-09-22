@@ -65,19 +65,42 @@ router.get('/', async (req, res, next) => {
  *                 type: string
  *                 enum: [30d, 90d, 365d, never]
  *                 default: never
+ *               scopes:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   enum: [read, write]
+ *                 default: [read]
+ *                 description: v1.14.0 — ['read'] (Default) erlaubt nur GETs auf /api/v1, ['read','write'] auch mutierende Routen. Keys ohne Angabe sind read-only.
  *     responses:
  *       201:
  *         description: API key created. The key value is only returned once.
  */
 router.post('/', async (req, res, next) => {
   try {
-    const { name, expiresIn } = req.body;
+    const { name, expiresIn, scopes } = req.body;
 
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
       return res.status(400).json({
         success: false,
         error: 'Name muss zwischen 1 und 100 Zeichen lang sein'
       });
+    }
+
+    // Scopes (v1.14.0): ['read'] oder ['read', 'write']. Default read — ein
+    // neuer Key für Lesec-Sync-Scripts darf nicht stillschweigend löschen
+    // können; Schreibzugriff muss ausdrücklich verlangt werden.
+    let requestedScopes = ['read'];
+    if (scopes !== undefined) {
+      const valid = ['read', 'write'];
+      const unique = [...new Set(Array.isArray(scopes) ? scopes : [scopes])];
+      if (unique.length === 0 || unique.some(scope => !valid.includes(scope))) {
+        return res.status(400).json({
+          success: false,
+          error: 'scopes muss ein Array aus "read" und/oder "write" sein'
+        });
+      }
+      requestedScopes = unique.includes('write') ? ['read', 'write'] : ['read'];
     }
 
     const expirationDays = {
@@ -117,7 +140,8 @@ router.post('/', async (req, res, next) => {
       key: hash,
       prefix,
       userId: req.user._id,
-      expiresAt
+      expiresAt,
+      scopes: requestedScopes
     });
 
     await apiKey.save();
@@ -140,6 +164,7 @@ router.post('/', async (req, res, next) => {
         name: apiKey.name,
         key: rawKey, // Only returned once!
         prefix: apiKey.prefix,
+        scopes: apiKey.scopes,
         expiresAt: apiKey.expiresAt,
         createdAt: apiKey.createdAt
       },

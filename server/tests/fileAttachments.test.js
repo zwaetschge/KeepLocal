@@ -23,6 +23,7 @@ function loadService(NoteMock, UserMock = {}) {
 function queryReturning(doc) {
   return {
     populate() { return this; },
+    select() { return this; },
     then(onFulfilled, onRejected) { return Promise.resolve(doc).then(onFulfilled, onRejected); }
   };
 }

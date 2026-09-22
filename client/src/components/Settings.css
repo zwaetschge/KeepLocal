@@ -771,3 +771,33 @@ input:checked + .toggle-slider:before {
   font-size: 0.875rem;
   margin: 0.5rem 0 0;
 }
+
+/* v1.14.0 Nr. 10: Scope-Auswahl beim Erstellen + Badge pro Key */
+.api-key-scope-select { max-width: 180px; }
+
+.api-key-scope-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.api-key-scope-badge.is-read {
+  background: rgba(25, 118, 210, 0.12);
+  color: #1565c0;
+}
+
+.api-key-scope-badge.is-write {
+  background: rgba(46, 125, 50, 0.14);
+  color: #2e7d32;
+}
+
+.api-key-scope-badge.is-legacy {
+  background: rgba(230, 81, 0, 0.12);
+  color: #e65100;
+}

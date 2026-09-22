@@ -11,6 +11,7 @@ import com.keeplocal.android.domain.model.LinkPreview
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.model.NoteColor
 import com.keeplocal.android.domain.model.NoteImage
+import com.keeplocal.android.domain.model.NoteFile
 import com.keeplocal.android.domain.model.SharedUser
 import com.keeplocal.android.domain.model.TodoItem
 import com.keeplocal.android.domain.model.TranscriptionException
@@ -65,6 +66,9 @@ data class NoteEditorState(
     val friends: List<Friend> = emptyList(),
     val images: List<NoteImage> = emptyList(),
     val uploadingImageCount: Int = 0,
+    // PDF attachments (v1.14.0 Nr. 5) — previously dropped in every mapping.
+    val files: List<NoteFile> = emptyList(),
+    val uploadingFileCount: Int = 0,
     val isRecording: Boolean = false,
     val recordingElapsedMs: Long = 0L,
     val isTranscribing: Boolean = false,
@@ -340,6 +344,7 @@ class NoteEditorViewModel @Inject constructor(
                         tags = note.tags,
                         sharedWith = note.sharedWith,
                         images = note.images,
+                        files = note.files,
                         baseUpdatedAt = note.baseUpdatedAt,
                         remindAt = note.remindAt,
                         isCode = note.isCode,
@@ -689,6 +694,77 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Handles SAF document picker output (PDF only). Same contract as
+     * [onImagesPicked]: needs a server note, clamps to the 25-per-note
+     * budget and reports dropped picks via [NoteEditorState.mediaHint].
+     */
+    fun onFilesPicked(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val state = _uiState.value
+        val noteId = state.id
+        if (noteId == null || noteId.startsWith(OFFLINE_ID_PREFIX)) {
+            // TODO-STR: string resource (media_save_note_first)
+            _uiState.update { it.copy(mediaHint = "Notiz erst speichern, dann PDFs anhängen") }
+            return
+        }
+
+        val allowed = MediaLimits.allowedFilePickCount(state.files.size, uris.size)
+        val dropped = uris.size - allowed
+        if (allowed <= 0) {
+            // TODO-STR: string resource (media_files_limit_reached)
+            _uiState.update {
+                it.copy(mediaHint = "Maximal ${MediaLimits.MAX_FILES_PER_NOTE} PDFs pro Notiz")
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                uploadingFileCount = allowed,
+                mediaHint = if (dropped > 0) {
+                    // TODO-STR: string resource (media_files_dropped)
+                    "$dropped weitere(s) PDF verworfen — maximal ${MediaLimits.MAX_FILES_PER_NOTE} pro Notiz"
+                } else {
+                    null
+                },
+                errorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            val result = mediaRepository.uploadFiles(noteId, uris.take(allowed))
+            val updated = result.getOrNull()
+            if (updated != null) {
+                _uiState.update { it.copy(files = updated.files, uploadingFileCount = 0) }
+            } else {
+                val error = result as? Result.Error
+                val message = if (error?.throwable is IOException) {
+                    // TODO-STR: string resource (media_upload_offline)
+                    "PDFs können nur online hochgeladen werden"
+                } else {
+                    error?.message ?: "PDF-Upload fehlgeschlagen"
+                }
+                _uiState.update { it.copy(uploadingFileCount = 0) }
+                setErrorMessage(message)
+            }
+        }
+    }
+
+    fun deleteFile(file: NoteFile) {
+        val noteId = _uiState.value.id ?: return
+        if (noteId.startsWith(OFFLINE_ID_PREFIX)) return
+        viewModelScope.launch {
+            val result = mediaRepository.deleteFile(noteId, file.filename)
+            val updated = result.getOrNull()
+            if (updated != null) {
+                _uiState.update { it.copy(files = updated.files) }
+            } else {
+                setErrorMessage((result as? Result.Error)?.message ?: "PDF konnte nicht gelöscht werden")
+            }
+        }
+    }
+
     fun deleteImage(image: NoteImage) {
         val noteId = _uiState.value.id ?: return
         if (noteId.startsWith(OFFLINE_ID_PREFIX)) return
@@ -909,7 +985,8 @@ class NoteEditorViewModel @Inject constructor(
                 parentId = state.parentId,
                 // Keep attachments on offline saves — the server ignores this
                 // field but the local cache row is rebuilt from this note.
-                images = state.images
+                images = state.images,
+                files = state.files
             )
 
             val result = if (state.isNewNote) {

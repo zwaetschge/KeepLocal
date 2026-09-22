@@ -11,6 +11,7 @@ private val todoListType = Types.newParameterizedType(List::class.java, TodoItem
 private val stringListType = Types.newParameterizedType(List::class.java, String::class.java)
 private val sharedUserListType = Types.newParameterizedType(List::class.java, SharedUserData::class.java)
 private val noteImageListType = Types.newParameterizedType(List::class.java, NoteImageData::class.java)
+private val noteFileListType = Types.newParameterizedType(List::class.java, NoteFileData::class.java)
 
 private data class TodoItemData(val id: String, val text: String, val isCompleted: Boolean, val position: Int)
 private data class SharedUserData(val userId: String, val username: String)
@@ -19,6 +20,15 @@ private data class NoteImageData(
     val url: String,
     val thumbnailUrl: String? = null,
     val originalName: String? = null
+)
+
+private data class NoteFileData(
+    val filename: String,
+    val url: String,
+    val originalName: String? = null,
+    val mimetype: String? = null,
+    val size: Long? = null,
+    val uploadedAt: String? = null
 )
 
 fun NoteEntity.toDomain(): Note = Note(
@@ -33,6 +43,7 @@ fun NoteEntity.toDomain(): Note = Note(
     tags = parseStringList(tagsJson),
     sharedWith = parseSharedUsers(sharedWithJson),
     images = parseNoteImages(imagesJson),
+    files = parseNoteFiles(filesJson),
     owner = owner,
     position = position,
     createdAt = Instant.ofEpochMilli(createdAt),
@@ -55,6 +66,7 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     tagsJson = serializeStringList(tags),
     sharedWithJson = serializeSharedUsers(sharedWith),
     imagesJson = serializeNoteImages(images),
+    filesJson = serializeNoteFiles(files),
     owner = owner,
     position = position,
     createdAt = createdAt.toEpochMilli(),
@@ -115,6 +127,40 @@ private fun parseNoteImages(json: String): List<NoteImage> {
             )
         } ?: emptyList()
     } catch (_: Exception) { emptyList() }
+}
+
+// --- PDF attachments (v1.14.0 Nr. 5), mirroring the image helpers ---
+
+private fun parseNoteFiles(json: String): List<NoteFile> {
+    return try {
+        val adapter = moshi.adapter<List<NoteFileData>>(noteFileListType)
+        adapter.fromJson(json)?.map {
+            NoteFile(
+                filename = it.filename,
+                url = it.url,
+                originalName = it.originalName,
+                mimeType = it.mimetype,
+                sizeBytes = it.size,
+                uploadedAt = it.uploadedAt?.let { raw -> runCatching { Instant.parse(raw) }.getOrNull() }
+            )
+        } ?: emptyList()
+    } catch (_: Exception) { emptyList() }
+}
+
+private fun serializeNoteFiles(files: List<NoteFile>): String {
+    val adapter = moshi.adapter<List<NoteFileData>>(noteFileListType)
+    return adapter.toJson(
+        files.map {
+            NoteFileData(
+                filename = it.filename,
+                url = it.url,
+                originalName = it.originalName,
+                mimetype = it.mimeType,
+                size = it.sizeBytes,
+                uploadedAt = it.uploadedAt?.toString()
+            )
+        }
+    )
 }
 
 private fun serializeNoteImages(images: List<NoteImage>): String {

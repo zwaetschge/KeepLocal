@@ -13,6 +13,7 @@ import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.dao.NoteDao
 import com.keeplocal.android.data.local.entity.toEntity
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteFile
 import com.keeplocal.android.domain.model.TranscriptionException
 import com.keeplocal.android.domain.repository.MediaLimits
 import com.keeplocal.android.domain.repository.MediaRepository
@@ -124,12 +125,17 @@ class MediaRepositoryImpl @Inject constructor(
             Result.catching {
                 if (uris.isEmpty()) throw IllegalArgumentException("Keine Bilder ausgewählt")
 
+                // Temp files of THIS call only (review v1.14.0): the old global
+                // upload_* sweep also deleted files of a concurrently running
+                // upload (e.g. PDF attach while photos upload) before OkHttp
+                // streamed them.
+                val temps = mutableListOf<File>()
                 val note = try {
                     var latest: Note? = null
                     // Server accepts at most 5 images per request; send the rest
                     // as follow-up requests against the same note.
                     uris.chunked(MediaLimits.MAX_IMAGES_PER_REQUEST).forEach { chunk ->
-                        val parts = chunk.mapIndexedNotNull { index, uri -> buildImagePart(uri, index) }
+                        val parts = chunk.mapIndexedNotNull { index, uri -> buildImagePart(uri, index, temps) }
                         if (parts.isEmpty()) throw IOException("Bilder konnten nicht gelesen werden")
 
                         fileLogger.log("MediaRepo", "uploadImages: note=$noteId parts=${parts.size}")
@@ -141,7 +147,7 @@ class MediaRepositoryImpl @Inject constructor(
                     }
                     latest!!
                 } finally {
-                    cleanupUploadTempFiles()
+                    temps.forEach { temp -> runCatching { temp.delete() } }
                 }
 
                 cacheNote(note)
@@ -160,6 +166,76 @@ class MediaRepositoryImpl @Inject constructor(
                 note
             }
         }
+
+    override suspend fun uploadFiles(noteId: String, uris: List<Uri>): Result<Note> =
+        withContext(Dispatchers.IO) {
+            Result.catching {
+                if (uris.isEmpty()) throw IllegalArgumentException("Keine Dateien ausgewählt")
+
+                // Client-side PDF guard: the server magic-byte-checks %PDF-
+                // anyway, but rejecting here saves the whole multipart round
+                // trip and gives a German message instead of a raw 400.
+                val pdfUris = uris.filter { uri ->
+                    val mime = context.contentResolver.getType(uri)
+                    mime == "application/pdf" || (mime == null && isPdfName(queryDisplayName(uri)))
+                }
+                if (pdfUris.isEmpty()) {
+                    // TODO-STR: string resource (media_files_pdf_only)
+                    throw IllegalArgumentException("Nur PDF-Dateien können angehängt werden")
+                }
+
+                var latest: Note? = null
+                val temps = mutableListOf<File>()
+                try {
+                    // Server accepts at most 5 files per request — same chunking
+                    // as the image upload.
+                    pdfUris.chunked(MediaLimits.MAX_FILES_PER_REQUEST).forEach { chunk ->
+                        val parts = chunk.mapIndexedNotNull { index, uri -> buildFilePart(uri, index, temps) }
+                        if (parts.isEmpty()) throw IOException("Dateien konnten nicht gelesen werden")
+
+                        fileLogger.log("MediaRepo", "uploadFiles: note=$noteId parts=${parts.size}")
+                        val response = api.uploadFiles(noteId, parts)
+                        if (!response.isSuccessful) {
+                            throw failure(response)
+                        }
+                        latest = response.body()?.toDomain() ?: throw Exception("Upload ohne Antwort")
+                    }
+                    latest!!
+                } finally {
+                    temps.forEach { temp -> runCatching { temp.delete() } }
+                }.also { cacheNote(it) }
+            }
+        }
+
+    override suspend fun deleteFile(noteId: String, filename: String): Result<Note> =
+        withContext(Dispatchers.IO) {
+            Result.catching {
+                fileLogger.log("MediaRepo", "deleteFile: note=$noteId file=$filename")
+                val response = api.deleteFile(noteId, filename)
+                if (!response.isSuccessful) throw failure(response)
+                val note = response.body()?.toDomain() ?: throw Exception("Löschen ohne Antwort")
+                cacheNote(note)
+                note
+            }
+        }
+
+    override suspend fun downloadFileToCache(file: NoteFile): Result<File> = Result.catching {
+        val absolute = awaitImageUrl(file.url) ?: throw IOException("Server-URL nicht bekannt")
+        // Keep the original extension so the viewer intent resolves; the
+        // original NAME is preserved through FileProvider/displayName().
+        val safeName = file.displayName().replace(Regex("[^A-Za-z0-9._ -]"), "_")
+        val target = File(File(context.cacheDir, "shared").apply { mkdirs() }, "file-$safeName")
+        withContext(Dispatchers.IO) {
+            val request = okhttp3.Request.Builder().url(absolute).build()
+            mediaCallFactory.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Download fehlgeschlagen (HTTP ${response.code})")
+                response.body?.byteStream()?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IOException("Leere Antwort")
+            }
+        }
+        target
+    }
 
     override suspend fun transcribeAudio(noteId: String, audioFile: File): Result<TranscriptionResult> =
         withContext(Dispatchers.IO) {
@@ -273,13 +349,14 @@ class MediaRepositoryImpl @Inject constructor(
      *  rewrite or the untouched original. */
     private data class PreparedUpload(val file: File, val mime: String)
 
-    private fun buildImagePart(uri: Uri, index: Int): MultipartBody.Part? {
+    private fun buildImagePart(uri: Uri, index: Int, temps: MutableList<File>): MultipartBody.Part? {
         return try {
             val resolver = context.contentResolver
             val mime = resolver.getType(uri) ?: "image/jpeg"
             val extension = mimeToImageExtension(mime)
             val displayName = queryDisplayName(uri) ?: "image_${System.currentTimeMillis()}_$index.$extension"
             val temp = File(context.cacheDir, "upload_${UUID.randomUUID()}.$extension")
+            temps += temp
             resolver.openInputStream(uri)?.use { input ->
                 temp.outputStream().use { output -> input.copyTo(output) }
             } ?: run {
@@ -290,7 +367,7 @@ class MediaRepositoryImpl @Inject constructor(
                 temp.delete()
                 return null
             }
-            val prepared = prepareForUpload(temp, mime)
+            val prepared = prepareForUpload(temp, mime, temps)
             MultipartBody.Part.createFormData(
                 "images",
                 alignExtension(displayName, prepared.mime),
@@ -309,7 +386,7 @@ class MediaRepositoryImpl @Inject constructor(
      * on the long edge, EXIF rotation baked in, JPEG q85 — falling back to the
      * original whenever the rewrite comes out empty or bigger.
      */
-    private fun prepareForUpload(original: File, mime: String): PreparedUpload {
+    private fun prepareForUpload(original: File, mime: String, temps: MutableList<File>): PreparedUpload {
         val originalBytes = original.length()
         if (!ImageCompression.shouldCompress(mime, originalBytes)) return PreparedUpload(original, mime)
 
@@ -345,6 +422,7 @@ class MediaRepositoryImpl @Inject constructor(
         return try {
             val transformed = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
             val compressed = File(context.cacheDir, "upload_${UUID.randomUUID()}.$outputExtension")
+            temps += compressed
             compressed.outputStream().use { transformed.compress(format, ImageCompression.JPEG_QUALITY, it) }
             if (compressed.length() in 1 until originalBytes) {
                 original.delete()
@@ -374,6 +452,37 @@ class MediaRepositoryImpl @Inject constructor(
         }
     }.getOrDefault(0)
 
+    /** Multipart part for one picked PDF — no re-encode, bytes as picked. */
+    private fun buildFilePart(uri: Uri, index: Int, temps: MutableList<File>): MultipartBody.Part? {
+        return try {
+            val resolver = context.contentResolver
+            val displayName = queryDisplayName(uri) ?: "file_${System.currentTimeMillis()}_$index.pdf"
+            val temp = File(context.cacheDir, "upload_${UUID.randomUUID()}.pdf")
+            temps += temp
+            resolver.openInputStream(uri)?.use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            } ?: run {
+                temp.delete()
+                return null
+            }
+            if (temp.length() == 0L) {
+                temp.delete()
+                return null
+            }
+            MultipartBody.Part.createFormData(
+                "files",
+                if (isPdfName(displayName)) displayName else "$displayName.pdf",
+                temp.asRequestBody("application/pdf".toMediaTypeOrNull())
+            )
+        } catch (e: Exception) {
+            fileLogger.error("MediaRepo", "Failed to read picked file", e)
+            null
+        }
+    }
+
+    private fun isPdfName(name: String?): Boolean =
+        name?.substringAfterLast('.', "")?.equals("pdf", ignoreCase = true) == true
+
     /** Keeps the form-field filename honest after a JPEG/PNG re-encode. */
     private fun alignExtension(displayName: String, mime: String): String {
         val expected = mimeToImageExtension(mime)
@@ -390,11 +499,6 @@ class MediaRepositoryImpl @Inject constructor(
             if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
         }
     }.getOrNull()
-
-    private fun cleanupUploadTempFiles() {
-        context.cacheDir.listFiles { file -> file.name.startsWith("upload_") }
-            ?.forEach { runCatching { it.delete() } }
-    }
 
     private suspend fun currentLanguageSetting(): String? {
         // Account-synced Whisper hint first ("auto" = detect), UI language as

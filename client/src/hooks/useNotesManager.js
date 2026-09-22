@@ -373,7 +373,17 @@ export function useNotesManager({
    * Server-Antwort in den Zustand übernehmen. Bei `merge` (Hintergrund-Refresh)
    * wird nur bei inhaltlicher Abweichung neuer Zustand gesetzt.
    */
-  const applyServerState = useCallback((normalized, { merge = false } = {}) => {
+  const applyServerState = useCallback((normalized, { merge = false, keepAbsentMeta = false } = {}) => {
+    // v1.14.0 Nr. 8: Bei includeMeta=false (Folgeseiten im Vordergrund) fehlen
+    // counts/tags bewusst in der Antwort — der Sidebar-Stand bleibt gültig.
+    // Nur substituieren, wenn der Server sie wirklich weggelassen hat UND wir
+    // sie angefordert haben; Trash-Antworten (nie tags) fallen weiter auf [].
+    const incomingCounts = keepAbsentMeta && normalized.hasCounts === false
+      ? stateRef.current.noteCounts
+      : normalized.counts;
+    const incomingTags = keepAbsentMeta && normalized.hasTags === false
+      ? stateRef.current.allTags
+      : normalized.tags;
     if (merge) {
       const merged = mergeIfChanged(
         {
@@ -385,8 +395,8 @@ export function useNotesManager({
         {
           notes: normalized.notes,
           pagination: normalized.pagination,
-          counts: normalized.counts,
-          tags: normalized.tags,
+          counts: incomingCounts,
+          tags: incomingTags,
         }
       );
       // Referenzvergleich gegen das ursprüngliche Current-Objekt:
@@ -405,8 +415,8 @@ export function useNotesManager({
     }
     setNotes(normalized.notes);
     setPagination(normalized.pagination);
-    setNoteCounts(normalized.counts);
-    setAllTags(normalized.tags);
+    setNoteCounts(incomingCounts);
+    setAllTags(incomingTags);
     return true;
   }, []);
 
@@ -452,10 +462,16 @@ export function useNotesManager({
       // Ordner-Scope (v1.11.1): der Server filtert — clientseitiges Filtern
       // des geladenen Fensters zeigte Ordner ab ein paar hundert Notizen leer.
       if (!trashView && stateRef.current.folderScope) params.folderId = stateRef.current.folderScope;
+      // v1.14.0 Nr. 8: Folgeseiten im Vordergrund (Blättern) brauchen keine
+      // Counts/Tag-Cloud — die vier Extra-Queries entfallen. Hintergrund-
+      // Refreshes laufen nur, wenn die Meta-Sonde eine Änderung meldete —
+      // dann können sich auch Counts geändert haben → Meta mitliefern.
+      const skipMeta = !background && page > 1;
+      if (skipMeta) params.includeMeta = false;
 
       const response = await api.getAll(params, { signal: controller.signal });
       if (requestSequence !== fetchSequenceRef.current) return;
-      applyServerState(normalizeNotesPayload(response), { merge: background });
+      applyServerState(normalizeNotesPayload(response), { merge: background, keepAbsentMeta: skipMeta });
     } catch (error) {
       if (requestSequence !== fetchSequenceRef.current) return;
       // Bewusst ersetzter Request (Filterwechsel, Mutation, Unmount): kein
@@ -841,20 +857,28 @@ export function useNotesManager({
 
   /** Alle ausgewählten anheften (pin=true) oder abheften. */
   const bulkSetPinned = useCallback(async (pin) => {
-    const { done } = await runBulkAction(async (id, note) => {
+    // Nur zählen, was einen API-Call brauchte: runPool meldet auch Worker als
+    // done, die vorzeitig returnen — bereits gepinnte Notizen und IDs außer-
+    // halb des geladenen Fensters (Auswahl überlebt Pagination/Filter)
+    // wären sonst als Erfolg gemeldet worden, ohne dass etwas passierte.
+    let acted = 0;
+    await runBulkAction(async (id, note) => {
       if (Boolean(note?.isPinned) === pin) return;
+      acted += 1;
       await api.togglePin(id);
     });
-    if (done > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: done }), 'success');
+    if (acted > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: acted }), 'success');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten archivieren. */
   const bulkArchive = useCallback(async () => {
-    const { done } = await runBulkAction(async (id, note) => {
+    let acted = 0;
+    await runBulkAction(async (id, note) => {
       if (note?.isArchived) return;
+      acted += 1;
       await api.toggleArchive(id);
     });
-    if (done > 0) showToast(t('bulkArchived', { count: done }), 'success');
+    if (acted > 0) showToast(t('bulkArchived', { count: acted }), 'success');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten in den Papierkorb. */

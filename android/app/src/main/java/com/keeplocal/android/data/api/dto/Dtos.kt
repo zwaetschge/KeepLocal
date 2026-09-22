@@ -141,10 +141,56 @@ data class NoteDto(
     // Tree (v1.10.0): parent note id; null = root level.
     @Json(name = "parentId") val parentId: String? = null,
     // Code note (v1.10.0): render content monospaced.
-    @Json(name = "isCode") val isCode: Boolean = false
+    @Json(name = "isCode") val isCode: Boolean = false,
+    // PDF attachments (v1.14.0 Nr. 5): server-managed like images; uploads
+    // and deletions go through their own endpoints, never through the note
+    // update payload.
+    @Json(name = "files") val files: List<NoteFileDto>? = null
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
 }
+
+/** One PDF attachment of a note (POST /api/notes/{id}/files, max 25 per note,
+ *  5 per request, 25 MB each — the server magic-byte-checks %PDF-). */
+@JsonClass(generateAdapter = true)
+data class NoteFileDto(
+    @Json(name = "filename") val filename: String = "",
+    @Json(name = "url") val url: String = "",
+    @Json(name = "originalName") val originalName: String? = null,
+    @Json(name = "mimetype") val mimetype: String? = null,
+    @Json(name = "size") val size: Long? = null,
+    @Json(name = "uploadedAt") val uploadedAt: String? = null
+)
+
+/** GET /api/notes/meta (v1.14.0 Nr. 6): counts + max(updatedAt) as the cheap
+ *  change probe for the background sync — one aggregation instead of pulling
+ *  the whole list every 15 minutes. */
+@JsonClass(generateAdapter = true)
+data class NotesMetaDto(
+    @Json(name = "active") val active: Int = 0,
+    @Json(name = "archived") val archived: Int = 0,
+    @Json(name = "trash") val trash: Int = 0,
+    @Json(name = "maxUpdatedAt") val maxUpdatedAt: String? = null
+) {
+    /** Compact comparison key; identical values mean "nothing changed". */
+    fun signature(): String = "$active/$archived/$trash/${maxUpdatedAt ?: "-"}"
+}
+
+/** Body for PATCH /api/notes/tags (v1.11.0; used by Android since v1.14.0
+ *  Nr. 4): one server-side updateMany instead of one update per note. The
+ *  server lowercases from/to — the target is stored lowercase. */
+@JsonClass(generateAdapter = true)
+data class TagOperationRequestDto(
+    @Json(name = "action") val action: String, // rename | merge | delete
+    @Json(name = "from") val from: List<String>,
+    @Json(name = "to") val to: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TagOperationResponseDto(
+    @Json(name = "action") val action: String? = null,
+    @Json(name = "modified") val modified: Int = 0
+)
 
 /** Entry of GET /api/notes/tree — the light sidebar projection without
  *  content or images; the client nests the flat list itself. */
@@ -341,9 +387,15 @@ data class ApiKeyDto(
     @Json(name = "key") val key: String? = null, // only set directly after creation
     @Json(name = "prefix") val prefix: String = "",
     @Json(name = "expiresAt") val expiresAt: String? = null,
-    @Json(name = "createdAt") val createdAt: String? = null
+    @Json(name = "createdAt") val createdAt: String? = null,
+    // v1.14.0 Nr. 10: null = legacy key created before scopes existed — the
+    // server grants those full access; ['read'] is the read-only default.
+    @Json(name = "scopes") val scopes: List<String>? = null,
+    @Json(name = "lastUsedAt") val lastUsedAt: String? = null
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
+
+    fun canWrite(): Boolean = scopes?.contains("write") == true
 }
 
 @JsonClass(generateAdapter = true)
@@ -351,8 +403,28 @@ data class ApiKeysResponseDto(
     @Json(name = "data") val data: List<ApiKeyDto>? = null
 )
 
+/**
+ * Body of POST /api/api-keys: the server wraps the created key in
+ * {success, data, message} — same convention as the list endpoint. Parsing
+ * the wrapper as a bare ApiKeyDto silently produced an all-null key
+ * (review v1.14.0), hiding the one-time plaintext key for good.
+ */
+@JsonClass(generateAdapter = true)
+data class ApiKeyCreatedResponseDto(
+    @Json(name = "success") val success: Boolean? = null,
+    @Json(name = "data") val data: ApiKeyDto? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+/**
+ * Body for POST /api/api-keys. The server expects expiresIn as '30d'/'90d'/
+ * '365d'/'never' (v1.14.0 fix: the app used to send expiresInDays as a bare
+ * number, which the server rejects with 400). Scopes: ['read'] is the
+ * default; write access must be requested explicitly.
+ */
 @JsonClass(generateAdapter = true)
 data class CreateApiKeyRequestDto(
     @Json(name = "name") val name: String,
-    @Json(name = "expiresInDays") val expiresInDays: Int? = null
+    @Json(name = "expiresIn") val expiresIn: String = "never",
+    @Json(name = "scopes") val scopes: List<String> = listOf("read")
 )

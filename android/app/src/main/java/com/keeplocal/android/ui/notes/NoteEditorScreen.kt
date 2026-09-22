@@ -51,6 +51,8 @@ import androidx.core.content.FileProvider
 import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.ui.components.ImageActions
 import com.keeplocal.android.ui.components.AudioRecordButton
+import com.keeplocal.android.ui.components.FileActions
+import com.keeplocal.android.ui.components.FileAttachmentRow
 import com.keeplocal.android.ui.components.ImageViewerDialog
 import com.keeplocal.android.ui.components.LinkPreviewCard
 import com.keeplocal.android.ui.components.NoteColorUtil
@@ -165,6 +167,12 @@ fun NoteEditorContent(
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(5)
     ) { uris -> viewModel.onImagesPicked(uris) }
+
+    // SAF document picker for PDF attachments (v1.14.0 Nr. 5): no storage
+    // permission needed, the ViewModel enforces the 25-per-note budget.
+    val filePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> viewModel.onFilesPicked(uris) }
 
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -690,6 +698,32 @@ fun NoteEditorContent(
                 )
             }
 
+            // PDF attachments (v1.14.0 Nr. 5): chips open in the system
+            // viewer (cache download — the file route needs the session
+            // cookie), trailing X deletes.
+            if (uiState.files.isNotEmpty() || uiState.uploadingFileCount > 0) {
+                FileAttachmentRow(
+                    files = uiState.files,
+                    uploadingCount = uiState.uploadingFileCount,
+                    onOpenFile = { file ->
+                        viewerScope.launch {
+                            val opened = FileActions.openInViewer(context, file)
+                            if (!opened) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.file_open_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    onDeleteFile = { file -> viewModel.deleteFile(file) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             // Attachment row: add image, dictate, inline media hints
             Row(
                 modifier = Modifier
@@ -711,6 +745,20 @@ fun NoteEditorContent(
                         Icon(
                             Icons.Default.AddPhotoAlternate,
                             contentDescription = stringResource(R.string.editor_add_image)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = { filePicker.launch(arrayOf("application/pdf")) },
+                    enabled = uiState.uploadingFileCount == 0
+                ) {
+                    if (uiState.uploadingFileCount > 0) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.Default.AttachFile,
+                            contentDescription = stringResource(R.string.editor_add_file)
                         )
                     }
                 }
