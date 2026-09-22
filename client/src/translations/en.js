@@ -44,6 +44,8 @@ export const en = {
   offlineBanner: 'No connection — changes are not being saved right now.',
   offlineRetry: 'Try again',
   backOnline: 'Back online — notes refreshed.',
+  updateAvailable: 'A new version is available.',
+  updateNow: 'Reload now',
   newNote: 'New Note',
   title: 'Title',
   content: 'Content',

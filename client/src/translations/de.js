@@ -44,6 +44,8 @@ export const de = {
   offlineBanner: 'Keine Verbindung — Änderungen werden gerade nicht gespeichert.',
   offlineRetry: 'Erneut versuchen',
   backOnline: 'Wieder verbunden — Notizen wurden aktualisiert.',
+  updateAvailable: 'Eine neue Version ist verfügbar.',
+  updateNow: 'Jetzt laden',
   newNote: 'Neue Notiz',
   title: 'Titel',
   content: 'Inhalt',

@@ -30,6 +30,30 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
       if (typeof registration?.update === 'function') {
         await registration.update();
       }
+      // Update-Prompt (v1.16.0): Der Worker installiert ohne skipWaiting — er
+      // wartet. Hier wird ein wartender Worker als Event gemeldet; die App
+      // (useUpdatePrompt) zeigt den Toast, erst dessen Klick schickt
+      // SKIP_WAITING.
+      const announceWaiting = (worker) => {
+        if (!worker) return;
+        window.dispatchEvent(
+          new CustomEvent('keeplocal:update-available', { detail: { sw: worker } })
+        );
+      };
+      if (registration.waiting) {
+        announceWaiting(registration.waiting);
+      }
+      registration.addEventListener('updatefound', () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          // „installed“ + aktiver Controller = Update neben einer laufenden
+          // Seite (ohne Controller wäre es die allererste Installation).
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            announceWaiting(installing);
+          }
+        });
+      });
     } catch (error) {
       console.error('Service worker registration failed:', error);
     }

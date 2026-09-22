@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
-import { useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh } from './hooks';
+import { useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh, useUpdatePrompt } from './hooks';
 import OfflineBanner from './components/OfflineBanner';
 import BulkActionBar from './components/BulkActionBar';
 import FolderScopeBar from './components/FolderScopeBar';
@@ -109,12 +109,13 @@ function AppContent() {
       showToast(t('backOnline'), 'success', { duration: 4000 });
     }
   });
+  // PWA-Update-Prompt: Toast mit „Jetzt laden“ statt lautlosem skipWaiting.
+  useUpdatePrompt({ showToast, t });
 
   // Initialize CSRF token on mount
   useEffect(() => {
     initializeCSRF();
   }, []);
-
 
   // Theme anwenden (Persistenz übernimmt der SettingsContext)
   useEffect(() => {
