@@ -1,16 +1,19 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { isNoteOwner, lastEditorName } from '../utils/noteAccess.mjs';
 import './Note.css';
 import ConfirmDialog from './ConfirmDialog';
 import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
+import { useMarkdownHtml } from '../hooks/useMarkdown';
 
 function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, tagColors }) {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { settings } = useSettings();
   // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
   // aber Archivieren, Teilen und Löschen bleiben beim Besitzer — der Server
   // lehnt alles andere mit 404 ab, also dürfen die Buttons gar nicht erst
@@ -26,10 +29,17 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   // pro Karte pro Render. Bei 50 Karten pro Seite und einem 60-s-Poll waren
   // das 100 Läufe pro Minute im Leerlauf. Der HTML-String ändert sich nur mit
   // Inhalt oder Such-Highlight, also genau davon abhängig machen.
-  const contentHtml = useMemo(
+  const plainHtml = useMemo(
     () => sanitizeAndLinkify(note.content, { highlight }),
     [note.content, highlight]
   );
+
+  // v1.13.0 Nr. 2: Karten als Markdown rendern (Trilium-Bestand). marked ist
+  // lazy geladen — bis zur ersten Antwort (und für Code-Notizen, die
+  // dicktengleich bleiben sollen) zeigt die Karte den gewohnten Plain-Text.
+  const markdownEnabled = settings.renderMarkdown !== false && !note.isCode;
+  const markdownHtml = useMarkdownHtml(note.content || '', markdownEnabled, { highlight });
+  const contentHtml = markdownHtml ?? plainHtml;
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -198,7 +208,7 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
           <>
             <p
               ref={contentRef}
-              className="note-content"
+              className={`note-content${markdownHtml ? ' markdown' : ''}`}
               dangerouslySetInnerHTML={{ __html: contentHtml }}
               onClick={(e) => {
                 // Allow links to be clicked

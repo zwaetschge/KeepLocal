@@ -9,6 +9,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource/delius-swash-caps": "^5.2.8",
     "dompurify": "^3.0.6",
+    "marked": "^18.0.13",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

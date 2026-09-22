@@ -10,6 +10,8 @@ const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
 const { imagesDir, filesDir } = require('../config/paths');
 const { ZipWriter } = require('../utils/zipWriter');
+const { readZipEntries } = require('../utils/zipReader');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -25,6 +27,8 @@ const MAX_FILES_PER_NOTE = 25;
 const NOTE_CONFLICT_MESSAGE = 'Die Notiz wurde inzwischen geändert';
 // Baum (v1.10.0): Zweites Netz unter dem Zyklus-Schutz — siehe assertValidParent.
 const MAX_TREE_DEPTH = 50;
+// Notiz-Historie (v1.13.0): gecapptes revisions[] — 10 Fassungen pro Notiz.
+const REVISIONS_LIMIT = 10;
 // MongoDB truncates timestamps to milliseconds and clients may round when
 // serializing, so small skews must not look like a concurrent edit.
 const CONFLICT_TOLERANCE_MS = 1000;
@@ -390,11 +394,22 @@ function buildNotesQuery({ userId, search, tag, isArchived = false, deleted = fa
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Notes and pagination info
  */
-async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId } = {}) {
+async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId, since } = {}) {
   const safePage = normalizePositiveInteger(page, 1, Number.MAX_SAFE_INTEGER);
   const safeLimit = normalizePositiveInteger(limit, 50, 100);
   const isArchived = archived === true || archived === 'true';
   const isDeleted = deleted === true || deleted === 'true';
+
+  // Delta-Sync (v1.13.0): Nur Dokumente mit updatedAt > since. Ungültige Werte
+  // sind 400er, kein stillses Ignorieren — sonst cached ein Client einen
+  // Zeitstempel, den der Server nie wieder versteht. Counts bleiben global.
+  let sinceDate = null;
+  if (since !== undefined && since !== null && String(since).trim() !== '') {
+    sinceDate = new Date(since);
+    if (Number.isNaN(sinceDate.getTime())) {
+      throw clientError('since muss ein ISO-8601-Zeitpunkt sein');
+    }
+  }
 
   // Papierkorb: nur eigene Notizen, unabhängig vom Archiv-Status, zuletzt
   // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar.
@@ -448,6 +463,10 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
       throw clientError('folderId muss „root" oder eine Notiz-ID sein');
     }
     query.parentId = folderId;
+  }
+
+  if (sinceDate) {
+    query.updatedAt = { $gt: sinceDate };
   }
 
   const searchTerm = typeof search === 'string' ? search.trim() : '';
@@ -728,10 +747,29 @@ async function updateNote(noteId, noteData, userId) {
     throw error;
   }
 
+  // Baum × Teilen (v1.13.0): Struktur ist Besitzer-Sache. updateNote laeuft
+  // ueber noteEditQuery ($or sharedWith) — ein Mitbearbeiter konnte bisher die
+  // fremde Notiz an eigene Knoten haengen, weil assertValidParent gegen die
+  // EDITOR-Id pruefte. Damit verschwand sie aus dem Baum des Besitzers, dessen
+  // Baum die Eltern-Ids des Editors nicht kennt. Eltern werden jetzt gegen
+  // den BESITZER validiert; Mitbearbeiter duerfen parentId/order nicht veraendern
+  // (mitgeschickte unveränderte Werte sind no-ops, damit Clients, die das
+  // komplette Objekt senden, keine 403er kassieren).
+  const isOwner = String(note.userId) === String(userId);
+  let effectiveParentId = parentId;
+  let effectiveOrder = order;
+  if (!isOwner) {
+    if (parentId !== undefined && (parentId ?? null) !== (note.parentId ?? null)) {
+      throw clientError('Nur der Besitzer kann die Notiz im Baum verschieben');
+    }
+    effectiveParentId = undefined;
+    effectiveOrder = undefined;
+  }
+
   // Baum: Verschieben nur auf eigene, nicht geloeschte Eltern ohne Zyklus.
   // null loest die Notiz vom Baum (Wurzel), undefined laesst sie unangetastet.
-  if (parentId !== undefined) {
-    await assertValidParent(userId, noteId, parentId);
+  if (effectiveParentId !== undefined) {
+    await assertValidParent(note.userId, noteId, effectiveParentId);
   }
 
   // Optimistic locking: baseUpdatedAt is the updatedAt of the note version
@@ -787,14 +825,14 @@ async function updateNote(noteId, noteData, userId) {
   // Manuelle Reihenfolge per Einzel-Update (Validierung oben, vor dem Lesen).
   // Beim Anlegen bleibt es dabei, dass der Server selbst an die Spitze des
   // Abschnitts sortiert (nextTopOrder-Invariante in createNote).
-  if (order !== undefined) {
-    $set.order = order;
+  if (effectiveOrder !== undefined) {
+    $set.order = effectiveOrder;
   }
 
   // Baum + Code-Notiz (v1.10.0): undefined laesst beide unangetastet; null
   // loest die Notiz vom Baum. assertValidParent lief oben bereits.
-  if (parentId !== undefined) {
-    $set.parentId = parentId ?? null;
+  if (effectiveParentId !== undefined) {
+    $set.parentId = effectiveParentId ?? null;
   }
   if (isCode !== undefined) {
     $set.isCode = isCode;
@@ -802,6 +840,34 @@ async function updateNote(noteId, noteData, userId) {
 
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
   $set.lastEditedBy = userId;
+
+  // Historie (v1.13.0): Die UEBERSCHRIEBENE Fassung snapshotten — nur wenn
+  // sich content/title/todoItems wirklich aendern, sonst frisst ein re-Save
+  // (Autosave, Sync) die zehn Slots mit identischen Kopien leer. $push+$slice
+  // in derselben findOneAndUpdate: Snapshot und Edit sind atomar, ein
+  // paralleler Schreiber kann keine Fassung verlieren.
+  const previousTitle = note.title || '';
+  const previousContent = note.content || '';
+  const nextTitleForCompare = title !== undefined ? title : previousTitle;
+  const titleChanged = nextTitleForCompare !== previousTitle;
+  const contentChanged = (content !== undefined || isTodoList !== undefined) && nextContent !== previousContent;
+  const todoChanged = (todoItems !== undefined || isTodoList !== undefined)
+    && JSON.stringify(nextTodoItems || []) !== JSON.stringify(note.todoItems || []);
+  const $pushRevision = (titleChanged || contentChanged || todoChanged)
+    ? {
+        revisions: {
+          $each: [{
+            title: previousTitle,
+            content: previousContent,
+            isTodoList: note.isTodoList === true,
+            todoItems: note.todoItems || [],
+            savedAt: note.updatedAt || new Date(),
+            editorId: note.lastEditedBy || note.userId
+          }],
+          $slice: -REVISIONS_LIMIT
+        }
+      }
+    : undefined;
 
   // Bedingtes Schreiben: Das beim Lesen vorgefundene updatedAt ist der
   // Version-Token. Hat zwischen Lesen und Schreiben ein zweiter Schreibender
@@ -814,7 +880,7 @@ async function updateNote(noteId, noteData, userId) {
       ...noteEditQuery(noteId, userId),
       ...(updatedAtPrecondition && { updatedAt: updatedAtPrecondition })
     },
-    { $set },
+    $pushRevision ? { $set, $push: $pushRevision } : { $set },
     { new: true, runValidators: true }
   );
 
@@ -944,6 +1010,117 @@ async function emptyTrash(userId) {
 }
 
 /**
+ * Billige Aenderungs-Sonde fuer den 60s-Poll (v1.13.0): Eine Aggregation
+ * liefert die Zaehlungen plus max(updatedAt). Der Client haelt den letzten
+ * Stand im Speicher und ueberspringt Liste+Baum komplett, wenn sich nichts
+ * geaendert hat — vorher lud jeder sichtbare Tab pro Tick eine volle 50er-
+ * Seite inklusive 5 paralleler DB-Queries plus den kompletten Baum.
+ * Bucket-Semantik exakt wie getAllNotes: aktiv/archiviert ueber eigene-und-
+ * geteilte, Papierkorb nur eigene Notizen. deletedAt/isArchived fehlen bei
+ * direkt importierten Dokumenten — $ifNull macht sie vergleichbar.
+ */
+async function getNotesMeta(userId) {
+  const ownerId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(String(userId)) : userId;
+  const [row] = await Note.aggregate([
+    { $match: { $or: [{ userId: ownerId }, { sharedWith: ownerId }] } },
+    { $group: {
+      _id: null,
+      active: { $sum: { $cond: [{ $and: [
+        { $eq: [{ $ifNull: ['$deletedAt', null] }, null] },
+        { $eq: [{ $ifNull: ['$isArchived', false] }, false] }
+      ] }, 1, 0] } },
+      archived: { $sum: { $cond: [{ $and: [
+        { $eq: [{ $ifNull: ['$deletedAt', null] }, null] },
+        { $eq: [{ $ifNull: ['$isArchived', false] }, true] }
+      ] }, 1, 0] } },
+      trash: { $sum: { $cond: [{ $and: [
+        { $ne: [{ $ifNull: ['$deletedAt', null] }, null] },
+        { $eq: ['$userId', ownerId] }
+      ] }, 1, 0] } },
+      maxUpdatedAt: { $max: '$updatedAt' }
+    } }
+  ]);
+  return {
+    active: row?.active ?? 0,
+    archived: row?.archived ?? 0,
+    trash: row?.trash ?? 0,
+    maxUpdatedAt: row?.maxUpdatedAt ?? null
+  };
+}
+
+/**
+ * Revisionsliste einer Notiz (v1.13.0): Metadaten ohne Volltexte — zehnmal
+ * 10 KB Inhalt pro Abruf waere Payload ohne Ende. Den Volltext einer Fassung
+ * liefert getNoteRevision(savedAt); Restore laeuft ueber denselben Schluessel,
+ * NICHT ueber den Array-Index ($slice verschiebt Indizes).
+ */
+async function getNoteRevisions(noteId, userId) {
+  const note = await Note.findOne(noteEditQuery(noteId, userId)).select('revisions');
+  if (!note) {
+    throw notFoundError();
+  }
+  return (note.revisions || [])
+    .map((revision) => ({
+      savedAt: revision.savedAt,
+      editorId: revision.editorId ?? null,
+      title: revision.title || '',
+      isTodoList: revision.isTodoList === true,
+      contentLength: (revision.content || '').length,
+      todoCount: (revision.todoItems || []).length
+    }))
+    .reverse(); // neueste zuerst: angehaengt wird hinten
+}
+
+/** Volltext einer Fassung (fuer die Vorschau vor dem Restore). */
+async function getNoteRevision(noteId, userId, savedAt) {
+  const note = await Note.findOne(noteEditQuery(noteId, userId)).select('revisions');
+  if (!note) {
+    throw notFoundError();
+  }
+  const revision = (note.revisions || []).find((entry) => sameSavedAt(entry.savedAt, savedAt));
+  if (!revision) {
+    const error = new Error('Revision nicht gefunden');
+    error.statusCode = 404;
+    throw error;
+  }
+  return {
+    savedAt: revision.savedAt,
+    editorId: revision.editorId ?? null,
+    title: revision.title || '',
+    content: revision.content || '',
+    isTodoList: revision.isTodoList === true,
+    todoItems: revision.todoItems || []
+  };
+}
+
+/** savedAt-Vergleich: Client schickt genau das zurueck, was die Liste lieferte. */
+function sameSavedAt(stored, requested) {
+  if (!stored || !requested) return false;
+  return String(stored) === String(requested) || new Date(stored).getTime() === new Date(requested).getTime();
+}
+
+function notFoundError() {
+  const error = new Error(errorMessages.NOTES.NOT_FOUND);
+  error.statusCode = 404;
+  return error;
+}
+
+/**
+ * Fassung wiederherstellen (v1.13.0): laeuft als normales updateNote — der
+ * aktuelle Stand wird dadurch selbst zur juengsten Revision (Undo des Undo
+ * funktioniert), Konfliktbehandlung und lastEditedBy inklusive.
+ */
+async function restoreNoteRevision(noteId, userId, savedAt) {
+  const revision = await getNoteRevision(noteId, userId, savedAt);
+  return updateNote(noteId, {
+    title: revision.title,
+    content: revision.content,
+    todoItems: revision.todoItems,
+    isTodoList: revision.isTodoList
+  }, userId);
+}
+
+/**
  * Baum-Übersicht (v1.10.0): Leichte Projektion aller aktiven und archivierten
  * Notizen — alles, was ein Baum-Panel braucht, ohne Inhalte und Bilder. Der
  * Client verschachtelt die Liste selbst; ein Server-seitiger Baum waere nur
@@ -951,12 +1128,26 @@ async function emptyTrash(userId) {
  * @param {string} userId
  * @returns {Promise<Array>} Flache Liste mit _id, parentId, title, order, Flags
  */
-async function getNoteTree(userId) {
+async function getNoteTree(userId, since) {
+  // Seit v1.13.0 inklusive geteilter Notizen ($or sharedWith): Die Liste
+  // zeigte sie schon laengst, der Baum liess sie unsichtbar. `shared`
+  // markiert fremde Knoten; deren Eltern (Notizen des Besitzers) fehlen in
+  // dieser Sicht, der Client haengt Verwaiste an die Wurzel.
+  // since (v1.13.0): nur geaenderte Knoten — der 60s-Poll eines zweiten Tabs
+  // laedt sonst den kompletten Baum, egal ob sich etwas tat.
+  let sinceDate = null;
+  if (since !== undefined && since !== null && String(since).trim() !== '') {
+    sinceDate = new Date(since);
+    if (Number.isNaN(sinceDate.getTime())) {
+      throw clientError('since muss ein ISO-8601-Zeitpunkt sein');
+    }
+  }
   const notes = await Note.find({
-    userId,
-    deletedAt: null
+    $or: [{ userId }, { sharedWith: userId }],
+    deletedAt: null,
+    ...(sinceDate ? { updatedAt: { $gt: sinceDate } } : {})
   })
-    .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt')
+    .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt userId')
     .sort({ isPinned: -1, order: -1, updatedAt: -1 })
     .lean();
 
@@ -970,22 +1161,103 @@ async function getNoteTree(userId) {
     isArchived: note.isArchived === true,
     isTodoList: note.isTodoList === true,
     remindAt: note.remindAt ?? null,
-    updatedAt: note.updatedAt
+    updatedAt: note.updatedAt,
+    shared: String(note.userId) !== String(userId)
   }));
+}
+
+/** YAML-Skalar: Strings mit Sonderlagen in Anfuehrungszeichen, Rest roh. */
+function yamlScalar(value) {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  const text = String(value);
+  return /^[A-Za-z0-9_.@/-]+$/.test(text) ? text : `'${text.replace(/'/g, "''")}'`;
+}
+
+/** Endung → MIME fürs Export-Manifest (Bilder haben kein mimetype im Schema). */
+function guessAssetMimetype(filename) {
+  const extension = path.extname(filename || '').toLowerCase();
+  return {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf'
+  }[extension] || 'application/octet-stream';
+}
+
+/** Einzelner YAML-Skalar aus dem Frontmatter: Anfuehrungszeichen wieder abziehen. */
+function unquoteScalar(value) {
+  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/''/g, "'");
+  }
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
+ * YAML-Frontmatter eines Markdown-Texts parsen (v1.13.0). Absichtlich minimal:
+ * `key: value` und `key: [a, b]` decken genau ab, was buildMarkdownExport
+ * schreibt — kein voller YAML-Parser. Ohne Frontmatter ist das Ergebnis
+ * { meta: {}, body: text }, also ein No-Op fuer den Trilium-Ordner-Import.
+ * @param {string} text
+ * @returns {{ meta: Object, body: string }}
+ */
+function parseMarkdownFrontmatter(text) {
+  if (typeof text !== 'string') return { meta: {}, body: '' };
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (!match) return { meta: {}, body: text };
+
+  const meta = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const entry = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!entry) continue;
+    const key = entry[1].toLowerCase();
+    const raw = entry[2].trim();
+    if (raw === '') {
+      meta[key] = null;
+      continue;
+    }
+    if (raw.startsWith('[') && raw.endsWith(']')) {
+      meta[key] = raw.slice(1, -1)
+        .split(',')
+        .map((part) => unquoteScalar(part.trim()))
+        .filter(Boolean);
+    } else {
+      meta[key] = unquoteScalar(raw);
+    }
+  }
+  return { meta, body: text.slice(match[0].length) };
+}
+
+/** Frontmatter-Booleans: Parser liefert Strings, aufrufende koennen echte senden. */
+function frontmatterFlag(value) {
+  return value === true || value === 'true';
+}
+
+/** ISO-Zeitpunkt oder null — kaputte Werte sind null, kein Fehler (robuster Import). */
+function frontmatterDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**
  * Markdown-Export des Baums (v1.10.0) als ZIP: Jede Notiz wird eine .md-Datei,
  * jede Notiz mit Kindern ein Verzeichnis mit _index.md plus den Kindern. Das
  * Ergebnis ist ein Round-trip-Partner zum Trilium-/Markdown-Ordner-Import und
- * zugleich ein lesbares Volldaten-Backup (abzüglich Bilder und Todo-Status).
- * Archivierte Notizen kommen mit, geloeschte nicht.
+ * zugleich ein lesbares Volldaten-Backup.
+ * Seit v1.13.0 verlustfrei: YAML-Frontmatter traegt ALLE Metadaten (tags,
+ * pinned, archived, isCode, color, remindAt, created/updated), und Bild- und
+ * Datei-Anhaenge reisen als assets/ mit — der Markdown-Koerper referenziert
+ * sie relativ. Der Import (POST /api/notes/import/markdown-zip) setzt beides
+ * zurueck, inklusive frischer Thumbnails. Archivierte Notizen kommen mit,
+ * geloeschte nicht.
  * @param {string} userId
  * @returns {Promise<Buffer>} ZIP-Archiv
  */
 async function buildMarkdownExport(userId) {
   const notes = await Note.find({ userId, deletedAt: null })
-    .select('parentId title content isTodoList todoItems tags isCode order isArchived isPinned createdAt')
+    .select('parentId title content isTodoList todoItems tags isCode order isArchived isPinned createdAt updatedAt color remindAt images.filename files.filename files.originalName files.mimetype')
     .sort({ order: -1, updatedAt: -1 })
     .lean();
 
@@ -1005,20 +1277,66 @@ async function buildMarkdownExport(userId) {
     .trim()
     .slice(0, 80) || 'Ohne-Titel';
 
-  const renderMarkdown = (note) => {
-    const lines = [];
-    if (note.title) lines.push(`# ${note.title}`, '');
+  // Anhaenge mitnehmen: Originaldatei in assets/, Referenz im Koerper
+  // relativ umschreiben. Fehlt eine Datei auf der Platte (vom Janitor
+  // aufgeraeumt, kaputtes Volume), bleibt die URL wie sie ist — der Text
+  // luegt nie ueber eine mitgebrachte Datei. Das Manifest bewahrt Metadaten,
+  // die im ZIP-Dateinamen keinen Platz haben (originalName, mimetype).
+  const manifest = {};
+  const collectedAssets = new Map();
+  const rewriteRules = [];
+  const collectAsset = (kind, filename, originalName, mimetype) => {
+    if (!filename || collectedAssets.has(filename)) return;
+    const source = path.join(kind === 'images' ? imagesDir() : filesDir(), filename);
+    let bytes = null;
+    try {
+      bytes = fs.readFileSync(source);
+    } catch (_error) {
+      return; // Datei weg: Referenz bleibt auf die alte URL zeigen
+    }
+    collectedAssets.set(filename, true);
+    const zipPath = `assets/${kind}/${filename}`;
+    manifest[zipPath] = kind === 'files'
+      ? { kind, originalName: originalName || filename, mimetype: mimetype || 'application/octet-stream' }
+      : { kind, mimetype: mimetype || guessAssetMimetype(filename) };
+    rewriteRules.push([`/uploads/${kind}/${filename}`, zipPath, { kind, filename, bytes }]);
+  };
+  for (const note of notes) {
+    for (const image of note.images || []) collectAsset('images', image.filename, image.filename, 'image/jpeg');
+    for (const file of note.files || []) collectAsset('files', file.filename, file.originalName, file.mimetype);
+  }
+
+  const frontmatter = (note) => {
+    const lines = ['---'];
+    lines.push(`title: ${yamlScalar(note.title || 'Ohne Titel')}`);
     if (note.tags && note.tags.length > 0) {
-      lines.push(note.tags.map((tag) => `#${tag}`).join(' '), '');
+      lines.push(`tags: [${note.tags.map((tag) => yamlScalar(tag)).join(', ')}]`);
     }
+    if (note.isPinned) lines.push('pinned: true');
+    if (note.isArchived) lines.push('archived: true');
+    if (note.isCode) lines.push('isCode: true');
+    if (note.isTodoList) lines.push('isTodoList: true');
+    if (note.color && note.color !== '#ffffff') lines.push(`color: ${yamlScalar(note.color)}`);
+    if (note.remindAt) lines.push(`remindAt: ${yamlScalar(new Date(note.remindAt).toISOString())}`);
+    if (note.createdAt) lines.push(`created: ${yamlScalar(new Date(note.createdAt).toISOString())}`);
+    if (note.updatedAt) lines.push(`updated: ${yamlScalar(new Date(note.updatedAt).toISOString())}`);
+    lines.push('---', '');
+    return lines.join('\n');
+  };
+
+  const renderMarkdown = (note) => {
+    let body;
     if (note.isTodoList) {
-      for (const item of note.todoItems || []) {
-        lines.push(`- [${item.completed ? 'x' : ' '}] ${item.text}`);
+      body = (note.todoItems || [])
+        .map((item) => `- [${item.completed ? 'x' : ' '}] ${item.text}`)
+        .join('\n');
+    } else {
+      body = note.content || '';
+      for (const [url, zipPath] of rewriteRules) {
+        body = body.split(url).join(zipPath);
       }
-    } else if (note.content) {
-      lines.push(note.content);
     }
-    return lines.join('\n').replace(/\s+$/, '') + '\n';
+    return `${frontmatter(note)}${body}`.replace(/\s+$/, '') + '\n';
   };
 
   const zip = new ZipWriter();
@@ -1065,6 +1383,15 @@ async function buildMarkdownExport(userId) {
     if (!written.has(String(note._id))) writeNode(note, '', 0);
   }
 
+  // Anhaenge ans Archiv: Originalbilder und PDFs, KEINE Thumbnails (die
+  // regeneriert der Import mit scharp) — das haelt den Export klein.
+  for (const [, zipPath, asset] of rewriteRules) {
+    zip.add(zipPath, asset.bytes);
+  }
+  if (Object.keys(manifest).length > 0) {
+    zip.add('assets/manifest.json', JSON.stringify(manifest, null, 2));
+  }
+
   // Komplett leere Bibliothek: trotzdem ein gueltiges (leeres) Archiv liefern,
   // kein 500 und kein „null"-Body.
   return zip.finish();
@@ -1080,7 +1407,7 @@ const IMPORT_MAX_ITEMS = 500;
 const IMPORT_MAX_PATH = 400;
 const IMPORT_MAX_DEPTH = 20;
 
-async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) {
+async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMap = null } = {}) {
   // 1) Normalisieren und validieren — ein fehlerhafter Chunk bricht komplett
   //    ab, statt halb angelegt zu enden.
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -1109,18 +1436,116 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) 
     if (raw.content !== undefined && raw.content.length > 10000) {
       throw clientError(`items[${index}].content ist länger als 10.000 Zeichen`);
     }
-    const tags = Array.isArray(raw.tags)
+
+    // Frontmatter (v1.13.0): Der koerpertragene Metadaten-Block aus dem
+    // Round-trip-Export. Der alte Trilium-Ordner-Import sendet title/tags
+    // direkt — die treffen hier auf leeres Meta und verhalten sich wie zuvor.
+    const { meta, body } = parseMarkdownFrontmatter(
+      (typeof raw.content === 'string' ? raw.content : '').slice(0, 10000)
+    );
+    // Meta-Keys sind lowercased (Parser) — die Zugriffe hier nutzen genau
+    // dieselbe Schreibweise, bleibt case-insensitiv fuer Fremd-Frontmatter.
+    const rawTags = Array.isArray(raw.tags)
       ? raw.tags.map(tag => (typeof tag === 'string' ? tag.trim().slice(0, 50) : '')).filter(Boolean)
       : [];
-    if (tags.length > 50) throw clientError(`items[${index}] hat mehr als 50 Tags`);
+    const metaTags = Array.isArray(meta.tags)
+      ? meta.tags.map(tag => (typeof tag === 'string' ? tag.trim().slice(0, 50) : '')).filter(Boolean)
+      : [];
+    const tags = [...new Set([...rawTags, ...metaTags].map((tag) => tag.toLowerCase()))].slice(0, 50);
+
+    // Asset-Rewrite: ZIP-Pfade aus dem Export werden wieder Server-URLs; nur
+    // referenzierte Anhaenge haengen an der Notiz (Inlined-Bilder + verlinkte
+    // Dateien). Frische, zufaellige Speichernamen — ein Import kollidiert nie
+    // mit Bestandsdateien und kann nichts ueberschreiben.
+    let content = body;
+    const attachedImages = new Map();
+    const attachedFiles = new Map();
+    if (assetMap) {
+      for (const [zipPath, asset] of assetMap) {
+        if (!content.includes(zipPath)) continue;
+        content = content.split(zipPath).join(asset.url);
+        (asset.kind === 'images' ? attachedImages : attachedFiles).set(asset.url, asset);
+      }
+    }
+    if (attachedImages.size > MAX_IMAGES_PER_NOTE) {
+      throw clientError(`items[${index}] referenziert mehr als ${MAX_IMAGES_PER_NOTE} Bilder`);
+    }
+    if (attachedFiles.size > MAX_FILES_PER_NOTE) {
+      throw clientError(`items[${index}] referenziert mehr als ${MAX_FILES_PER_NOTE} Dateianhänge`);
+    }
+    // Der umgeschriebene Inhalt kann durch die laengeren Server-URLs wachsen —
+    // die 10-KB-Grenze gilt weiterhin (Kuerzung wie beim Markdown-Body).
+    content = content.slice(0, 10000);
+
+    const explicitTitle = typeof raw.title === 'string' && raw.title.trim();
+    const frontTitle = typeof meta.title === 'string' && meta.title.trim();
+    // Titel-Rangfolge: Frontmatter vor explizitem Titel. Der Dateiname im ZIP
+    // ist nur der sanitizte Fallback („Rezepte- Desserts!"), das Frontmatter
+    // traegt den exakten Originaltitel („Rezepte: Desserts!"). Ohne beides:
+    // 'Notiz' (bisheriges Verhalten des Ordner-Imports).
+    const resolvedTitle = frontTitle || explicitTitle;
+
+    // Todo-Round-trip: Der Export schreibt Todo-Listen als Checkbox-Markdown
+    // plus isTodoList-Flag. Ein Body, der NUR aus Checkbox-Zeilen besteht,
+    // wird wieder zur Todo-Liste; alles andere bleibt Markdown (fremde
+    // Exporte, die zufaellig Checkboxen enthalten, verlieren nichts).
+    let isTodoList = frontmatterFlag(meta.istodolist);
+    let todoItems = [];
+    if (isTodoList) {
+      const parsed = [];
+      let allCheckbox = content.trim() !== '';
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (trimmed === '') continue;
+        const checkbox = /^[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(trimmed);
+        if (!checkbox) { allCheckbox = false; break; }
+        parsed.push({ text: checkbox[2].slice(0, 500), completed: checkbox[1].toLowerCase() === 'x', order: parsed.length });
+      }
+      if (allCheckbox && parsed.length > 0 && parsed.length <= 200) {
+        todoItems = parsed;
+        content = '';
+      } else {
+        isTodoList = false;
+      }
+    }
+
+    const color = NOTE_COLORS.has(String(meta.color)) ? String(meta.color) : '#ffffff';
     return {
       path,
       segments,
-      title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 200) : 'Notiz',
-      content: typeof raw.content === 'string' ? raw.content.slice(0, 10000) : '',
-      tags
+      isFolderIndex: raw.isFolderIndex === true,
+      title: (resolvedTitle ? String(resolvedTitle).trim().slice(0, 200) : 'Notiz'),
+      content,
+      tags,
+      isTodoList,
+      todoItems,
+      isPinned: frontmatterFlag(meta.pinned) === true,
+      isArchived: frontmatterFlag(meta.archived) === true,
+      isCode: frontmatterFlag(meta.iscode) === true,
+      color,
+      remindAt: frontmatterDate(meta.remindat),
+      createdAt: frontmatterDate(meta.created),
+      updatedAt: frontmatterDate(meta.updated),
+      attachedImages,
+      attachedFiles
     };
   });
+
+  // _index.md (v1.13.0): Der Export schreibt die Ordner-Notiz selbst als
+  // <ordner>/_index.md. Beim Import verschmilzt sie wieder MIT dem Ordner-
+  // knoten — sonst entstuende ein leeres Ordner-Duplikat plus ein gleichnamiges
+  // Kind. Vorhandene Ordner (Wiederverwendung nach Titel) werden NICHT
+  // ueberschrieben; ihr Index-Inhalt faellt damit still weg (bewusst: kein
+  // Import ueberschreibt Bestandsdaten).
+  const indexItemByPath = new Map();
+  const noteItems = [];
+  for (const item of items) {
+    if (item.isFolderIndex && item.path !== '' && !indexItemByPath.has(item.path)) {
+      indexItemByPath.set(item.path, item);
+      continue;
+    }
+    noteItems.push(item);
+  }
 
   // 2) Alle Ordnerpfade sammeln (eindeutig, Wurzel ausgenommen).
   const folderPathSet = new Set();
@@ -1154,22 +1579,51 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) 
     const title = segments[segments.length - 1];
     const parentPath = segments.slice(0, -1).join('/');
     const parentId = parentPath === '' ? null : (folderIdByPath.get(parentPath) ?? null);
-    const existingId = idByParentTitle.get(`${parentId ? String(parentId) : ''}|${title}`);
+    // Metadaten des _index.md (falls vorhanden) — die Ordner-Notiz IST die
+    // _index-Notiz: exakter Originaltitel, Inhalt, Tags, Pin, Farbe,
+    // Erinnerung, Anhaenge.
+    const indexItem = indexItemByPath.get(folderPath) || null;
+    const exactTitle = indexItem?.title;
+    // Wiederverwendung: erst unter dem exakten Originaltitel suchen (Round-
+    // trip — der Bestand traegt den Originaltitel, nicht das Pfadsegment),
+    // dann unter dem Segment (alter Ordner-Import / Fremd-ZIP ohne Frontmatter).
+    const parentKey = parentId ? String(parentId) : '';
+    const existingId = (exactTitle ? idByParentTitle.get(`${parentKey}|${exactTitle}`) : null)
+      ?? idByParentTitle.get(`${parentKey}|${title}`);
     if (existingId) {
       folderIdByPath.set(folderPath, existingId);
       continue;
     }
     const folderId = new mongoose.Types.ObjectId();
     folderIdByPath.set(folderPath, String(folderId));
-    idByParentTitle.set(`${parentId ? String(folderId) : ''}|${title}`, String(folderId));
-    newFolders.push({ _id: folderId, title, content: '', parentId, userId, order: 0, tags: [] });
+    idByParentTitle.set(`${parentKey}|${title}`, String(folderId));
+    if (exactTitle) idByParentTitle.set(`${parentKey}|${exactTitle}`, String(folderId));
+    newFolders.push({
+      _id: folderId,
+      title: exactTitle || title,
+      content: indexItem ? indexItem.content : '',
+      tags: indexItem ? indexItem.tags : [],
+      isTodoList: indexItem?.isTodoList === true,
+      todoItems: indexItem?.todoItems || [],
+      isPinned: indexItem?.isPinned === true,
+      isArchived: indexItem?.isArchived === true,
+      isCode: indexItem?.isCode === true,
+      color: indexItem?.color || '#ffffff',
+      remindAt: indexItem?.remindAt ?? null,
+      images: indexItem ? attachmentMetadata(indexItem).images : [],
+      files: indexItem ? attachmentMetadata(indexItem).files : [],
+      ...(indexItem?.createdAt ? { createdAt: indexItem.createdAt, updatedAt: indexItem.updatedAt ?? indexItem.createdAt } : {}),
+      parentId, userId, order: 0
+    });
   }
 
   // 5) Demo-Budget: Einzel-Creates prueft enforceDemoNoteLimit (Bestand < Limit),
   //    hier muss die Chunk-Groesse mitrechnen, sonst sprengt ein Rutsch das Limit.
+  //    Verschmolzene _index-Eintraege zaehlen nicht doppelt — sie werden zum
+  //    Ordner, nicht zur zusaetzlichen Notiz.
   if (demoLimit != null) {
     const noteCount = await Note.countDocuments({ userId, deletedAt: null });
-    if (noteCount + items.length + newFolders.length > demoLimit) {
+    if (noteCount + noteItems.length + newFolders.length > demoLimit) {
       const error = new Error(`Die oeffentliche Demo ist auf ${demoLimit} Notizen begrenzt.`);
       error.statusCode = 429;
       error.code = 'DEMO_NOTE_LIMIT';
@@ -1184,10 +1638,20 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) 
     await Note.insertMany(newFolders);
   }
   const baseOrder = await nextTopOrder(userId, false);
-  const newNotes = items.map((item, index) => ({
+  const newNotes = noteItems.map((item, index) => ({
     title: item.title,
     content: item.content,
     tags: item.tags,
+    isTodoList: item.isTodoList === true,
+    todoItems: item.todoItems || [],
+    isPinned: item.isPinned === true,
+    isArchived: item.isArchived === true,
+    isCode: item.isCode === true,
+    color: item.color || '#ffffff',
+    remindAt: item.remindAt ?? null,
+    images: attachmentMetadata(item).images,
+    files: attachmentMetadata(item).files,
+    ...(item.createdAt ? { createdAt: item.createdAt, updatedAt: item.updatedAt ?? item.createdAt } : {}),
     parentId: item.segments.length === 0 ? null : (folderIdByPath.get(item.segments.join('/')) ?? null),
     userId,
     order: baseOrder + index
@@ -1199,6 +1663,133 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null } = {}) 
     foldersCreated: newFolders.length,
     folderIds: [...folderIdByPath.values()]
   };
+}
+
+/** attachments eines normalisierten Items als images[]/files[]-Metadaten. */
+function attachmentMetadata(item) {
+  const uploadedAt = new Date();
+  return {
+    images: [...item.attachedImages.values()].map((asset) => ({
+      url: asset.url,
+      filename: asset.filename,
+      thumbnailUrl: asset.thumbnailUrl || '',
+      thumbnailFilename: asset.thumbnailFilename || '',
+      uploadedAt
+    })),
+    files: [...item.attachedFiles.values()].map((asset) => ({
+      url: asset.url,
+      filename: asset.filename,
+      originalName: asset.originalName || asset.filename,
+      mimetype: asset.mimetype || 'application/octet-stream',
+      size: asset.size ?? 0,
+      uploadedAt
+    }))
+  };
+}
+
+/**
+ * Markdown-ZIP-Import (v1.13.0) — der Empfangsteil des Round-trips zu
+ * buildMarkdownExport: liest das Archiv serverseitig (der Client hat keinen
+ * ZIP-Unpacker), schreibt die Anhaenge unter frischen Zufallsnamen auf die
+ * Platte (Thumbnails inklusive) und fuehrt die .md-Eintraege dem normalen
+ * importMarkdownNotes zu. Fremd-ZIPs (Obsidian-Ordner, Trilium-Exporte ohne
+ * Frontmatter) laufen denselben Weg: Fehlendes Frontmatter ist optional.
+ * Zip-Slip ist strukturell ausgeschlossen — es wird NIEMALS unter einem Namen
+ * aus dem Archiv geschrieben, sondern immer unter frischen Zufallsnamen.
+ * @param {string} userId
+ * @param {Buffer} zipBuffer - Rohdaten des Archivs
+ * @param {Object} [options]
+ * @returns {Promise<{created: number, foldersCreated: number, folderIds: string[]}>}
+ */
+async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
+  let entries;
+  try {
+    entries = readZipEntries(zipBuffer);
+  } catch (error) {
+    throw clientError(`Das Archiv liest sich nicht als ZIP: ${error.message}`);
+  }
+
+  // Manifest (vom eigenen Export): Metadaten der Anhaenge, die im ZIP-Datei-
+  // namen keinen Platz haben. Fehlt es (Fremd-ZIP), wird auf Namen/Endung
+  // zurueckgefallen.
+  let manifest = {};
+  const manifestRaw = entries.get('assets/manifest.json');
+  if (manifestRaw) {
+    try {
+      const parsed = JSON.parse(manifestRaw.toString('utf8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) manifest = parsed;
+    } catch (_error) {
+      manifest = {}; // kaputtes Manifest: Anhaenge trotzdem importieren
+    }
+  }
+
+  // 1) Anhaenge unter frischen Namen wegschreiben (Bilder mit Thumbnail).
+  //    Nur Eintraege unter assets/ sind Kandidaten; alles andere im Archiv
+  //    ist hoechstens Markdown (Schritt 2). Zielverzeichnisse sicherstellen —
+  //    der Import ist auch gegen einen frisch geleerten Volume lauffaehig.
+  fs.mkdirSync(imagesDir(), { recursive: true });
+  fs.mkdirSync(filesDir(), { recursive: true });
+  const assetMap = new Map();
+  for (const [name, bytes] of entries) {
+    const kind = name.startsWith('assets/images/') ? 'images' : name.startsWith('assets/files/') ? 'files' : null;
+    if (!kind) continue;
+    const meta = (manifest[name] && typeof manifest[name] === 'object') ? manifest[name] : {};
+    const extension = path.extname(name).toLowerCase() || '.bin';
+    if (kind === 'images') {
+      const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
+      const filepath = path.join(imagesDir(), filename);
+      fs.writeFileSync(filepath, bytes);
+      let thumbnailFilename = '';
+      try {
+        thumbnailFilename = await generateThumbnail(filename, filepath);
+      } catch (_error) {
+        thumbnailFilename = ''; // kein Thumbnail: Galerie faellt aufs Original zurueck
+      }
+      assetMap.set(name, {
+        kind, filename, url: `/uploads/images/${filename}`,
+        thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : ''
+      });
+    } else {
+      const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
+      fs.writeFileSync(path.join(filesDir(), filename), bytes);
+      assetMap.set(name, {
+        kind, filename, url: `/uploads/files/${filename}`,
+        originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
+          ? meta.originalName.slice(0, 255)
+          : path.basename(name),
+        mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : guessAssetMimetype(name),
+        size: bytes.length
+      });
+    }
+  }
+
+  // 2) .md-Eintraege zu Items formen. Pfad = Verzeichnis im Archiv (die
+  //    Baumstruktur bleibt erhalten), Titel aus Frontmatter oder Dateiname.
+  //    _index.md markiert die Ordner-Notiz selbst (siehe importMarkdownNotes).
+  const items = [];
+  for (const [name, bytes] of entries) {
+    if (!name.toLowerCase().endsWith('.md')) continue;
+    if (name.startsWith('assets/') || name.includes('__MACOSX/')) continue;
+    if (path.posix.basename(name).startsWith('.')) continue;
+    const directory = path.posix.dirname(name);
+    const folderPath = directory === '.' || directory === '/' ? '' : directory;
+    const base = path.posix.basename(name, '.md');
+    const isFolderIndex = base === '_index';
+    const fallbackTitle = isFolderIndex
+      ? (folderPath ? path.posix.basename(folderPath) : 'Notiz')
+      : base;
+    items.push({
+      path: folderPath,
+      title: fallbackTitle,
+      content: bytes.toString('utf8'),
+      isFolderIndex
+    });
+  }
+  if (items.length === 0) {
+    throw clientError('Das Archiv enthält keine Markdown-Dateien');
+  }
+
+  return importMarkdownNotes(userId, items, { demoLimit, assetMap });
 }
 
 // Tag-Verwaltung (v1.11.0): Umbenennen/Zusammenfuehren/Loeschen ueber alle
@@ -1615,8 +2206,14 @@ module.exports = {
   unshareNote,
   revokeSharedNotesBetween,
   getNoteTree,
+  getNotesMeta,
+  getNoteRevisions,
+  getNoteRevision,
+  restoreNoteRevision,
   buildMarkdownExport,
   importMarkdownNotes,
+  importMarkdownZip,
+  parseMarkdownFrontmatter,
   applyTagOperation,
   addImages,
   removeImage,

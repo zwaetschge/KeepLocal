@@ -63,7 +63,14 @@ function makeNoteStore(initial) {
   store.NoteMock = {
     find: (query) => {
       const matches = [...docs.values()].filter((doc) => {
-        if (String(doc.userId) !== String(query.userId)) return false;
+        // v1.13.0: getNoteTree fragt $or [{userId}, {sharedWith: userId}] —
+        // geteilte Notizen gehoeren in den Baum des Mitbearbeiters.
+        if (query.$or) {
+          const matchesBranch = query.$or.some((branch) =>
+            (branch.userId !== undefined && String(doc.userId) === String(branch.userId)) ||
+            (branch.sharedWith !== undefined && (doc.sharedWith || []).some((id) => String(id) === String(branch.sharedWith))));
+          if (!matchesBranch) return false;
+        } else if (String(doc.userId) !== String(query.userId)) return false;
         if (query.deletedAt === null && doc.deletedAt != null) return false;
         if (query.deletedAt && query.deletedAt.$ne === null && doc.deletedAt == null) return false;
         return true;
@@ -208,8 +215,11 @@ test('buildMarkdownExport erzeugt ZIP mit Ordnerstruktur und _index.md', async (
   assert.ok(asText.includes('Projekte/_index.md'), 'Ordner-Index vorhanden');
   assert.ok(asText.includes('Idee.md'), 'Kind als Datei');
   assert.ok(asText.includes('Einzeln.md'), 'Wurzel-Notiz als Datei');
-  assert.ok(zipBuffer.toString('utf8').includes('# Projekte'), 'Markdown-Ueberschrift');
-  assert.ok(zipBuffer.toString('utf8').includes('#arbeit'), 'Tags als Hashtags');
+  // Seit v1.13.0 traegt YAML-Frontmatter Titel und Tags (Round-trip-faehig,
+  // siehe markdownRoundTrip.test.js) statt Markdown-Ueberschrift + Hashtags.
+  const asUtf8 = zipBuffer.toString('utf8');
+  assert.ok(asUtf8.includes('title: Projekte'), 'Titel im Frontmatter');
+  assert.ok(asUtf8.includes('tags: [arbeit]'), 'Tags im Frontmatter');
 });
 
 test('Markdown-Export: zwei gleiche Titel kollidieren nicht', async () => {
@@ -330,4 +340,25 @@ test('buildMarkdownExport gibt Waisen und Zyklus-Knoten an der Wurzel aus', asyn
   assert.ok(asText.includes('ZyklusA') && asText.includes('ZyklusB'), 'Zyklus-Knoten werden je einmal ausgegeben');
   // Zyklus: A als _index-Ordner (hat Kind B) + B als Datei — kein Doppeltaverse.
   assert.ok(!asText.includes('ZyklusA.md'), 'A wird nur als Ordner-_index geschrieben');
+});
+
+// v1.13.0 Nr. 6 — geteilte Notizen gehören in den Baum des Mitbearbeiters:
+// die Liste zeigte sie ($or sharedWith), der Baum fragte nur {userId}.
+test('geteilte Notizen erscheinen im Baum des Mitbearbeiters mit shared-Flag', async () => {
+  const friend = 'f'.repeat(24);
+  const sharedNote = {
+    _id: 's'.repeat(24), userId: OWNER_ID, sharedWith: [friend], deletedAt: null,
+    parentId: null, title: 'Geteilt', order: 1, isPinned: false, isCode: false,
+    isArchived: false, isTodoList: false, remindAt: null, updatedAt: new Date()
+  };
+  const store = makeNoteStore([sharedNote]);
+  const service = loadService(store.NoteMock);
+
+  const friendTree = await service.getNoteTree(friend);
+  assert.equal(friendTree.length, 1, 'the shared note is visible to the collaborator');
+  assert.equal(friendTree[0].shared, true);
+
+  const ownerTree = await service.getNoteTree(OWNER_ID);
+  assert.equal(ownerTree.length, 1);
+  assert.equal(ownerTree[0].shared, false);
 });

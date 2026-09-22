@@ -60,6 +60,7 @@ function publicAuthUser(user, includeProfile = false) {
         voiceTranscription: user.preferences?.aiFeatures?.voiceTranscription === true
       },
       transcriptionLanguage: user.preferences?.transcriptionLanguage || 'auto',
+      renderMarkdown: user.preferences?.renderMarkdown !== false,
       // v1.10.0: Tag-Farben, gespeicherte Suchen und Journal-Wurzel folgen
       // ebenfalls dem Konto. savedSearches ist ein Array von Subdokumenten —
       // lean toJSON kann die _id mitliefern, die Clients interessiert sie nicht.
@@ -419,7 +420,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 // ein Client nicht beliebige Dokumentteile schreiben kann.
 router.put('/preferences', authenticateToken, blockDemoUser('preferences'), async (req, res, next) => {
   try {
-    const { theme, language, aiFeatures, transcriptionLanguage, tagColors, savedSearches, journalFolderId } = req.body || {};
+    const { theme, language, aiFeatures, transcriptionLanguage, renderMarkdown, tagColors, savedSearches, journalFolderId } = req.body || {};
     const update = {};
 
     if (theme !== undefined) {
@@ -454,6 +455,15 @@ router.put('/preferences', authenticateToken, blockDemoUser('preferences'), asyn
         return res.status(400).json({ error: 'Ungueltige Transkriptionssprache' });
       }
       update['preferences.transcriptionLanguage'] = transcriptionLanguage;
+    }
+
+    // v1.13.0: Karten als Markdown rendern — reiner Boolean, default true
+    // (Bestandskonten sehen sofort gerenderte Trilium-Notizen).
+    if (renderMarkdown !== undefined) {
+      if (typeof renderMarkdown !== 'boolean') {
+        return res.status(400).json({ error: 'renderMarkdown muss ein Boolean sein' });
+      }
+      update['preferences.renderMarkdown'] = renderMarkdown;
     }
 
     // v1.10.0: Tag-Farben — Schluessel sind Tag-Namen, Werte Hexes aus der

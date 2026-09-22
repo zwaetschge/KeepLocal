@@ -9,11 +9,27 @@ import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
+/** Bytes lesbar (v1.13.0 Nr. 3): Recovery-Points- und Speicher-Anzeige. */
+function formatBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
+}
+
 function AdminConsole({ onClose }) {
   const { t, language } = useLanguage();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(null);
+  // v1.13.0 Nr. 3: Backup-Scheduler — Status + Recovery Points
+  const [backups, setBackups] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('stats');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -25,6 +41,7 @@ function AdminConsole({ onClose }) {
   // angezeigt und von den Admins an die Person übergeben.
   const [resetTokenInfo, setResetTokenInfo] = useState(null);
   const [resetTokenCopied, setResetTokenCopied] = useState(false);
+  const locale = language === 'de' ? 'de-DE' : 'en-GB';
 
   const loadData = useCallback(async () => {
     try {
@@ -40,6 +57,15 @@ function AdminConsole({ onClose }) {
       } else if (activeTab === 'settings') {
         const data = await adminAPI.getSettings();
         setSettings(data.settings);
+      } else if (activeTab === 'backups') {
+        // Backups + Speicherplatz (stats) zusammen — die Storage-Anzeige im
+        // Backup-Tab kommt aus demselben Stats-Endpoint, Best-Effort.
+        const [backupData, statsData] = await Promise.all([
+          adminAPI.getBackups(),
+          adminAPI.getStats().catch(() => null)
+        ]);
+        setBackups(backupData);
+        if (statsData?.stats) setStats(statsData.stats);
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -152,6 +178,27 @@ function AdminConsole({ onClose }) {
     }
   };
 
+  // v1.13.0 Nr. 3: Backup manuell anstoßen. Der Endpoint wartet auf den Lauf;
+  // danach Status + Punkte neu lesen, damit Ziel und Dauer sofort stimmen.
+  const handleRunBackup = async () => {
+    setOperationLoading(prev => ({ ...prev, backup: true }));
+    try {
+      const response = await adminAPI.runBackup();
+      if (response.status?.ok) {
+        toastBus.success(t('backupRunDone', { target: response.status.target || '' }));
+      } else {
+        setError(response.status?.error || t('backupRunFailed'));
+      }
+      const data = await adminAPI.getBackups();
+      setBackups(data);
+    } catch (error) {
+      console.error('Error running backup:', error);
+      setError(resolveApiErrorMessage(error, t, 'backupRunFailed'));
+    } finally {
+      setOperationLoading(prev => ({ ...prev, backup: false }));
+    }
+  };
+
   const backdropClose = useBackdropClose(onClose);
 
   // Same dialog semantics as the other overlays: focus trap, initial focus,
@@ -200,6 +247,12 @@ function AdminConsole({ onClose }) {
             onClick={() => setActiveTab('settings')}
           >
             ⚙️ {t('settings')}
+          </button>
+          <button
+            className={`admin-tab ${activeTab === 'backups' ? 'active' : ''}`}
+            onClick={() => setActiveTab('backups')}
+          >
+            💾 {t('backups')}
           </button>
         </div>
 
@@ -475,6 +528,125 @@ function AdminConsole({ onClose }) {
                         ? `✅ ${t('registrationNote')}`
                         : `🔒 ${t('registrationNoteDisabled')}`}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'backups' && backups && (
+                <div className="admin-backups">
+                  <div className="stat-card">
+                    <h3>{t('backupStatusTitle')}</h3>
+                    {backups.status ? (
+                      <div className="stat-grid">
+                        <div className="stat-item">
+                          <span className="stat-label">🕐 {t('backupLastRun')}</span>
+                          <span className="stat-value">
+                            {new Date(backups.status.lastRunAt).toLocaleString(locale)}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">{backups.status.ok ? '✓' : '⚠️'} {t('backupResult')}</span>
+                          <span className="stat-value">
+                            {backups.status.ok ? t('backupOk') : t('backupFailed')}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">⏱️ {t('backupDuration')}</span>
+                          <span className="stat-value">{(backups.status.durationMs / 1000).toFixed(1)} s</span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">🔁 {t('backupInterval')}</span>
+                          <span className="stat-value">
+                            {t('backupIntervalHours', { hours: backups.status.intervalHours })}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="settings-description">{t('backupNeverRun')}</p>
+                    )}
+                    {backups.status?.error && (
+                      <p className="settings-note">⚠️ {backups.status.error}</p>
+                    )}
+                    <button
+                      onClick={handleRunBackup}
+                      className="btn-create-user"
+                      disabled={operationLoading.backup}
+                      style={{ marginTop: '0.75rem' }}
+                    >
+                      {operationLoading.backup ? t('saving') : `💾 ${t('backupRunNow')}`}
+                    </button>
+                    <p className="settings-note">{t('backupRunNote')}</p>
+                  </div>
+
+                  {stats?.storage && (
+                    <div className="stat-card">
+                      <h3>{t('storageTitle')}</h3>
+                      <div className="stat-grid">
+                        {['uploads', 'backups'].map((volumeKey) => {
+                          const volume = stats.storage[volumeKey];
+                          if (!volume) return null;
+                          return (
+                            <div className="stat-item" key={volumeKey}>
+                              <span className="stat-label">{volume.path}</span>
+                              <span className="stat-value">
+                                {volume.ok
+                                  ? `${formatBytes(volume.freeBytes)} ${t('storageFree')} / ${formatBytes(volume.totalBytes)}`
+                                  : t('storageUnavailable')}
+                              </span>
+                              {volume.low && (
+                                <span className="stat-label">⚠️ {t('storageLow')}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {stats.uploads && (
+                          <div className="stat-item">
+                            <span className="stat-label">📎 {t('storageUploads')}</span>
+                            <span className="stat-value">
+                              {formatBytes((stats.uploads.images || 0) + (stats.uploads.files || 0))}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="stat-card">
+                    <h3>{t('backupPointsTitle')}</h3>
+                    {!backups.backups || backups.backups.length === 0 ? (
+                      <p className="settings-description">{t('backupPointsEmpty')}</p>
+                    ) : (
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>{t('backupName')}</th>
+                            <th>{t('created')}</th>
+                            <th>{t('backupDocuments')}</th>
+                            <th>{t('backupUploadFiles')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {backups.backups.map((entry) => (
+                            <tr key={entry.name}>
+                              <td>{entry.name}</td>
+                              <td>
+                                {entry.createdAt
+                                  ? new Date(entry.createdAt).toLocaleString(locale)
+                                  : '—'}
+                              </td>
+                              <td>{entry.unreadable ? '⚠️' : (entry.documents ?? '—')}</td>
+                              <td>
+                                {entry.unreadable
+                                  ? '⚠️'
+                                  : (entry.uploadBytes != null
+                                    ? `${entry.uploadFiles ?? 0} (${formatBytes(entry.uploadBytes)})`
+                                    : '—')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
               )}

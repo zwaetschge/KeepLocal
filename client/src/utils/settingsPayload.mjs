@@ -7,6 +7,10 @@ export const DEFAULT_SETTINGS = {
     voiceTranscription: false
   },
   transcriptionLanguage: 'auto',
+  // v1.13.0: Karten als Markdown rendern — default an, weil der Bestand
+  // (Trilium-Import) überwiegend Markdown ist; abschaltbar für Konten, die
+  // rohen Text bevorzugen. Ältere Server-Payloads ohne das Key: true.
+  renderMarkdown: true,
   // v1.10.0: Tag-Farben (Name → Hex), gespeicherte Suchen, Journal-Ordner
   tagColors: {},
   savedSearches: [],
@@ -76,6 +80,7 @@ export function normalizeSettings(value) {
       voiceTranscription: aiFeatures.voiceTranscription === true
     },
     transcriptionLanguage,
+    renderMarkdown: source.renderMarkdown !== false,
     tagColors: normalizeTagColors(source.tagColors),
     savedSearches: normalizeSavedSearches(source.savedSearches),
     journalFolderId: typeof source.journalFolderId === 'string'
@@ -103,6 +108,7 @@ export function preferencesFromSettings(settings) {
     theme: normalized.theme,
     aiFeatures: { voiceTranscription: normalized.aiFeatures.voiceTranscription },
     transcriptionLanguage: normalized.transcriptionLanguage,
+    renderMarkdown: normalized.renderMarkdown,
     tagColors: normalized.tagColors,
     savedSearches: normalized.savedSearches,
     journalFolderId: normalized.journalFolderId
@@ -121,6 +127,7 @@ export function settingsEqual(a, b) {
   const right = normalizeSettings(b);
   return left.theme === right.theme
     && left.transcriptionLanguage === right.transcriptionLanguage
+    && left.renderMarkdown === right.renderMarkdown
     && left.aiFeatures.voiceTranscription === right.aiFeatures.voiceTranscription
     && left.journalFolderId === right.journalFolderId
     && JSON.stringify(left.tagColors) === JSON.stringify(right.tagColors)

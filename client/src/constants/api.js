@@ -44,6 +44,10 @@ export const API_ENDPOINTS = {
     EXPORT_MARKDOWN: '/api/notes/export/markdown',
     // v1.10.1: Bulk-Import (Ordner-Chunk) statt Create-Request pro Datei
     IMPORT_MARKDOWN: '/api/notes/import/markdown',
+    // v1.13.0: Round-trip-Import des Volldaten-Exports (ZIP mit Anhangen)
+    IMPORT_MARKDOWN_ZIP: '/api/notes/import/markdown-zip',
+    // v1.13.0: Aenderungs-Sonde fuer den 60s-Poll (Delta-Sync)
+    META: '/api/notes/meta',
     // v1.11.0: Tag umbenennen/zusammenführen/löschen über alle sichtbaren Notizen
     TAGS: '/api/notes/tags',
   },
@@ -73,6 +77,9 @@ export const API_ENDPOINTS = {
     TOGGLE_ADMIN: (userId) => `/api/admin/users/${userId}/admin`,
     PASSWORD_RESET: (userId) => `/api/admin/users/${userId}/password-reset`,
     SETTINGS: '/api/admin/settings',
+    // v1.13.0: Backup-Scheduler — Status + Recovery Points, manueller Lauf
+    BACKUPS: '/api/admin/backups',
+    BACKUPS_RUN: '/api/admin/backups/run',
   },
 };
 

@@ -191,9 +191,10 @@ interface KeepLocalApi {
     @PUT("api/admin/settings")
     suspend fun updateAdminSettings(@Body settings: AdminSettingsDto): Response<Unit>
 
-    // Link Preview
-    @GET("api/link-preview")
-    suspend fun getLinkPreview(@Query("url") url: String): Response<LinkPreviewDto>
+    // Link Preview: POST /api/notes/link-preview mit JSON-Body (v1.13.0) —
+    // der alte GET-Endpoint existiert serverseitig nicht mehr.
+    @POST("api/notes/link-preview")
+    suspend fun getLinkPreview(@Body request: LinkPreviewRequestDto): Response<LinkPreviewDto>
 
     // API Keys
     @GET("api/keys")

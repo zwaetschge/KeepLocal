@@ -9,6 +9,27 @@ const adminService = require('../services/adminService');
 const normalizeEmailAddress = require('../utils/normalizeEmail');
 const { escapeRegex } = require('../utils/sanitize');
 const { createPasswordResetToken } = require('../utils/passwordReset');
+const { checkDiskSpace } = require('../services/healthService');
+const { runScheduledBackup, listBackupSummaries, readStatus } = require('../services/backupScheduler');
+const { imagesDir, filesDir } = require('../config/paths');
+const fs = require('node:fs');
+const path = require('node:path');
+
+/** Bytes aller regulären Dateien in einem Upload-Unterverzeichnis. */
+function directoryBytes(directory) {
+  let total = 0;
+  let files = 0;
+  try {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isFile() || entry.name === '.gitkeep') continue;
+      total += fs.statSync(path.join(directory, entry.name)).size;
+      files += 1;
+    }
+  } catch (_error) {
+    return { files: 0, bytes: 0 }; // Verzeichnis existiert (noch) nicht
+  }
+  return { files, bytes: total };
+}
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -177,7 +198,11 @@ router.get('/stats', async (req, res) => {
         totalNotes: noteCount,
         trashNotes: trashCount,
         recentUsers,
-        topUsers: notesPerUser
+        topUsers: notesPerUser,
+        // Freiplatz + Upload-Bestand: Der Selfhoster sieht sonst erst bei
+        // ENOSPC, dass die gemeinsame Disk voll läuft (All-in-One-Image).
+        storage: checkDiskSpace(),
+        uploads: { images: directoryBytes(imagesDir()), files: directoryBytes(filesDir()) }
       }
     });
   } catch (error) {
@@ -249,6 +274,29 @@ router.patch('/users/:id/admin', async (req, res) => {
     }
     console.error('Error updating user admin status:', error);
     res.status(500).json({ error: 'Fehler beim Aktualisieren des Admin-Status' });
+  }
+});
+
+// GET /api/admin/backups - Backup-Status + Recovery Points (v1.13.0)
+// Bewusst ohne Verify: Der haette jede Byte jedes Recovery Points zu lesen.
+// Die Vollstaendigkeit garantiert bereits createBackup beim Schreiben.
+router.get('/backups', async (req, res) => {
+  try {
+    res.json({ status: readStatus(), backups: listBackupSummaries() });
+  } catch (error) {
+    console.error('Error listing backups:', error);
+    res.status(500).json({ error: 'Fehler beim Laden der Backups' });
+  }
+});
+
+// POST /api/admin/backups/run - Backup sofort anstossen (wartet auf den Lauf)
+router.post('/backups/run', async (req, res) => {
+  try {
+    const status = await runScheduledBackup();
+    res.status(status.ok ? 200 : 500).json({ status });
+  } catch (error) {
+    console.error('Error running backup:', error);
+    res.status(500).json({ error: 'Fehler beim Ausführen des Backups' });
   }
 });
 

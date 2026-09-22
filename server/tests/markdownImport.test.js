@@ -175,8 +175,9 @@ test('importMarkdownNotes normalisiert Titel/Tags/Pfade defensiv', async () => {
   assert.equal(result.created, 1);
   const note = store.inserted.find((doc) => doc.content === 'x');
   assert.equal(note.title, 'Notiz', 'leerer Titel faellt auf den Fallback');
-  // Trimmen/Filtern/Kappen macht der Service; das Lowercase uebernimmt erst das
-  // Mongoose-Schema (transform), das der Mock hier nicht nachbildet.
-  assert.deepEqual(note.tags, ['Arbeit', 'x'.repeat(50)], 'getrimmt, leere gefiltert, auf 50 gekappt');
+  // Seit v1.13.0 normalisiert der Service auch die Schreibweise (dedupe gegen
+  // Frontmatter-Tags desselben Tags in anderer Case-Lage); vorher tat das
+  // erst das Mongoose-Schema (transform), das der Mock hier nicht nachbildet.
+  assert.deepEqual(note.tags, ['arbeit', 'x'.repeat(50)], 'getrimmt, lowercase, leere gefiltert, auf 50 gekappt');
   assert.ok(note.parentId, 'Pfad-Slashes am Rand sind entfernt, Ordner angelegt');
 });

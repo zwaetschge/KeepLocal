@@ -2,6 +2,8 @@ package com.keeplocal.android.data.repository
 
 import com.keeplocal.android.data.api.KeepLocalApi
 import com.keeplocal.android.data.api.dto.ReorderNotesDto
+import com.keeplocal.android.data.api.dto.NoteDto
+import com.keeplocal.android.data.api.dto.LinkPreviewRequestDto
 import com.keeplocal.android.data.api.dto.ShareNoteDto
 import com.keeplocal.android.data.api.dto.toDomain
 import com.keeplocal.android.data.api.dto.toCreateDto
@@ -76,7 +78,16 @@ class NoteRepositoryImpl @Inject constructor(
             val response = api.getNotes(search = search, tag = tag, archived = archived, limit = NOTES_PAGE_LIMIT)
             fileLogger.log("NoteRepo", "getNotes response: code=${response.code()}")
             if (response.isSuccessful) {
-                val dtos = response.body()?.getNotesList() ?: emptyList()
+                var dtos = response.body()?.getNotesList() ?: emptyList()
+                // v1.13.0 Nr. 1: Die Klartext-Liste (ohne Suche/Tag) zieht ALLE
+                // Seiten nach — der Server paginiert mit 100 pro Seite, und bis-
+                // her blieb der Room-Cache ab Notiz 101 dauerhaft unvollständig
+                // (Offline-Liste, Erinnerungen, Widgets). Suche/Tag bleiben bei
+                // einer Seite: Dort rankt der serverseitige Volltextindex über
+                // den Gesamtbestand, und die erste Seite trägt die Treffer.
+                if (search == null && tag == null) {
+                    dtos = dtos + fetchRemainingNotePages(archived, response.body()?.pages, dtos.size)
+                }
                 val notes = dtos.map { it.toDomain() }
                 fileLogger.log("NoteRepo", "getNotes success: ${notes.size} notes")
                 settingsDataStore.setLastSyncAt(System.currentTimeMillis())
@@ -496,7 +507,7 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun getLinkPreview(url: String): Result<LinkPreview> {
         return try {
-            val response = api.getLinkPreview(url)
+            val response = api.getLinkPreview(LinkPreviewRequestDto(url))
             if (response.isSuccessful) {
                 val preview = response.body()?.toDomain() ?: throw Exception("No preview data")
                 Result.Success(preview)
@@ -506,6 +517,48 @@ class NoteRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Result.Error(exceptionMessage(e))
         }
+    }
+
+    /**
+     * Folgeseiten einer Notizliste (v1.13.0 Nr. 1). Seite 1 hat der Aufrufer
+     * schon; hier laufen Seite 2..N mit, bis der Server das Ende meldet. Ein
+     * Fehler auf einer Folgeseite bricht ab und behält, was schon da ist —
+     * ein Teilbestand ist besser als eine leere Liste —, Seite 1 kann gar
+     * nicht scheitern, weil der Aufrufer sie bereits geprüft hat.
+     */
+    private suspend fun fetchRemainingNotePages(
+        archived: Boolean,
+        firstBodyPages: Int?,
+        firstPageSize: Int
+    ): List<NoteDto> {
+        val maxPages = 100 // hartes Limit, selbst wenn der Server spinnt
+        var totalPages = firstBodyPages
+            ?: if (firstPageSize < NOTES_PAGE_LIMIT) 1 else 2 // Feld fehlt: an Seitenende erkennen
+        val collected = mutableListOf<NoteDto>()
+        var page = 2
+        while (page <= maxPages && page <= totalPages) {
+            val response = try {
+                api.getNotes(archived = archived, deleted = false, page = page, limit = NOTES_PAGE_LIMIT)
+            } catch (e: Exception) {
+                fileLogger.error("NoteRepo", "getNotes page $page failed", e)
+                break
+            }
+            if (!response.isSuccessful) {
+                fileLogger.error("NoteRepo", "getNotes page $page failed: code=${response.code()}")
+                break
+            }
+            val dtos = response.body()?.getNotesList() ?: break
+            collected += dtos
+            if (dtos.size < NOTES_PAGE_LIMIT) break
+            // Fehlt das pages-Feld, verhindert die Vollseiten-Heuristik ein
+            // zu frühes Ende: eine volle Seite vermutet immer noch eine weitere.
+            totalPages = response.body()?.pages ?: (page + 1)
+            page++
+        }
+        if (collected.isNotEmpty()) {
+            fileLogger.log("NoteRepo", "getNotes: +${collected.size} notes from follow-up pages")
+        }
+        return collected
     }
 
     override suspend fun getAllNotesForExport(): Result<List<Note>> {

@@ -262,6 +262,9 @@ function updatableModel({ writes = [] } = {}) {
   const stored = {
     title: 'Titel', content: 'Inhalt', color: '#ffffff', isPinned: false,
     tags: [], isTodoList: false, todoItems: [], linkPreviews: [],
+    // v1.13.0: updateNote prüft Besitzer vs. Mitbearbeiter (Baum × Teilen) —
+    // ohne userId wäre dieser Mock ein Collaborator und order/parentId fielen weg.
+    userId: OWNER_ID,
     order: 4, updatedAt: new Date('2026-09-06T10:00:00.000Z')
   };
   return {

@@ -252,3 +252,61 @@ test('the list and single-note responses populate the last editor', async () => 
   await service.getNoteById(NOTE_ID, OWNER_ID).catch(() => {});
   assert.ok(populatedFields.includes('lastEditedBy'), 'a single note must populate lastEditedBy');
 });
+
+// v1.13.0 Nr. 6 — Baum × Teilen: geteilte Notizen erschienen nie im Baum, und
+// ein Mitbearbeiter konnte die fremde Notiz an EIGENE Knoten hängen (dann
+// verschwand sie aus dem Baum des Besitzers). Struktur ist Besitzer-Sache.
+test('a collaborator cannot move a shared note in the tree', async () => {
+  const service = loadService({
+    findOne: async () => storedNote({ parentId: '507f1f77bcf86cd7994390aa' }),
+    findOneAndUpdate: async () => storedNote()
+  });
+
+  await assert.rejects(
+    () => service.updateNote(NOTE_ID, { parentId: null }, FRIEND_ID),
+    /Nur der Besitzer/
+  );
+  await assert.rejects(
+    () => service.updateNote(NOTE_ID, { parentId: '507f1f77bcf86cd7994390bb' }, FRIEND_ID),
+    /Nur der Besitzer/
+  );
+});
+
+test('a collaborator sending unchanged parentId/order edits content but never structure', async () => {
+  const parentId = '507f1f77bcf86cd7994390aa';
+  let captured = null;
+  const service = loadService({
+    findOne: async () => storedNote({ parentId, order: 5 }),
+    findOneAndUpdate: async (query, update) => { captured = update.$set; return storedNote({ parentId, order: 5 }); }
+  });
+
+  await service.updateNote(NOTE_ID, { content: 'vom Freund geaendert', parentId, order: 5 }, FRIEND_ID);
+
+  assert.equal(captured.content, 'vom Freund geaendert');
+  assert.equal(captured.parentId, undefined, 'structure must not be written for collaborators');
+  assert.equal(captured.order, undefined);
+  assert.equal(captured.lastEditedBy, FRIEND_ID);
+});
+
+test('the owner still validates parents against their own tree', async () => {
+  // Der Besitzer verschiebt auf einen fremden Knoten (gehört dem Freund):
+// assertValidParent läuft gegen den BESITZER, nicht mehr gegen den Editor.
+  const parents = [];
+  const service = loadService({
+    // assertValidParent chained .lean() synchronously auf dem findOne-Ergebnis —
+    // das Mock darf also kein async sein (async liefert eine Promise ohne .lean).
+    findOne: (query) => {
+      if (query.$or) return Promise.resolve(storedNote()); // noteEditQuery: die Notiz selbst
+      parents.push(query); // assertValidParent: Eltern-Lookup gegen den Besitzer
+      return { lean: () => Promise.resolve(null) }; // Parent gehört niemandem → 400
+    },
+    findOneAndUpdate: async () => storedNote()
+  });
+
+  await assert.rejects(
+    () => service.updateNote(NOTE_ID, { parentId: '507f1f77bcf86cd7994390cc' }, OWNER_ID),
+    /Uebergeordnete Notiz nicht gefunden/
+  );
+  assert.ok(parents.every((query) => String(query.userId) === OWNER_ID),
+    'parent lookup must run against the note owner');
+});

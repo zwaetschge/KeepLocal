@@ -38,6 +38,16 @@ export function shouldDimRefresh(elapsedMs, changed, delayMs = REFRESH_DIM_DELAY
   return Boolean(changed) && elapsedMs >= delayMs;
 }
 
+/**
+ * Signatur der Meta-Sonde (v1.13.0 Nr. 9): Zählungen + max(updatedAt) als
+ * vergleichbarer String. Reine Funktion, damit die Gate-Semantik in
+ * tests/notesManagerLogic.test.js ausführbar bleibt.
+ */
+export function notesMetaSignature(meta) {
+  if (!meta || typeof meta !== 'object') return 'none';
+  return `${meta.active ?? 0}/${meta.archived ?? 0}/${meta.trash ?? 0}/${meta.maxUpdatedAt || ''}`;
+}
+
 const DEFAULT_PAGINATION = { page: 1, limit: NOTES_PAGE_LIMIT, total: 0, pages: 0 };
 const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 
@@ -323,6 +333,9 @@ export function useNotesManager({
   // v1.10.1: Signatur des letzten Baum-Stands — Poll-Ticks ohne Änderung
   // dürfen keine neuen Identitäten (Sidebar-Rerender) erzeugen.
   const treeSignatureRef = useRef(null);
+  // v1.13.0 Nr. 9: Signatur der letzten Meta-Sonde — 60s-Poll-Ticks ohne
+  // serverseitige Änderung überspringen Liste+Baum komplett.
+  const metaSignatureRef = useRef(null);
   const [folderScope, setFolderScope] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -526,6 +539,9 @@ export function useNotesManager({
       setNoteTree([]);
       setTreeNodes({});
       treeSignatureRef.current = null;
+      // Meta-Signatur ebenfalls verwerfen: Der nächste Login (ggf. ein anderer
+      // Account) darf nicht gegen die Signatur der alten Session vergleichen.
+      metaSignatureRef.current = null;
       setFolderScope(null);
       setSelectedIds(new Set());
     }
@@ -1005,11 +1021,26 @@ export function useNotesManager({
     window.addEventListener('focus', onWake);
     document.addEventListener('visibilitychange', onWake);
 
-    const pollInterval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshInBackground(undefined, undefined, { silent: true });
-        refreshTree();
+    const pollInterval = setInterval(async () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+      // v1.13.0 Nr. 9: Meta-Sonde vor dem Voll-Abruf. Zählungen + max(updatedAt)
+      // in einer Aggregation entscheiden, ob sich serverseitig überhaupt etwas
+      // getan hat — im Leerlauf (Regelfall) fällt sonst pro Tick eine volle
+      // 50er-Seite inkl. 5 paralleler DB-Queries plus der komplette Baum an.
+      // Fail-open: Geht die Sonde schief oder kennt das API sie nicht, wird
+      // wie bisher voll geladen — der Poll hungert nie aus.
+      if (typeof api.getMeta === 'function' && hasLoadedRef.current) {
+        try {
+          const meta = await api.getMeta();
+          const signature = notesMetaSignature(meta);
+          if (metaSignatureRef.current === signature) return;
+          metaSignatureRef.current = signature;
+        } catch (_error) {
+          // Sonde unerreichbar: unten voll weiterladen.
+        }
       }
+      refreshInBackground(undefined, undefined, { silent: true });
+      refreshTree();
     }, POLL_INTERVAL_MS);
 
     return () => {
@@ -1018,7 +1049,7 @@ export function useNotesManager({
       clearInterval(pollInterval);
       clearTimeout(dimTimerRef.current);
     };
-  }, [isLoggedIn, refreshInBackground, refreshTree]);
+  }, [isLoggedIn, api, refreshInBackground, refreshTree]);
 
   // Notizen nach Tag filtern und in angeheftete/sonstige Sektionen trennen.
   // Der Ordner-Scope (v1.11.1) filtert der Server (params.folderId) — hier

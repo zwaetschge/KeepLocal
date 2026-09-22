@@ -106,6 +106,32 @@ const notesAPI = {
     }),
 
   /**
+   * Aenderungs-Sonde fuer den 60s-Poll (v1.13.0 Nr. 9): Zaehlungen und
+   * max(updatedAt) in einer Aggregation — der Client ueberspringt Liste+Baum,
+   * wenn die Signatur unverblueft ist.
+   * @returns {Promise<{active: number, archived: number, trash: number, maxUpdatedAt: string|null}>}
+   */
+  getMeta: (options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.META, { signal: options.signal }),
+
+  /**
+   * Markdown-ZIP-Round-trip-Import (v1.13.0 Nr. 7): Das Archiv des
+   * Volldaten-Exports inklusive Anhaenge zurueckspielen. Der Server liest
+   * das ZIP selbst (Fresh-Namen, Zip-Slip unmöglich) — der Client schickt
+   * nur die Datei.
+   * @param {File} archive - .zip vom Export oder aus Obsidian/Trilium
+   * @returns {Promise<{created: number, foldersCreated: number}>}
+   */
+  importMarkdownZip: (archive) => {
+    const formData = new FormData();
+    formData.append('archive', archive);
+    return fetchMultipart(
+      API_ENDPOINTS.NOTES.IMPORT_MARKDOWN_ZIP,
+      formData,
+      'ZIP-Import fehlgeschlagen'
+    );
+  },
+
+  /**
    * Markdown-Bulk-Import (v1.10.1): ein Ordner-Chunk pro Aufruf — die
    * Servergrenze (500 Items) spiegelt chunkImportItems im utils-Helper.
    * @param {Array<{path: string, title: string, content: string}>} items

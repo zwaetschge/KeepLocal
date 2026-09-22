@@ -26,7 +26,9 @@ test('settings normalization preserves valid supported values', async () => {
     // v1.10.0: Tag-Farben, gespeicherte Suchen, Journal-Ordner
     tagColors: { ideen: '#84cc16' },
     savedSearches: [{ id: 's-1', name: 'Offene Punkte', query: 'offen', typeFilter: null, tag: null }],
-    journalFolderId: '64b1f0c9a1d4e5f6a7b8c9d0'
+    journalFolderId: '64b1f0c9a1d4e5f6a7b8c9d0',
+    // v1.13.0: Markdown-Rendering der Karten
+    renderMarkdown: true
   };
 
   assert.deepEqual(normalizeSettings(settings), settings);
@@ -59,7 +61,9 @@ test('user preferences are mapped into settings and back', async () => {
     transcriptionLanguage: 'fr',
     tagColors: {},
     savedSearches: [],
-    journalFolderId: null
+    journalFolderId: null,
+    // v1.13.0: ohne gespeicherte Präferenz gilt der Default (an)
+    renderMarkdown: true
   });
 
   assert.deepEqual(preferencesFromSettings(settings), {
@@ -68,7 +72,8 @@ test('user preferences are mapped into settings and back', async () => {
     transcriptionLanguage: 'fr',
     tagColors: {},
     savedSearches: [],
-    journalFolderId: null
+    journalFolderId: null,
+    renderMarkdown: true
   });
 
   // A user without preferences (older account) falls back to the defaults.
@@ -138,4 +143,26 @@ test('tag colors and saved searches participate in settingsEqual', async () => {
     settingsEqual(base, { ...base, savedSearches: [{ id: 's', name: 'N', query: '', typeFilter: null, tag: null }] }),
     false
   );
+});
+
+test('renderMarkdown ist per Default an und normalisiert falsche Werte', async () => {
+  const { DEFAULT_SETTINGS, normalizeSettings, preferencesFromSettings, settingsEqual } =
+    await import(moduleUrl);
+
+  assert.equal(DEFAULT_SETTINGS.renderMarkdown, true);
+  // Fehlender Schlüssel = an: alte Persistierungen vor v1.13.0 kannten ihn nicht.
+  assert.equal(normalizeSettings({}).renderMarkdown, true);
+  assert.equal(normalizeSettings(null).renderMarkdown, true);
+  assert.equal(normalizeSettings({ renderMarkdown: false }).renderMarkdown, false);
+  // Nur exakt false schaltet ab — alles andere fällt auf den Default zurück.
+  assert.equal(normalizeSettings({ renderMarkdown: 'nope' }).renderMarkdown, true);
+  assert.equal(normalizeSettings({ renderMarkdown: 0 }).renderMarkdown, true);
+  assert.equal(normalizeSettings({ renderMarkdown: null }).renderMarkdown, true);
+
+  // Der Schalter wandert in die Account-Präferenzen und in den Gleichheits-
+  // vergleich (nur false löst eine Synchronisierung aus).
+  assert.equal(preferencesFromSettings(normalizeSettings({ renderMarkdown: false })).renderMarkdown, false);
+  const base = normalizeSettings({});
+  assert.equal(settingsEqual(base, normalizeSettings({ renderMarkdown: true })), true);
+  assert.equal(settingsEqual(base, normalizeSettings({ renderMarkdown: false })), false);
 });
