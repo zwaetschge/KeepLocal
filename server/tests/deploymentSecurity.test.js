@@ -386,7 +386,8 @@ test('images reach moving tags only after both architectures passed smoke tests'
   // Builds liefern promote-tags leer und ueberspringen den Job komplett.
   assert.match(promoteJob, /needs: \[build-and-push, test-image\]/);
   assert.match(promoteJob, /if: needs\.build-and-push\.outputs\.promote-tags != ''/);
-  assert.match(promoteJob, /docker buildx imagetools create -t "\$tag" "\$\{IMAGE\}:\$\{IMMUTABLE_TAG\}"/);
+  assert.match(promoteJob, /docker buildx imagetools create -t "\$\{IMAGE\}:\$\{tag\}" "\$\{IMAGE\}:\$\{IMMUTABLE_TAG\}"/,
+    'der promote-Job setzt das Registry-Praefix selbst — die Output-Tags sind naked');
 
   // PRs bauen nur lokal: kein Login, kein Push, kein Metadata-Skript (dessen
   // Pflicht-Variablen wie GITHUB_REF_TYPE sind bei pull_request-Events leer
@@ -450,15 +451,19 @@ test('Docker metadata is generated locally for main and semantic-version release
   const main = runDockerMetadata();
   assert.equal(main.status, 0, main.stderr);
   assert.match(main.output, /example\/keeplocal:\d{4}-\d{2}-\d{2}-0123456/);
-  assert.match(main.output, /example\/keeplocal:main/);
-  assert.match(main.output, /example\/keeplocal:latest/);
   assert.match(main.output, new RegExp(`org\\.opencontainers\\.image\\.revision=${main.sha}`));
   assert.match(main.output, /test-tag=\d{4}-\d{2}-\d{2}-0123456/);
   // Test-then-Promote (v1.15.0): publish-tags enthaelt EXAKT den immutablen
   // Tag — main/latest duerfen nur im promote-Output stehen, den der promote-
   // Job erst nach bestandenem Smoke-Test beider Architekturen anfasst.
   assert.match(main.output, /publish-tags<<__DOCKER_TAGS__\nexample\/keeplocal:\d{4}-\d{2}-\d{2}-0123456\n__DOCKER_TAGS__/);
-  assert.match(main.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\nexample\/keeplocal:main\nexample\/keeplocal:latest\n__DOCKER_PROMOTE_TAGS__/);
+  assert.match(main.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\nmain\nlatest\n__DOCKER_PROMOTE_TAGS__/);
+  // Regression-Pin (Ausfall v1.15.0-Release): Job-Outputs, die das Secret
+  // DOCKERHUB_USERNAME enthalten (vollstaendiger Image-Name), verwirft GitHub
+  // beim Uebergang an den promote-Job — der sah einen LEEREN String und
+  // uebersprang sich. Promote-Tags sind daher naked; das Praefix baut der
+  // promote-Job aus eigenen Secrets.
+  assert.doesNotMatch(main.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n[^\n]*\//);
   assert.match(main.output, /version=main\n/);
 
   const release = runDockerMetadata({
@@ -466,10 +471,9 @@ test('Docker metadata is generated locally for main and semantic-version release
     GITHUB_REF_TYPE: 'tag',
   });
   assert.equal(release.status, 0, release.stderr);
-  assert.match(release.output, /example\/keeplocal:2\.3\.4/);
-  assert.match(release.output, /example\/keeplocal:2\.3\n/);
-  assert.match(release.output, /example\/keeplocal:2\n/);
-  assert.match(release.output, /example\/keeplocal:latest/);
+  // Semver-Kanaele stehen als naked Tags im promote-Block (s. Pin oben) —
+  // nach dem Smoke-Test setzt der promote-Job das Praefix davor.
+  assert.match(release.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n2\.3\.4\n2\.3\n2\nlatest\n__DOCKER_PROMOTE_TAGS__/);
   assert.match(release.output, /publish-tags<<__DOCKER_TAGS__\nexample\/keeplocal:\d{4}-\d{2}-\d{2}-0123456\n__DOCKER_TAGS__/);
   assert.doesNotMatch(release.output, /publish-tags<<__DOCKER_TAGS__\n[^\n]*latest/);
 
@@ -478,20 +482,19 @@ test('Docker metadata is generated locally for main and semantic-version release
     GITHUB_REF_TYPE: 'tag',
   });
   assert.equal(prerelease.status, 0, prerelease.stderr);
-  assert.match(prerelease.output, /example\/keeplocal:2\.3\.4-rc\.1/);
-  assert.doesNotMatch(prerelease.output, /example\/keeplocal:2\.3\n/);
-  assert.doesNotMatch(prerelease.output, /example\/keeplocal:2\n/);
-  assert.doesNotMatch(prerelease.output, /example\/keeplocal:latest/);
+  assert.match(prerelease.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n2\.3\.4-rc\.1\n__DOCKER_PROMOTE_TAGS__/);
+  assert.doesNotMatch(prerelease.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n[^\n]*\n2\.3\n/);
+  assert.doesNotMatch(prerelease.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n(?:[^\n]*\n)*latest\n/);
 
   const buildMetadata = runDockerMetadata({
     GITHUB_REF_NAME: 'v2.3.4+build.5',
     GITHUB_REF_TYPE: 'tag',
   });
   assert.equal(buildMetadata.status, 0, buildMetadata.stderr);
-  assert.match(buildMetadata.output, /example\/keeplocal:2\.3\.4/);
+  // +build.5 ist kein Pre-Release: Metadaten fallen weg, alle Kanaele bleiben.
+  assert.match(buildMetadata.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n2\.3\.4\n2\.3\n2\nlatest\n__DOCKER_PROMOTE_TAGS__/);
   assert.match(buildMetadata.output, /org\.opencontainers\.image\.version=2\.3\.4/);
-  assert.doesNotMatch(buildMetadata.output, /example\/keeplocal:2\.3\.4-build\.5/);
-  assert.doesNotMatch(buildMetadata.output, /example\/keeplocal:2\.3\.4\+build\.5/);
+  assert.doesNotMatch(buildMetadata.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\n[^\n]*build\.5/);
 });
 
 test('Docker metadata rejects invalid manually supplied release tags', () => {

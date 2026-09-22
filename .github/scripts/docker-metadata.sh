@@ -48,6 +48,12 @@ version="${immutable_tag}"
 # war `latest` Sekunden nach dem Build oeffentlich — ein kaputter Start
 # (supervisord-Fehler, fehlende Datei im Image) stand dann bei allen Self-
 # Hostern, die automatisch pullen.
+# Die promote-Tags sind BARE Tags ohne Registry-Praefix: Job-Outputs, die den
+# Wert eines Secrets enthalten (hier DOCKERHUB_USERNAME im Image-Namen),
+# verwirft GitHub beim Uebergang an den naechsten Job ("Skip output since it
+# may contain secret") — der promote-Job sah einen leeren String und sprang
+# sich selbst ueberspringend tot. Er setzt das Praefix aus eigenen Secrets
+# wieder dran. test-tag ist ohnehin naked und ueberlebt.
 publish_tags=("${image}:${immutable_tag}")
 promote_tags=()
 
@@ -94,13 +100,13 @@ add_semver_tags() {
   fi
 
   version="${canonical_version}"
-  add_promote_tag "${image}:${canonical_version}"
+  add_promote_tag "${canonical_version}"
 
   # Pre-release versions must not replace the stable major/minor channels.
   if [[ "${canonical_version}" != *-* ]]; then
-    add_promote_tag "${image}:${major}.${minor}"
-    add_promote_tag "${image}:${major}"
-    add_promote_tag "${image}:latest"
+    add_promote_tag "${major}.${minor}"
+    add_promote_tag "${major}"
+    add_promote_tag "latest"
   fi
 }
 
@@ -125,8 +131,8 @@ elif [[ "${GITHUB_REF_TYPE}" == 'branch' ]]; then
     fi
   else
     version='main'
-    add_promote_tag "${image}:main"
-    add_promote_tag "${image}:latest"
+    add_promote_tag "main"
+    add_promote_tag "latest"
   fi
 else
   echo "Unsupported Git ref type: ${GITHUB_REF_TYPE}" >&2
