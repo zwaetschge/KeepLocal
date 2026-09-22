@@ -372,6 +372,170 @@ test('a missing backup directory is reported without flipping low', async () => 
   assert.equal(result.ready, true, 'and it must not affect readiness');
 });
 
+// ---------------------------------------------------------------------------
+// v1.16.0 Nr. 6 — Backup-Governance: Der Scheduler schreibt seinen Lauf-Status
+// in die Backup-Wurzel; health liest ihn und meldet fehlgeschlagene oder
+// veraltete Läufe als „degraded“ — ohne die Readiness zu kippen (der Dienst
+// läuft, nur die letzte Sicherung ist alt). Der Scheduler wird hier gemockt,
+// weil INTERVAL_HOURS eine Require-Zeit-Konstante ist.
+// ---------------------------------------------------------------------------
+
+const schedulerModulePath = require.resolve('../services/backupScheduler');
+
+function loadHealthWithBackupStatus(status, intervalHours = 24) {
+  const healthPath = require.resolve('../services/healthService');
+  delete require.cache[healthPath];
+  delete require.cache[schedulerModulePath];
+  require.cache[schedulerModulePath] = {
+    id: schedulerModulePath, filename: schedulerModulePath, loaded: true,
+    exports: { readStatus: () => status, INTERVAL_HOURS: intervalHours }
+  };
+  process.env.UPLOADS_DIR = uploadsDir;
+  process.env.AI_FEATURES_DISABLED = 'true';
+  delete process.env.REQUIRE_AI_FOR_READY;
+  return require(healthPath);
+}
+
+function dropBackupSchedulerMock() {
+  delete require.cache[schedulerModulePath];
+}
+
+test('ein frischer, erfolgreicher Backup-Lauf degradiert nichts', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const health = loadHealthWithBackupStatus({
+    ok: true,
+    lastRunAt: new Date(Date.now() - 3600000).toISOString(),
+    target: 'keeplocal-20260922-120000-abc'
+  });
+  try {
+    const result = await health.collectHealth();
+    assert.equal(result.backup.ok, true);
+    assert.equal(result.backup.stale, false);
+    assert.equal(result.status, 'ok');
+    assert.equal(result.ready, true);
+
+    const exposed = health.publicHealth(result);
+    assert.deepEqual(exposed.backup, { ok: true, stale: false });
+    assert.equal(JSON.stringify(exposed).includes('keeplocal-20260922'), false,
+      'Ziel-Verzeichnis und Alter sind Betreiber-Information');
+  } finally {
+    dropBackupSchedulerMock();
+  }
+});
+
+test('ein fehlgeschlagener Backup-Lauf degradiert den Status, nicht die Readiness', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const health = loadHealthWithBackupStatus({
+    ok: false,
+    error: 'ENOSPC: no space left on device',
+    lastRunAt: new Date().toISOString()
+  });
+  try {
+    const result = await health.collectHealth();
+    assert.equal(result.backup.ok, false);
+    assert.equal(result.backup.stale, true);
+    assert.equal(result.status, 'degraded', 'der Scheduler-Fehler steht im Status');
+    assert.equal(result.ready, true, 'der laufende Dienst ist gesund — kein 503');
+
+    assert.deepEqual(health.publicHealth(result).backup, { ok: false, stale: true });
+  } finally {
+    dropBackupSchedulerMock();
+  }
+});
+
+test('ein veralteter Lauf (aelter als 3x Intervall) ist stale, einer im Rahmen nicht', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  const stale = loadHealthWithBackupStatus({
+    ok: true,
+    lastRunAt: new Date(Date.now() - (24 * 3 + 1) * 3600000).toISOString()
+  });
+  try {
+    const result = await stale.collectHealth();
+    assert.equal(result.backup.stale, true, '73 Stunden bei 24h-Intervall');
+    assert.equal(result.status, 'degraded');
+    assert.equal(result.ready, true);
+  } finally {
+    dropBackupSchedulerMock();
+  }
+
+  const recent = loadHealthWithBackupStatus({
+    ok: true,
+    lastRunAt: new Date(Date.now() - 10 * 3600000).toISOString()
+  });
+  try {
+    const result = await recent.collectHealth();
+    assert.equal(result.backup.stale, false, '10 Stunden bei 24h-Intervall sind im Rahmen');
+    assert.equal(result.status, 'ok');
+  } finally {
+    dropBackupSchedulerMock();
+  }
+});
+
+test('ohne Status-Datei oder mit ausgeschaltetem Scheduler gibt es kein Urteil', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+
+  const fresh = loadHealthWithBackupStatus(null);
+  try {
+    const result = await fresh.collectHealth();
+    assert.equal(result.backup, null, 'noch kein Lauf — kein Fehler-Zustand');
+    assert.equal(result.status, 'ok', 'eine frische Instanz ist nicht degraded');
+  } finally {
+    dropBackupSchedulerMock();
+  }
+
+  // Status-Datei da, aber BACKUP_INTERVAL_HOURS=0: Der Betreiber hat den
+  // Scheduler bewusst aus — ein alter Status ist dann keine Meldung wert.
+  const disabled = loadHealthWithBackupStatus({ ok: false, lastRunAt: '2020-01-01T00:00:00.000Z' }, 0);
+  try {
+    const result = await disabled.collectHealth();
+    assert.equal(result.backup, null);
+    assert.equal(result.status, 'ok');
+  } finally {
+    dropBackupSchedulerMock();
+  }
+});
+
+test('der Backup-Status wird wie alle Sonden gecacht', async () => {
+  stubConnection({ ping: async () => ({ ok: 1 }) });
+  let reads = 0;
+  const healthPath = require.resolve('../services/healthService');
+  delete require.cache[healthPath];
+  delete require.cache[schedulerModulePath];
+  require.cache[schedulerModulePath] = {
+    id: schedulerModulePath, filename: schedulerModulePath, loaded: true,
+    exports: {
+      readStatus: () => { reads += 1; return { ok: true, lastRunAt: new Date().toISOString() }; },
+      INTERVAL_HOURS: 24
+    }
+  };
+  const health = require(healthPath);
+  try {
+    await health.collectHealth();
+    await health.collectHealth();
+    assert.equal(reads, 1, 'innerhalb des TTL-Fensters wird die Datei nur einmal gelesen');
+    health.resetHealthCaches();
+    await health.collectHealth();
+    assert.equal(reads, 2, 'reset erzwingt eine Neu-Probe');
+  } finally {
+    dropBackupSchedulerMock();
+  }
+});
+
+test('/api/health meldet das Backup-Ergebnis in der schlanken Antwort', () => {
+  const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const healthRoute = server.slice(server.indexOf("app.get('/api/health'"), server.indexOf("app.get('/api/health/live'"));
+
+  assert.match(healthRoute, /backup: health\.backup \? \{ ok: health\.backup\.ok \} : null/,
+    'die Legacy-Route nennt ok, aber keine Interna wie Ziel-Pfad oder Alter');
+
+  const service = fs.readFileSync(path.join(__dirname, '../services/healthService.js'), 'utf8');
+  assert.match(service, /const backup = checkBackupStatus\(\);/, 'collectHealth bezieht den Backup-Status ein');
+  // Degraded, aber nicht not-ready — die Kernaussage der Governance:
+  assert.match(service, /status: ready && !storageLow && !backupStale \? 'ok' : 'degraded'/);
+  assert.match(service, /const ready = database\.ok && uploads\.ok && \(!aiFatal \|\| ai\.ok\) && \(!DISK_FATAL \|\| !storageLow\);/,
+    'backupStale taucht NICHT in der Ready-Bedingung auf');
+});
+
 test('temporary upload probe files are cleaned up', () => {
   const leftovers = fs.readdirSync(uploadsDir).filter(name => name.startsWith('.health-'));
   assert.deepEqual(leftovers, []);

@@ -46,6 +46,10 @@ const DEFAULT_KEEP = 7;
 const PREFIX = 'keeplocal-';
 const MANIFEST_FORMAT = 2;
 const INSERT_CHUNK = 500;
+// v1.16.0: Ein Backup, das die Platte füllt, ist schlechter als keines — es
+// nimmt der Instanz (und im All-in-One-Image dem mongod-Nachbarn) den Platz
+// für alles andere. 0 schaltet die Prüfung ab.
+const BACKUP_MIN_FREE_MB = Number(process.env.BACKUP_MIN_FREE_MB || 500);
 
 // ---------------------------------------------------------------------------
 // Type-preserving JSON (ObjectId/Date/Buffer/Decimal128 survive the round trip)
@@ -126,6 +130,24 @@ async function referencedImageFilenames() {
 // Backup
 // ---------------------------------------------------------------------------
 
+/**
+ * Freier Platz auf dem Backup-Volume (v1.16.0). Das Backup komprimiert nichts
+ * und dupliziert alle Uploads — der Lauf braucht grob den belegten Bytes
+ * Speicher. Unterhalb der Schwelle wird er abgelehnt, BEVOR irgendetwas
+ * entsteht: Ein halb geschriebenes Backup bei vollem Datenträger hilft keinem
+ * Restore und blockiert danach unter Umständen mongod im selben Image.
+ */
+function assertBackupDiskSpace() {
+  const stats = fs.statfsSync(BACKUP_DIR);
+  const freeMb = Math.floor(stats.bavail * stats.bsize / (1024 * 1024));
+  if (freeMb < BACKUP_MIN_FREE_MB) {
+    throw new Error(
+      `zu wenig freier Speicher auf dem Backup-Volume: ${freeMb} MB frei, `
+      + `mindestens ${BACKUP_MIN_FREE_MB} MB gefordert (BACKUP_MIN_FREE_MB)`
+    );
+  }
+}
+
 async function createBackup(keep) {
   // mkdtemp statt fester Name: `timestamp()` hat Sekunden-Auflösung, zwei Läufe
   // in derselben Sekunde (oder ein fehlgeschlagener Lauf direkt nach einem
@@ -133,6 +155,7 @@ async function createBackup(keep) {
   // unvollständiges Backup hätte mit `rmSync(target)` den vorhandenen Recovery
   // Point gelöscht. Genau das ist in CI passiert.
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  assertBackupDiskSpace();
   const target = fs.mkdtempSync(path.join(BACKUP_DIR, `${PREFIX}${timestamp()}-`));
   try {
     const dbDir = path.join(target, 'db');
@@ -224,6 +247,15 @@ async function createBackup(keep) {
     // Verzeichnis hinterlassen — es belegte einen Retention-Slot und
     // verdraengte so die letzten guten Recovery Points.
     fs.rmSync(target, { recursive: true, force: true });
+    // Retention auch im Fehlerlauf (v1.16.0): Bis v1.15 lief applyRetention
+    // NUR auf dem Erfolgspfad. Der klassische ENOSPC-Deadlock: Ist die Platte
+    // voll, schlägt der Backup fehl, die Retention läuft nie, der Platz wird
+    // nie wieder frei — jeder folgende Lauf scheitert am selben Fehler, bis
+    // jemand per Hand aufräumt. Best effort: Schlägt auch das Aufräumen,
+    // bleibt es beim ursprünglichen Fehler.
+    try {
+      applyRetention(keep);
+    } catch (_retentionError) { /* best effort */ }
     console.error(`  Abgebrochen, ${target} verworfen: ${error.message}`);
     throw error;
   }
@@ -466,6 +498,7 @@ module.exports = {
   encode,
   decode,
   createBackup,
+  assertBackupDiskSpace,
   verifyBackup,
   restoreBackup,
   listBackups,

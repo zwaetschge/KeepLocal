@@ -247,6 +247,10 @@ app.get('/api/health', async (req, res) => {
     status: health.status,
     version: APP_VERSION,
     database: health.database.status,
+    // Backup-Governance (v1.16.0): schlägt der Scheduler fehl oder ist der
+    // letzte Lauf veraltet, steht es hier (Status „degraded") — ohne die
+    // Readiness zu kippen. null = Scheduler aus / noch kein Lauf.
+    backup: health.backup ? { ok: health.backup.ok } : null,
     uptime: health.uptime,
     timestamp: health.timestamp
   });
