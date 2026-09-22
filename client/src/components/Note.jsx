@@ -10,7 +10,7 @@ import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 import { useMarkdownHtml } from '../hooks/useMarkdown';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, tagColors }) {
+function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -253,14 +253,21 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
 
         {note.tags && note.tags.length > 0 && (
           <div className="note-tags">
-            {note.tags.map((tag, index) => (
-              <span key={index} className="note-tag">
-                {tagColors?.[tag] && (
-                  <span className="note-tag-dot" style={{ backgroundColor: tagColors[tag] }} aria-hidden="true" />
-                )}
-                {tag}
-              </span>
-            ))}
+            {note.tags.map((tag, index) => {
+              const colorDot = tagColors?.[tag] ? (
+                <span className="note-tag-dot" style={{ backgroundColor: tagColors[tag] }} aria-hidden="true" />
+              ) : null;
+              // v1.16.0: Der Chip filtert die Liste. stopPropagation ist
+              // Pflicht — die Karte darunter öffnet die Notiz.
+              return onTagSelect ? (
+                <button key={index} type="button" className="note-tag"
+                  onClick={(e) => { e.stopPropagation(); onTagSelect(tag); }}>
+                  {colorDot}{tag}
+                </button>
+              ) : (
+                <span key={index} className="note-tag">{colorDot}{tag}</span>
+              );
+            })}
           </div>
         )}
 

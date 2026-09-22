@@ -567,10 +567,15 @@ test('Sidebar TagRow: Umbenennen/Zusammenführen/Löschen ohne Button-in-Button'
   assert.match(sidebar, /run\('merge', mergeTarget\)/);
   // Löschen fragt zweimal nach statt eines nativen Confirm-Dialogs.
   assert.match(sidebar, /confirmDelete \? run\('delete'\) : setConfirmDelete\(true\)/);
-  // App.jsx verdrahtet den Handler und gibt den Busy-Zustand weiter.
+  // App.jsx verdrahtet den Handler und gibt den Busy-Zustand weiter. Seit
+  // v1.16.0 lebt der Handler in useFolderFeatures (inkl. Mitnahme von
+  // Tag-Farben und gespeicherten Suchen).
   const app = readClientFile('src/App.jsx');
   assert.match(app, /onTagManage=\{handleTagManage\}/);
-  assert.match(app, /const handleTagManage = useCallback/);
+  assert.doesNotMatch(app, /const handleTagManage = useCallback/);
+  const features = readClientFile('src/hooks/useFolderFeatures.js');
+  assert.match(features, /const handleTagManage = useCallback/);
+  assert.match(features, /migrateTagReferences\(action, from, to, settings\)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -1227,4 +1232,81 @@ test('Delta-Sync-Verdrahtung: Poll schickt since, API baut die Query, leerer Bau
   // und ein leerer Baum-Delta verwirft den Baum nicht.
   assert.match(hookSource, /applyNotesDelta\(normalizeNotesPayload\(response\)/);
   assert.match(hookSource, /if \(since && fetched\.length === 0\) \{\s*\n\s*\/\/ Leeres Baum-Delta/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.16.0 Nr. 9: Tag-Pflege nimmt Tag-Farben und gespeicherte Suchen mit
+// ---------------------------------------------------------------------------
+
+const tagMigrationUrl = pathToFileURL(
+  path.join(__dirname, '../src/utils/tagMigration.mjs')
+).href;
+
+test('migrateTagReferences: rename trägt die Farbe auf den neuen Namen über', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+  const result = migrateTagReferences('rename', ['projekt'], 'Projekt 2026', {
+    tagColors: { projekt: '#ff0000', privat: '#00ff00' },
+    savedSearches: [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'projekt' }],
+  });
+
+  assert.deepEqual(result.tagColors, { 'Projekt 2026': '#ff0000', privat: '#00ff00' },
+    'die Farbe folgt dem neuen Namen, andere bleiben unangetastet');
+  assert.deepEqual(result.savedSearches,
+    [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'Projekt 2026' }]);
+});
+
+test('migrateTagReferences: merge respektiert eine vorhandene Zielfarbe, delete räumt komplett weg', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+  const merge = migrateTagReferences('merge', ['alt'], 'neu', {
+    tagColors: { alt: '#ff0000', neu: '#0000ff' },
+    savedSearches: [{ id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'alt' }],
+  });
+  assert.deepEqual(merge.tagColors, { neu: '#0000ff' }, 'Zielfarbe gewinnt vor der Spenderfarbe');
+  assert.deepEqual(merge.savedSearches,
+    [{ id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'neu' }]);
+
+  const del = migrateTagReferences('delete', ['alt'], null, {
+    tagColors: { alt: '#ff0000', neu: '#0000ff' },
+    savedSearches: [
+      { id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'alt' },
+      { id: 's2', name: '#neu', query: '', typeFilter: null, tag: 'neu' },
+    ],
+  });
+  assert.deepEqual(del.tagColors, { neu: '#0000ff' });
+  assert.deepEqual(del.savedSearches.map((s) => s.id), ['s2'],
+    'Suchen auf einen gelöschten Tag fallen weg');
+});
+
+test('migrateTagReferences: case-insensitiv, unveränderte Bestände bleiben identisch (null)', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+
+  // Der Tag im Bestand heißt anders geschrieben als in der Verwaltungs-UI.
+  const result = migrateTagReferences('rename', ['Projekt'], 'Ziel', {
+    tagColors: { projekt: '#ff0000' },
+    savedSearches: [],
+  });
+  assert.deepEqual(result.tagColors, { Ziel: '#ff0000' });
+
+  // Nichts betroffen → null, damit der Handler keine sinnlosen Settings-Pushes lostritt.
+  assert.equal(migrateTagReferences('rename', ['andere'], 'Ziel',
+    { tagColors: { projekt: '#ff0000' }, savedSearches: [{ id: 's1', name: '', query: '', typeFilter: null, tag: 'projekt' }] }), null);
+  // Reine Groß-/Kleinschreibungs-Rename nimmt die Farbe nicht doppelt mit.
+  const caseOnly = migrateTagReferences('rename', ['projekt'], 'Projekt', { tagColors: { projekt: '#ff0000' } });
+  assert.deepEqual(caseOnly.tagColors, { Projekt: '#ff0000' });
+});
+
+test('Tag-Chips auf den Karten filtern die Liste (Klick öffnet nicht die Notiz)', () => {
+  const noteComponent = readClientFile('src/components/Note.jsx');
+  // Chip als Button nur mit Handler — im Papierkorb bleibt er ein Span.
+  assert.match(noteComponent, /onTagSelect \? \(/);
+  assert.match(noteComponent, /e\.stopPropagation\(\); onTagSelect\(tag\)/);
+  const noteList = readClientFile('src/components/NoteList.jsx');
+  assert.match(noteList, /onTagSelect=\{onTagSelect\}/);
+  const app = readClientFile('src/App.jsx');
+  // Nur im Nicht-Papierkorb-Zweig von listActions — der Papierkorb-Zweig
+  // destrukturiert onTagSelect nicht.
+  const trashBranch = app.split('showTrash')[1];
+  assert.doesNotMatch(trashBranch.split(': {')[0] + trashBranch.split(':')[1].split(':')[0], /onTagSelect/);
+  assert.match(app, /onTagSelect: handleTagSelect/);
+  assert.match(app, /handleTagSelect, settings\.tagColors/);
 });

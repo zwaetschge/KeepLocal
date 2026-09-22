@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 // no mail delivery, so the token is shown once in the admin console.
 
 const userModelPath = require.resolve('../models/User');
+const apiKeyModelPath = require.resolve('../models/ApiKey');
 const authMiddlewarePath = require.resolve('../middleware/auth');
 const authRouterPath = require.resolve('../routes/auth');
 const adminRouterPath = require.resolve('../routes/admin');
@@ -39,7 +40,7 @@ function queryLike(doc) {
  * @param {Function} [options.onUpdate] - receives (query, update) for findOneAndUpdate
  */
 function loadAuthRouter({ byId, byQuery, onUpdate } = {}) {
-  const state = { saved: [], updates: [] };
+  const state = { saved: [], updates: [], apiKeyUpdates: [] };
 
   const withSave = (doc) => (doc
     ? {
@@ -73,10 +74,21 @@ function loadAuthRouter({ byId, byQuery, onUpdate } = {}) {
   };
   UserMock.countDocuments = async () => 1;
 
-  for (const p of [authRouterPath, adminRouterPath, adminServicePath, userModelPath, authMiddlewarePath]) {
+  // v1.16.0: change-password/reset-password verwerfen die API-Keys des Kontos.
+  // Der Mock zeichnet die updateMany-Aufrufe auf, statt (ohne Verbindung) auf
+  // dem echten Modell zu hängen.
+  const ApiKeyMock = {
+    updateMany: async (query, update) => {
+      state.apiKeyUpdates.push({ query, update });
+      return { modifiedCount: 1 };
+    }
+  };
+
+  for (const p of [authRouterPath, adminRouterPath, adminServicePath, userModelPath, apiKeyModelPath, authMiddlewarePath]) {
     delete require.cache[p];
   }
   require.cache[userModelPath] = { id: userModelPath, filename: userModelPath, loaded: true, exports: UserMock };
+  require.cache[apiKeyModelPath] = { id: apiKeyModelPath, filename: apiKeyModelPath, loaded: true, exports: ApiKeyMock };
 
   // middleware/auth muss NACH dem User-Mock geladen werden, sonst bindet
   // authenticateToken das echte Modell (ohne DB) und jede Anfrage wird 401.
@@ -239,6 +251,49 @@ test('reset-password redeems a valid token once and invalidates sessions', async
     assert.equal(state.saved[0].passwordResetToken, null, 'the token must be cleared');
     assert.equal(state.saved[0].passwordResetExpires, null);
     assert.equal(await bcrypt.compare('BobNeu1234x', state.saved[0].password), true);
+  });
+});
+
+// v1.16.0: Eine Passwort-Rotation ist der Notfall-Hebel nach einem Leak —
+// sessionVersion kippte nur die JWT-Sitzungen, die API-Keys der /api/v1
+// liefen unberührt weiter. Beide Pfade verwerfen sie jetzt.
+test('change-password und reset-password verwerfen die API-Keys des Kontos', async () => {
+  const { authRouter, state } = loadAuthRouter({ byId: { _id: USER_ID, password: CURRENT_HASH, sessionVersion: 0, username: 'alice', email: 'a@example.com' } });
+  await withServer({ authRouter }, async base => {
+    const { status } = await post(base, '/api/auth/change-password', {
+      currentPassword: CURRENT_PASSWORD,
+      newPassword: 'Neu12345x'
+    }, sessionCookieFor());
+    assert.equal(status, 200);
+    assert.equal(state.apiKeyUpdates.length, 1, 'genau ein updateMany pro Passwort-Wechsel');
+    assert.deepEqual(state.apiKeyUpdates[0].query, { userId: USER_ID, isActive: true },
+      'nur aktive Keys des eigenen Kontos');
+    assert.deepEqual(state.apiKeyUpdates[0].update, { $set: { isActive: false } },
+      'deaktivieren statt löschen — der Audit-Trail bleibt');
+  });
+
+  const { token, tokenHash, expiresAt } = createPasswordResetToken();
+  const reset = loadAuthRouter({
+    byQuery: { _id: OTHER_ID, username: 'bob', email: 'bob@example.com', password: bcrypt.hashSync('Bobby1234x', 4), sessionVersion: 1, passwordResetToken: tokenHash, passwordResetExpires: expiresAt }
+  });
+  await withServer({ authRouter: reset.authRouter }, async base => {
+    const { status } = await post(base, '/api/auth/reset-password', { token, newPassword: 'BobNeu1234x' });
+    assert.equal(status, 200);
+    assert.deepEqual(reset.state.apiKeyUpdates[0].query, { userId: OTHER_ID, isActive: true },
+      'der Reset-Pfad trifft das Konto aus dem Token');
+  });
+});
+
+test('bei falschem aktuellem Passwort bleiben die API-Keys unberührt', async () => {
+  const { authRouter, state } = loadAuthRouter({ byId: { _id: USER_ID, password: CURRENT_HASH, sessionVersion: 0, username: 'alice', email: 'a@example.com' } });
+  await withServer({ authRouter }, async base => {
+    const { status } = await post(base, '/api/auth/change-password', {
+      currentPassword: 'Falsch123x',
+      newPassword: 'Neu12345x'
+    }, sessionCookieFor());
+    assert.equal(status, 401);
+    assert.deepEqual(state.apiKeyUpdates, [], 'ohne Passwort-Beweis wird nichts verworfen');
+    assert.equal(state.saved.length, 0);
   });
 });
 

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import notesAPI from '../services/api/notesAPI';
+import { migrateTagReferences } from '../utils/tagMigration.mjs';
 
 /**
  * v1.10.0: Ableitungen und Handler rund um den Notiz-Baum — als eigener Hook,
@@ -31,6 +32,8 @@ export function useFolderFeatures({
   searchTerm,
   selectedTag,
   settings,
+  manageTag,
+  updateSettings,
   setSavedSearches,
   setSearchTerm,
   setSelectedTag,
@@ -86,6 +89,25 @@ export function useFolderFeatures({
     setSavedSearches(settings.savedSearches.filter(search => search.id !== id));
   }, [settings.savedSearches, setSavedSearches]);
 
+  /** v1.11.0: Tag-Pflege aus der Sidebar. v1.16.0: Tag-Farben und gespeicherte
+   *  Suchen wandern mit (migrateTagReferences) — im Client, direkt nach dem
+   *  erfolgreichen Server-Lauf, weil der SettingsContext die Preferences
+   *  debounced zurückpusht. */
+  const handleTagManage = useCallback(async (action, from, to) => {
+    const result = await manageTag(action, from, to);
+    if (!result) return;
+    const migration = migrateTagReferences(action, from, to, settings);
+    if (migration?.tagColors) updateSettings({ tagColors: migration.tagColors });
+    if (migration?.savedSearches) setSavedSearches(migration.savedSearches);
+
+    // Aktiver Tag-Filter wandert mit (Rohname — Sidebar-Highlight und
+    // Server-Filter matchen exakt).
+    const affected = from.map((tag) => tag.toLowerCase());
+    if (selectedTag && affected.includes(selectedTag.toLowerCase())) {
+      setSelectedTag(action === 'delete' ? null : (to ?? null));
+    }
+  }, [manageTag, selectedTag, settings, updateSettings, setSavedSearches, setSelectedTag]);
+
   /** Notiz per Drag & Drop in einen Sidebar-Ordner verschieben. Die gezogene
    *  ID kommt aus dem DnD-Pfad des Notizen-Hooks (draggedNoteId), nicht aus
    *  dem dataTransfer — derselbe Mechanismus wie beim Umsortieren der Liste. */
@@ -138,6 +160,7 @@ export function useFolderFeatures({
     handleRunSavedSearch,
     handleSaveCurrentSearch,
     handleDeleteSavedSearch,
+    handleTagManage,
     handleFolderDrop,
     handleDataImported,
   };

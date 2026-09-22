@@ -411,7 +411,7 @@ export const en = {
   // Audit 2026-09-10: previously hardcoded German strings
   appTitle: 'KeepLocal - Notes App',
   loadingApp: 'Loading...',
-  shortcutCtrlN: 'Ctrl+N',
+  shortcutCtrlN: 'Ctrl+Alt+N',
   openMenu: 'Open menu',
   skipToContent: 'Skip to content',
   toggleTheme: 'Toggle theme',

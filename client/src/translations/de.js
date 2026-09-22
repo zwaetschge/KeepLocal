@@ -411,7 +411,7 @@ export const de = {
   // Audit 2026-09-10: vorher hartkodierte deutsche Zeichenketten
   appTitle: 'KeepLocal - Notizen App',
   loadingApp: 'Lade...',
-  shortcutCtrlN: 'Strg+N',
+  shortcutCtrlN: 'Strg+Alt+N',
   openMenu: 'Menü öffnen',
   skipToContent: 'Zum Inhalt springen',
   toggleTheme: 'Design wechseln',
