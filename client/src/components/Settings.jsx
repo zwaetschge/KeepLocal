@@ -19,12 +19,13 @@ import { buildMarkdownImportItems, chunkImportItems, IMPORT_CHUNK_SIZE } from '.
 
 function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported }) {
   const { t, language } = useLanguage();
-  const { settings, toggleAIFeature, setTranscriptionLanguage, setJournalFolderId } = useSettings();
+  const { settings, updateSettings, toggleAIFeature, setTranscriptionLanguage, setJournalFolderId } = useSettings();
 
   // v1.10.0: Markdown-Export (ZIP vom Server) und Trilium/Markdown-Import
   // (Ordner mit .md/.txt — Unterordner werden zu Ordner-Notizen im Baum).
-  const [mdBusy, setMdBusy] = useState(null); // 'export' | 'import' | null
+  const [mdBusy, setMdBusy] = useState(null); // 'export' | 'import' | 'zip' | null
   const mdImportInputRef = useRef(null);
+  const zipImportInputRef = useRef(null);
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
@@ -196,6 +197,29 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
       onDataImported?.();
     } catch (err) {
       console.error('Markdown-Import fehlgeschlagen:', err);
+      toastBus.error(resolveApiErrorMessage(err, t, 'importMarkdownFailed'));
+    } finally {
+      setMdBusy(null);
+    }
+  };
+
+  // ZIP-Round-trip-Import (v1.13.0 Nr. 7): Der Ordner-Import oben nimmt nur
+  // Text — Anhaenge gingen beim Export→Import-Zyklus verloren. Dieser Weg
+  // schickt das komplette Archiv an den Server, der Markdown, Frontmatter,
+  // Bilder und Dateien mit frischen Namen zurueckspielt.
+  const handleImportMarkdownZip = async (event) => {
+    const file = (event.target.files || [])[0];
+    if (zipImportInputRef.current) zipImportInputRef.current.value = '';
+    if (!file) return;
+    setMdBusy('zip');
+    try {
+      const result = await notesAPI.importMarkdownZip(file);
+      toastBus.success(t('importMarkdownZipDone', {
+        count: (result.created || 0) + (result.foldersCreated || 0)
+      }));
+      onDataImported?.();
+    } catch (err) {
+      console.error('ZIP-Import fehlgeschlagen:', err);
       toastBus.error(resolveApiErrorMessage(err, t, 'importMarkdownFailed'));
     } finally {
       setMdBusy(null);
@@ -445,6 +469,29 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
             </h3>
             <p className="settings-section-description">{t('dataSectionDescription')}</p>
 
+            {/* v1.13.0 Nr. 2: Markdown-Rendering der Karten (konto-weit) */}
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <label htmlFor="render-markdown" className="settings-item-label">
+                  {t('renderMarkdownTitle')}
+                </label>
+                <p className="settings-item-description">
+                  {t('renderMarkdownHint')}
+                </p>
+              </div>
+              <div className="settings-item-control">
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    id="render-markdown"
+                    checked={settings.renderMarkdown !== false}
+                    onChange={() => updateSettings({ renderMarkdown: settings.renderMarkdown === false })}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
             <div className="settings-item">
               <div className="settings-item-info">
                 <label className="settings-item-label">{t('exportMarkdownTitle')}</label>
@@ -493,6 +540,34 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
                   disabled={mdBusy !== null}
                 >
                   {mdBusy === 'import' ? t('saving') : t('importAction')}
+                </button>
+              </div>
+            </div>
+
+            {/* v1.13.0 Nr. 7: ZIP-Round-trip-Import inklusive Anhaenge */}
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <label className="settings-item-label">{t('importMarkdownZipTitle')}</label>
+                <p className="settings-item-description">{t('importMarkdownZipHint')}</p>
+              </div>
+              <div className="settings-item-control">
+                <input
+                  ref={zipImportInputRef}
+                  type="file"
+                  accept=".zip,application/zip"
+                  onChange={handleImportMarkdownZip}
+                  style={{ display: 'none' }}
+                  id="markdown-zip-import-input"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                />
+                <button
+                  type="button"
+                  className="btn-change-password"
+                  onClick={() => zipImportInputRef.current?.click()}
+                  disabled={mdBusy !== null}
+                >
+                  {mdBusy === 'zip' ? t('saving') : t('importZipAction')}
                 </button>
               </div>
             </div>

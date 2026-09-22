@@ -401,7 +401,11 @@ test('withoutOperation: Einträge werden entfernt, Identität bleibt ohne Arbeit
 test('Nr. 26: Karte und Liste sind memoisiert, HTML nur noch aus useMemo', () => {
   const note = readClientFile('src/components/Note.jsx');
   assert.match(note, /export default React\.memo\(Note\)/);
-  assert.match(note, /const contentHtml = useMemo\(/);
+  // v1.13.0: sanitizeAndLinkify bleibt im useMemo (plainHtml); das Markdown-
+  // HTML kommt async aus useMarkdownHtml und geht nur davor, wenn es schon da
+  // ist — sonst flackert rohes Markdown, bis marked geladen ist.
+  assert.match(note, /const plainHtml = useMemo\(/);
+  assert.match(note, /const contentHtml = markdownHtml \?\? plainHtml;/);
   assert.match(note, /dangerouslySetInnerHTML=\{\{ __html: contentHtml \}\}/);
   assert.doesNotMatch(note, /dangerouslySetInnerHTML=\{\{ __html: sanitizeAndLinkify\(/);
 
@@ -567,4 +571,66 @@ test('Sidebar TagRow: Umbenennen/Zusammenführen/Löschen ohne Button-in-Button'
   const app = readClientFile('src/App.jsx');
   assert.match(app, /onTagManage=\{handleTagManage\}/);
   assert.match(app, /const handleTagManage = useCallback/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.13.0 Nr. 9: Meta-Sonde für den 60s-Poll (Delta-Sync)
+// ---------------------------------------------------------------------------
+
+test('notesMetaSignature: Zählungen + maxUpdatedAt als vergleichbarer String', async () => {
+  const { notesMetaSignature } = await import(moduleUrl);
+
+  assert.equal(notesMetaSignature(null), 'none');
+  assert.equal(notesMetaSignature(undefined), 'none');
+  assert.equal(notesMetaSignature('meta'), 'none');
+  // Fehlende Felder fallen auf 0/'' zurück, nicht auf undefined.
+  assert.equal(notesMetaSignature({}), '0/0/0/');
+
+  const base = { active: 3, archived: 1, trash: 0, maxUpdatedAt: '2026-01-01T00:00:00.000Z' };
+  const signature = notesMetaSignature(base);
+  assert.equal(signature, '3/1/0/2026-01-01T00:00:00.000Z');
+  assert.equal(notesMetaSignature({ ...base }), signature, 'identische Werte → identische Signatur');
+
+  // Jede serverseitige Änderung allein reißt die Signatur auf: eine neue
+  // Notiz (active), ein Löschvorgang (trash), eine Bearbeitung (maxUpdatedAt)
+  // und ein Import mit zurückdatierten Zeitstempeln (Zählungen statt
+  // maxUpdatedAt, weil importMarkdownNotes alte createdAt/updatedAt setzt).
+  assert.notEqual(notesMetaSignature({ ...base, active: 4 }), signature);
+  assert.notEqual(notesMetaSignature({ ...base, archived: 2 }), signature);
+  assert.notEqual(notesMetaSignature({ ...base, trash: 1 }), signature);
+  assert.notEqual(
+    notesMetaSignature({ ...base, maxUpdatedAt: '2026-02-01T00:00:00.000Z' }),
+    signature
+  );
+});
+
+test('60s-Poll: Meta-Sonde gatet den Voll-Abruf, fail-open bei Fehler', () => {
+  const source = readClientFile('src/hooks/useNotesManager.js');
+
+  // Die Sonde läuft nur, wenn das API sie kennt und der erste Load durch ist —
+  // der Initial-Load darf niemals gegatet werden.
+  assert.match(source, /typeof api\.getMeta === 'function' && hasLoadedRef\.current/);
+  // Identische Signatur beendet den Tick VOR Liste+Baum-Refresh …
+  assert.match(source, /if \(metaSignatureRef\.current === signature\) return;/);
+  // … und ein Fehler der Sonde lädt trotzdem voll weiter (fail-open), statt
+  // den Poll still verhungern zu lassen. (Der Slice beginnt am Gate und endet
+  // am ERSTEN refreshInBackground danach — die Focus-Antwort ruft dieselbe
+  // Zeile schon vor dem Gate auf.)
+  const gateStart = source.indexOf('typeof api.getMeta');
+  const gate = source.slice(gateStart, source.indexOf('refreshInBackground', gateStart));
+  assert.match(gate, /catch \(_error\) \{/);
+  // Beim Logout wird die Signatur zurückgesetzt, damit der nächste Login
+  // nicht mit der Signatur der alten Session vergleicht.
+  assert.match(source, /metaSignatureRef\.current = null/);
+});
+
+test('getMeta und importMarkdownZip sind im notesAPI verdrahtet', () => {
+  const api = readClientFile('src/services/api/notesAPI.js');
+  assert.match(api, /getMeta: \(options = \{\}\) =>/);
+  assert.match(api, /API_ENDPOINTS\.NOTES\.META/);
+  assert.match(api, /importMarkdownZip: \(archive\) =>/);
+  const endpoints = readClientFile('src/constants/api.js');
+  assert.match(endpoints, /META: '\/api\/notes\/meta'/);
+  assert.match(endpoints, /IMPORT_MARKDOWN_ZIP: '\/api\/notes\/import\/markdown-zip'/);
+  assert.match(endpoints, /BACKUPS: '\/api\/admin\/backups'/);
 });

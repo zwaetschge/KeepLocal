@@ -96,6 +96,13 @@ const userSchema = new mongoose.Schema({
       default: 'auto',
       maxlength: 20
     },
+    // Markdown-Rendering der Karten (v1.13.0): Die meisten Bestandsnotizen
+    // (Trilium-Import) sind Markdown — default an, abschaltbar fuer Konten,
+    // die rohen Text bevorzugen.
+    renderMarkdown: {
+      type: Boolean,
+      default: true
+    },
     // Tag-Farben (v1.10.0): Map tagName -> Hex aus der Karten-Palette. Mixed,
     // weil der Schluessel ein freier Tag-Name ist; die Route validiert beide
     // Seiten und kappt die Menge.

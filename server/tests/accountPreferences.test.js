@@ -110,6 +110,7 @@ test('PUT /api/auth/preferences stores whitelisted fields with dotted paths', as
       language: 'en',
       aiFeatures: { voiceTranscription: true },
       transcriptionLanguage: 'de',
+      renderMarkdown: true,
       tagColors: {},
       savedSearches: [],
       journalFolderId: null
@@ -196,6 +197,7 @@ test('GET /api/auth/me reports preferences with safe defaults', async () => {
       language: null,
       aiFeatures: { voiceTranscription: false },
       transcriptionLanguage: 'auto',
+      renderMarkdown: true,
       tagColors: {},
       savedSearches: [],
       journalFolderId: null
@@ -215,6 +217,7 @@ test('the user model stores preferences as a typed subdocument', () => {
   assert.match(source, /enum: \['de', 'en', null\]/);
   assert.match(source, /voiceTranscription: \{/);
   assert.match(source, /transcriptionLanguage: \{/);
+  assert.match(source, /renderMarkdown: \{/);
   assert.match(source, /tagColors: \{/);
   assert.match(source, /savedSearches: \[/);
   assert.match(source, /journalFolderId: \{/);
@@ -321,6 +324,24 @@ test('PUT /api/auth/preferences stores the journal root id and accepts null', as
     const bad = await put(base, token, { journalFolderId: 'not-an-id' });
     assert.equal(bad.status, 400);
     assert.equal(state.updates.length, 2);
+  });
+});
+
+// v1.13.0: Markdown-Rendering der Karten — Boolean mit Default true, damit
+// Bestandskonten (Trilium-Import) sofort gerenderte Notizen sehen.
+test('PUT /api/auth/preferences stores the markdown rendering flag', async () => {
+  const { router, state } = loadRouter(baseUser({ renderMarkdown: true }));
+
+  await withServer(router, async base => {
+    const token = generateToken(USER_ID, 0);
+    const off = await put(base, token, { renderMarkdown: false });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.preferences.renderMarkdown, false);
+    assert.deepEqual(state.updates[0].update.$set, { 'preferences.renderMarkdown': false });
+
+    const bad = await put(base, token, { renderMarkdown: 'nope' });
+    assert.equal(bad.status, 400);
+    assert.equal(state.updates.length, 1, 'invalid value must not be written');
   });
 });
 

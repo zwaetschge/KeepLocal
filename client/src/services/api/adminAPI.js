@@ -77,6 +77,23 @@ const adminAPI = {
       method: 'PATCH',
       body: JSON.stringify(settings),
     }),
+
+  /**
+   * Backup-Status und Recovery Points (v1.13.0 Nr. 3). `status` ist null,
+   * solange noch kein Lauf passiert ist; `backups` listet die letzten 20.
+   * @returns {Promise<{status: Object|null, backups: Array}>}
+   */
+  getBackups: () => fetchWithAuth(API_ENDPOINTS.ADMIN.BACKUPS),
+
+  /**
+   * Backup sofort anstoßen (v1.13.0 Nr. 3) — wartet auf den Lauf; ein
+   * fehlgeschlagener Lauf antwortet 500 mit der Fehlermeldung im Body.
+   * @returns {Promise<{status: {ok: boolean, error: string|null, target: string|null, durationMs: number, intervalHours: number}}>}
+   */
+  runBackup: () =>
+    fetchWithAuth(API_ENDPOINTS.ADMIN.BACKUPS_RUN, {
+      method: 'POST',
+    }),
 };
 
 export default adminAPI;
