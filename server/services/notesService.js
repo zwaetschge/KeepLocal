@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { validateImageFile } = require('../utils/magicNumberValidator');
+const { assertStorageQuota } = require('../utils/storageQuota');
 
 const NOTE_COLORS = new Set([
   '#ffffff', '#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb',
@@ -1803,6 +1804,7 @@ function attachmentMetadata(item) {
       filename: asset.filename,
       thumbnailUrl: asset.thumbnailUrl || '',
       thumbnailFilename: asset.thumbnailFilename || '',
+      size: asset.size ?? 0,
       uploadedAt
     })),
     files: [...item.attachedFiles.values()].map((asset) => ({
@@ -1856,6 +1858,13 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
   //    Nur Eintraege unter assets/ sind Kandidaten; alles andere im Archiv
   //    ist hoechstens Markdown (Schritt 2). Zielverzeichnisse sicherstellen —
   //    der Import ist auch gegen einen frisch geleerten Volume lauffaehig.
+  //    Quota zuerst (v1.16.0): Der Import ist alles-oder-nichts — die
+  //    geplanten Anhang-Bytes werden geprüft, BEVOR die erste Datei entsteht.
+  let plannedAssetBytes = 0;
+  for (const [name, bytes] of entries) {
+    if (name.startsWith('assets/images/') || name.startsWith('assets/files/')) plannedAssetBytes += bytes.length;
+  }
+  await assertStorageQuota(userId, plannedAssetBytes);
   fs.mkdirSync(imagesDir(), { recursive: true });
   fs.mkdirSync(filesDir(), { recursive: true });
   const assetMap = new Map();
@@ -1899,7 +1908,8 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         }
         assetMap.set(name, {
           kind, filename, url: `/uploads/images/${filename}`,
-          thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : ''
+          thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
+          size: bytes.length
         });
       } else {
         const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
