@@ -1,11 +1,13 @@
 package com.keeplocal.android.data.repository
 
 import com.keeplocal.android.data.api.KeepLocalApi
+import com.keeplocal.android.data.api.dto.ImportMarkdownRequestDto
 import com.keeplocal.android.data.api.dto.ReorderNotesDto
 import com.keeplocal.android.data.api.dto.NoteDto
 import com.keeplocal.android.data.api.dto.LinkPreviewRequestDto
 import com.keeplocal.android.data.api.dto.ShareNoteDto
 import com.keeplocal.android.data.api.dto.TagOperationRequestDto
+import com.keeplocal.android.data.api.dto.buildMarkdownImportItems
 import com.keeplocal.android.data.api.dto.toDomain
 import com.keeplocal.android.data.api.dto.toCreateDto
 import com.keeplocal.android.data.api.dto.toUpdateDto
@@ -50,6 +52,10 @@ import javax.inject.Inject
 // parameter threaded through NoteRepository/GetNotesUseCase — reported as an
 // open integration point instead of half-wired here.
 private const val NOTES_PAGE_LIMIT = 100
+
+/** Chunk size for the markdown bulk import — the server's per-request cap
+ *  (validators: items max 500), same chunking the web client uses. */
+private const val IMPORT_CHUNK_SIZE = 500
 
 class NoteRepositoryImpl @Inject constructor(
     private val api: KeepLocalApi,
@@ -877,6 +883,38 @@ class NoteRepositoryImpl @Inject constructor(
             is MarkdownNoteParser.Result.Success -> result.import
             is MarkdownNoteParser.Result.Invalid -> throw Exception(result.reason)
         }
+        // v1.16.0: Online geht der Import als Bulk-Chunks an
+        // /api/notes/import/markdown (500 Dateien pro Request, dasselbe
+        // Wire-Format wie der Web-Client) — vorher war es eine createNote-
+        // Sequenz pro Datei mit halbem Import bei Abbruch mitten drin.
+        try {
+            var created = 0
+            for (chunk in buildMarkdownImportItems(parsed).chunked(IMPORT_CHUNK_SIZE)) {
+                val response = api.importMarkdown(ImportMarkdownRequestDto(chunk))
+                if (!response.isSuccessful) {
+                    val body = try { response.errorBody()?.string()?.take(500) } catch (_: Exception) { null }
+                    throw Exception(errorMessage("Import", response.code(), body))
+                }
+                created += response.body()?.created ?: 0
+            }
+            // Frische Server-Notizen sofort in den Room-Cache ziehen (best
+            // effort — das nächste Pull-Fenster holte sie sonst erst später).
+            try { syncManager.pullRemoteChanges() } catch (_: Exception) {}
+            fileLogger.log("NoteRepo", "importMarkdownFiles: bulk import created $created notes")
+            created
+        } catch (e: IOException) {
+            // Offline: Bulk geht nicht — jeder Eintrag wird zum Offline-Entwurf
+            // mit CREATE-Op, der nächste Drain zieht alles nach.
+            fileLogger.log("NoteRepo", "importMarkdownFiles: offline (${e.javaClass.simpleName}), queueing drafts")
+            importOfflineDrafts(parsed)
+        }
+    }
+
+    /** Offline-Pfad des Markdown-Imports: Ordner zuerst (Parser liefert Eltern
+     *  vor Kindern, jede Ordner-Notiz trägt ihren _index.md-Körper), dann die
+     *  Dateien — klettert eine Notiz zum nächsten existierenden Vorfahren,
+     *  statt verloren zu gehen. */
+    private suspend fun importOfflineDrafts(parsed: MarkdownNoteParser.ParsedImport): Int {
         val now = Instant.now()
         val pathToId = mutableMapOf<String, String>()
         var created = 0
@@ -916,8 +954,6 @@ class NoteRepositoryImpl @Inject constructor(
             }
         }
 
-        // Folders first (parsed parents-before-children), each folder note
-        // carrying its _index.md body — or its own name when it has none.
         for (dir in parsed.dirs) {
             val note = createDraft(
                 title = dir.title,
@@ -930,8 +966,6 @@ class NoteRepositoryImpl @Inject constructor(
             pathToId[dir.dirPath] = note.id
             created++
         }
-        // Then the files; if a folder failed to materialize, the note climbs
-        // to the nearest ancestor that exists rather than being lost.
         for (file in parsed.files) {
             val parentId = generateSequence(file.parentPath) { anchor ->
                 MarkdownNoteParser.parentOf(anchor)?.ifEmpty { null }
@@ -949,8 +983,8 @@ class NoteRepositoryImpl @Inject constructor(
         if (created == 0) {
             throw lastError ?: Exception("Import fehlgeschlagen")
         }
-        fileLogger.log("NoteRepo", "importMarkdownFiles: created $created notes")
-        created
+        fileLogger.log("NoteRepo", "importOfflineDrafts: queued $created drafts")
+        return created
     }
 
     /** In-memory ordering for server-delivered lists (search/tag results);

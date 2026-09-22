@@ -301,6 +301,31 @@ data class ReorderNotesDto(
     @Json(name = "orderedIds") val orderedIds: List<String>
 )
 
+/** One parsed .md entry for POST /api/notes/import/markdown (v1.16.0): the
+ *  server builds the tree from the paths, folders come across as
+ *  `<ordner>/_index.md` + isFolderIndex — same wire format the web client
+ *  sends, instead of one createNote request per file. */
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownItemDto(
+    @Json(name = "path") val path: String,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "content") val content: String? = null,
+    @Json(name = "tags") val tags: List<String>? = null,
+    @Json(name = "isFolderIndex") val isFolderIndex: Boolean? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownRequestDto(
+    @Json(name = "items") val items: List<ImportMarkdownItemDto>
+)
+
+/** Answer of /import/markdown: how many notes/folders the server created. */
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownResultDto(
+    @Json(name = "created") val created: Int = 0,
+    @Json(name = "foldersCreated") val foldersCreated: Int = 0
+)
+
 /** GET /api/auth/providers — only configured providers are offered. */
 @JsonClass(generateAdapter = true)
 data class OAuthProvidersResponseDto(

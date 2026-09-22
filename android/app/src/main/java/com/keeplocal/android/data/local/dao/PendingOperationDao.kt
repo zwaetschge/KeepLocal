@@ -8,6 +8,23 @@ interface PendingOperationDao {
     @Query("SELECT * FROM pending_operations ORDER BY createdAt ASC")
     suspend fun getAllOperations(): List<PendingOperationEntity>
 
+    /** Drain view (v1.16.0): everything not yet poisoned. The sync-queue
+     *  view keeps using getAllOperations — poisoned ops stay visible and
+     *  discardable there, they just never replay again. */
+    @Query("SELECT * FROM pending_operations WHERE poisoned = 0 ORDER BY createdAt ASC")
+    suspend fun getActiveOperations(): List<PendingOperationEntity>
+
+    /** Counts a server-side rejection (SQL-side increment is race-free even
+     *  if a drain ever overlapped another writer). */
+    @Query("UPDATE pending_operations SET attemptCount = attemptCount + 1 WHERE id = :id")
+    suspend fun incrementAttempts(id: Long)
+
+    @Query("UPDATE pending_operations SET poisoned = 1 WHERE id = :id")
+    suspend fun markPoisoned(id: Long)
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE poisoned = 1")
+    suspend fun getPoisonedCount(): Int
+
     @Insert
     suspend fun insert(operation: PendingOperationEntity)
 

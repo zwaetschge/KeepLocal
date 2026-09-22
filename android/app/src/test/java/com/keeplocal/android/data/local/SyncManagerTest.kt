@@ -12,6 +12,7 @@ import com.keeplocal.android.data.local.entity.NoteEntity
 import com.keeplocal.android.data.local.entity.OperationType
 import com.keeplocal.android.data.local.entity.PendingOperationEntity
 import io.mockk.coEvery
+import java.io.IOException
 import io.mockk.every
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -247,6 +248,83 @@ class SyncManagerTest {
 
         assertEquals(1, result.synced)
         assertTrue(pendingDao.ops.isEmpty())
+    }
+
+    // --- (e) poison cap + network abort (v1.16.0) ----------------------
+
+    @Test
+    fun `server-rejected op is poisoned after eight failed drains and never retried`() = runTest {
+        noteDao.insertNote(entity("offline_p", title = "Gift"))
+        enqueue(OperationType.CREATE, "offline_p")
+        coEvery { api.createNote(any()) } returns errorResponse(500)
+
+        // Seven drains: op fails, attempt counter climbs, still active.
+        repeat(7) {
+            val result = syncManager.syncPendingOperations()
+            assertEquals(1, result.failed)
+            assertEquals(0, result.poisoned)
+        }
+        assertEquals(7, pendingDao.ops.single().attemptCount)
+        assertEquals(false, pendingDao.ops.single().poisoned)
+
+        // Eighth rejection hits the cap -> poisoned, row survives.
+        val capped = syncManager.syncPendingOperations()
+        assertEquals(1, capped.failed)
+        assertEquals(1, capped.poisoned)
+        assertEquals(true, pendingDao.ops.single().poisoned)
+        assertEquals(1, syncManager.syncStatus.value.poisonedCount)
+
+        // Ninth drain: no API call at all — the endless 15-minute retry is over.
+        syncManager.syncPendingOperations()
+        coVerify(exactly = 8) { api.createNote(any()) }
+    }
+
+    @Test
+    fun `poisoned op is discarded for good and the rest of the queue keeps syncing`() = runTest {
+        noteDao.insertNote(entity("offline_p", title = "Gift"))
+        noteDao.insertNote(entity("offline_2", title = "Gesund"))
+        enqueue(OperationType.CREATE, "offline_p")
+        enqueue(OperationType.CREATE, "offline_2")
+        // The Gift note is permanently rejected, its healthy neighbour is not.
+        coEvery { api.createNote(match { it.title == "Gift" }) } returns errorResponse(500)
+        coEvery { api.createNote(match { it.title != "Gift" }) } returns Response.success(dto("srv2", "Gesund"))
+
+        repeat(8) { syncManager.syncPendingOperations() }
+        assertEquals(true, pendingDao.ops.first { it.noteId == "offline_p" }.poisoned)
+
+        // The healthy op synced on the FIRST drain (the poison cap never
+        // blocks the rest of the queue); afterwards only the poison row stays.
+        assertEquals(1, pendingDao.ops.size)
+        assertNotNull(noteDao.notes["srv2"])
+    }
+
+    @Test
+    fun `network failure aborts the drain without attempt counting`() = runTest {
+        enqueue(OperationType.DELETE, "srv_a")
+        enqueue(OperationType.DELETE, "srv_b")
+        coEvery { api.deleteNote("srv_a") } throws IOException("connection reset")
+        coEvery { api.deleteNote("srv_b") } returns Response.success(Unit)
+
+        val result = syncManager.syncPendingOperations()
+
+        // Aborted at the first transport error: the second op was never
+        // attempted and NOTHING counted as server-side failure.
+        coVerify(exactly = 0) { api.deleteNote("srv_b") }
+        assertEquals(0, result.failed)
+        assertEquals("both ops stay queued for the next online drain", 2, pendingDao.ops.size)
+        assertEquals("network hiccups must not eat the attempt budget", 0, pendingDao.ops[0].attemptCount)
+    }
+
+    @Test
+    fun `auth failure never poisons the queue`() = runTest {
+        noteDao.insertNote(entity("offline_a"))
+        enqueue(OperationType.CREATE, "offline_a")
+        coEvery { api.createNote(any()) } returns errorResponse(401)
+
+        repeat(10) { syncManager.syncPendingOperations() }
+
+        assertEquals(false, pendingDao.ops.single().poisoned)
+        assertEquals("401 is not a server rejection", 0, pendingDao.ops.single().attemptCount)
     }
 
     // --- pullRemoteChanges (v1.14.0 Nr. 6) ---------------------------
@@ -503,6 +581,21 @@ private class FakePendingOperationDao : PendingOperationDao {
 
     override suspend fun getAllOperations(): List<PendingOperationEntity> =
         ops.sortedBy { it.createdAt }.toList()
+
+    override suspend fun getActiveOperations(): List<PendingOperationEntity> =
+        ops.filter { !it.poisoned }.sortedBy { it.createdAt }.toList()
+
+    override suspend fun incrementAttempts(id: Long) {
+        val index = ops.indexOfFirst { it.id == id }
+        if (index >= 0) ops[index] = ops[index].copy(attemptCount = ops[index].attemptCount + 1)
+    }
+
+    override suspend fun markPoisoned(id: Long) {
+        val index = ops.indexOfFirst { it.id == id }
+        if (index >= 0) ops[index] = ops[index].copy(poisoned = true)
+    }
+
+    override suspend fun getPoisonedCount(): Int = ops.count { it.poisoned }
 
     override suspend fun insert(operation: PendingOperationEntity) {
         ops.add(operation.copy(id = nextId++))
