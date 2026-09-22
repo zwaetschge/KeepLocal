@@ -50,6 +50,10 @@ function loadRouter({ getLinkPreview, transcribeAudio }) {
           next();
         }
       },
+      // v1.15.0: Multer-Instanzen sind route-level Middleware (load-time
+      // .array/.single im Router-Modul) — der Stub braucht alle vier.
+      uploadPdf: { array: () => (req, _res, next) => next() },
+      uploadZip: { single: () => (req, _res, next) => next() },
       isSafeStoredFilename: () => true
     }
   };

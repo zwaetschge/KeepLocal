@@ -54,6 +54,12 @@ function loadRouter(captured) {
           next();
         }
       },
+      // v1.15.0: Die Bild-/PDF-Routen reihen die Multer-Middleware jetzt als
+      // route-level Middleware (load-time uploadPdf.array(...)) statt sie im
+      // Handler aufzurufen — dieser Stub muss deshalb ALLE Instanzen liefern,
+      // sonst stirbt schon das require('../routes/notes').
+      uploadPdf: { array: () => (req, _res, next) => next() },
+      uploadZip: { single: () => (req, _res, next) => next() },
       isSafeStoredFilename: () => true
     }
   };

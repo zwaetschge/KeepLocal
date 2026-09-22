@@ -668,3 +668,451 @@ test('NoteList forwards selection and tag-color props to every Note', () => {
     assert.ok(signature.includes(prop), `NoteList-Signatur muss ${prop} destrukturieren`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// v1.15.0: Bulk-Aktionen idempotent + Off-window-Backfill über getById
+//
+// Die Mehrfachauswahl überlebt Pagination und Filterwechsel — Auswahl-IDs
+// außerhalb des geladenen 50er-Fensters wurden vorher als `undefined` in die
+// Aktion durchgereicht (bulkAddTag ersetzte so den GESAMTEN Tag-Satz durch
+// [neuerTag], und die Pin/Archiv-Skips prüften gegen einen geratenen Zustand).
+// Zusätzlich setzen die Bulk-Pfade jetzt idempotent (api.update) statt den
+// Server-Toggle zu verwenden, der einen unbekannten IST-Stand umkehren würde.
+//
+// Die Bulk-Logik lebt im Hook selbst, nicht in einer exportierten Pure-
+// Function. Damit sie in node --test ausführbar bleibt, lädt dieser Abschnitt
+// die ECHTE Hook-Datei mit einem Mini-React-Stub: exakt die fünf importierten
+// React-Hooks werden nachgebaut (useState mit Microtask-Batching, dep-
+// bewachte Effekte/Memos), der Quelltext bleibt unverändert — nur die
+// Import-Spezifizierer zeigen auf die Stub-Module. Die Kopie liegt im
+// Temp-Verzeichnis, das Repo wird nicht angefasst.
+// ---------------------------------------------------------------------------
+
+const os = require('node:os');
+
+const REACT_STUB_SOURCE = `
+// Mini-React-Stub für tests/notesManagerLogic.test.js: liefert genau die fünf
+// Hooks, die useNotesManager.js importiert. Alle Aufrufe delegieren an den
+// aktuell aktivierten Harness (__activate), damit Tests nacheinander eigene
+// Zustände fahren können, ohne sich in die Quelle zu kommen.
+let active = null;
+export function __activate(harness) { active = harness; }
+export function useState(init) { return active.useState(init); }
+export function useRef(init) { return active.useRef(init); }
+export function useMemo(factory, deps) { return active.useMemo(factory, deps); }
+export function useCallback(fn, deps) { return active.useCallback(fn, deps); }
+export function useEffect(effect, deps) { return active.useEffect(effect, deps); }
+`;
+
+// Der 60s-Poll des Live-Refresh-Effekts würde den Testprozess offen halten —
+// bei verstecktem Dokument ist der Tick ohnehin wirkungslos (früher Return).
+const realSetInterval = globalThis.setInterval;
+globalThis.setInterval = () => 0;
+test.after(() => {
+  globalThis.setInterval = realSetInterval;
+});
+// Der Live-Refresh-Effekt meldet sich bei isLoggedIn an window/document an.
+globalThis.window = globalThis.window || { addEventListener() {}, removeEventListener() {} };
+globalThis.document = globalThis.document || {
+  visibilityState: 'hidden',
+  addEventListener() {},
+  removeEventListener() {},
+};
+
+/**
+ * Nachgebauter React-Kern: Hook-Zustände leben in Slot-Arrays (Index = Reihen-
+ * folge des Hook-Aufrufs), setState plant einen gerenderten Durchlauf als
+ * Mikrotask (Batching), Effekte/Memos laufen nur bei geänderter Dep-Liste.
+ * settled() wartet, bis keine geplante Arbeit mehr ansteht — erst danach
+ * liest der Test Zustand/Aufruflisten.
+ */
+function createReactHarness(reactStub) {
+  const state = [];
+  const refs = [];
+  const memos = [];
+  const effects = [];
+  let hookFn = null;
+  let props = null;
+  let current = null;
+  let scheduled = false;
+
+  const depsChanged = (a, b) => !a || !b
+    || a.length !== b.length
+    || a.some((dep, index) => !Object.is(dep, b[index]));
+
+  function scheduleRender() {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(() => {
+      scheduled = false;
+      renderPass();
+    });
+  }
+
+  function renderPass() {
+    // Reaktivieren schadet nicht und macht verspätete Renders robust. Der
+    // Hook bekommt NUR seine Props — die Hook-Implementierungen erreicht er
+    // über den aktivierten React-Stub.
+    reactStub.__activate(harness);
+    hookIndex = 0;
+    current = hookFn(props);
+  }
+
+  // Die fünf Hook-Implementierungen hängen am Harness selbst — genau so
+  // greift auch der React-Stub über `active.<hook>` darauf zu.
+  const useState = (init) => {
+    const slot = state[hookIndex] ?? (state[hookIndex] = { value: typeof init === 'function' ? init() : init });
+    hookIndex += 1;
+    const setValue = (next) => {
+      const value = typeof next === 'function' ? next(slot.value) : next;
+      if (Object.is(value, slot.value)) return;
+      slot.value = value;
+      scheduleRender();
+    };
+    return [slot.value, setValue];
+  };
+  const useRef = (init) => {
+    const slot = refs[hookIndex] ?? (refs[hookIndex] = { current: init });
+    hookIndex += 1;
+    return slot;
+  };
+  const useMemo = (factory, deps) => {
+    const slotIndex = hookIndex;
+    hookIndex += 1;
+    const slot = memos[slotIndex];
+    if (!slot || depsChanged(slot.deps, deps)) {
+      memos[slotIndex] = { deps, value: factory() };
+    }
+    return memos[slotIndex].value;
+  };
+  const useCallback = (fn, deps) => useMemo(() => fn, deps);
+  const useEffect = (effect, deps) => {
+    const slotIndex = hookIndex;
+    hookIndex += 1;
+    const slot = effects[slotIndex];
+    // Dep-bewacht wie React nach dem Mount: nur bei geänderter Dep-Liste
+    // läuft der Effekt (und räumt vorher seinen alten Cleanup auf).
+    if (depsChanged(slot?.deps, deps)) {
+      if (typeof slot?.cleanup === 'function') slot.cleanup();
+      effects[slotIndex] = { deps, cleanup: effect() };
+    } else if (!slot) {
+      effects[slotIndex] = { deps, cleanup: undefined };
+    }
+  };
+
+  let hookIndex = 0;
+
+  const harness = {
+    useState,
+    useRef,
+    useMemo,
+    useCallback,
+    useEffect,
+    mount(hook, hookProps) {
+      hookFn = hook;
+      props = hookProps;
+      renderPass();
+    },
+    current: () => current,
+    async settled() {
+      for (let guard = 0; guard < 100; guard += 1) {
+        await new Promise(resolve => setImmediate(resolve));
+        if (scheduled) continue;
+        await new Promise(resolve => setImmediate(resolve));
+        if (!scheduled) return;
+      }
+      throw new Error('React-Stub: der Render-Zyklus beruhigt sich nicht');
+    },
+  };
+  return harness;
+}
+
+let bulkEnvPromise = null;
+/** Schreibt Stub + (import-gepatchte) Hook-Kopie ins Temp-Verzeichnis und lädt beide. */
+function getBulkTestEnv() {
+  if (!bulkEnvPromise) {
+    bulkEnvPromise = (async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-hook-stub-'));
+      const stubPath = path.join(tmpDir, 'react-stub.mjs');
+      const hookCopyPath = path.join(tmpDir, 'useNotesManager.testable.mjs');
+      fs.writeFileSync(stubPath, REACT_STUB_SOURCE);
+
+      const source = readClientFile('src/hooks/useNotesManager.js');
+      const reactSpecifier = pathToFileURL(stubPath).href;
+      const utilsSpecifier = `${pathToFileURL(path.join(__dirname, '..', 'src/utils')).href}/`;
+      const patched = source
+        .replace(/from 'react'/g, `from '${reactSpecifier}'`)
+        .replace(/from '\.\.\/utils\//g, `from '${utilsSpecifier}`);
+      if (!patched.includes(`from '${reactSpecifier}'`) || patched.includes(`from '../utils/`)) {
+        throw new Error('Hook-Quelltext konnte nicht auf den React-Stub umgeschrieben werden');
+      }
+      fs.writeFileSync(hookCopyPath, patched);
+
+      const reactStub = await import(pathToFileURL(stubPath).href);
+      const { useNotesManager } = await import(pathToFileURL(hookCopyPath).href);
+      test.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+      return { reactStub, useNotesManager };
+    })();
+  }
+  return bulkEnvPromise;
+}
+
+/**
+ * notesAPI-Stand-in für die Bulk-Pfade. windowNotes bildet das geladene
+ * Fenster (getAll-Antwort), freshById die Off-window-Nachladung (getById) —
+ * eine ID ohne Eintrag liefert null, wie es einem 404 entspricht. togglePin/
+ * toggleArchive werfen bewusst: der v1.15.0-Bulk-Pfad darf sie nie mehr
+ * erreichen, ein heimlicher Aufruf soll laut sichtbar werden.
+ */
+const createBulkApi = ({ windowNotes = [], freshById = {} } = {}) => {
+  const calls = { getAll: 0, getById: [], update: [], togglePin: [], toggleArchive: [] };
+  const api = {
+    getAll: async () => {
+      calls.getAll += 1;
+      return {
+        notes: windowNotes,
+        pagination: { page: 1, limit: 50, total: windowNotes.length, pages: 1 },
+        counts: { active: windowNotes.length, archived: 0, trash: 0 },
+        tags: [],
+      };
+    },
+    getTree: async () => [],
+    getById: async (id) => {
+      calls.getById.push(id);
+      return freshById[id] ?? null;
+    },
+    update: async (id, data) => {
+      calls.update.push({ id, data });
+      return { _id: id, ...data };
+    },
+    togglePin: async (id) => {
+      calls.togglePin.push(id);
+      throw new Error('togglePin darf im Bulk-Pfad nicht mehr aufgerufen werden');
+    },
+    toggleArchive: async (id) => {
+      calls.toggleArchive.push(id);
+      throw new Error('toggleArchive darf im Bulk-Pfad nicht mehr aufgerufen werden');
+    },
+  };
+  return { api, calls };
+};
+
+/** Hook eingeloggt mounten, Mount-Fetch (getAll + getTree) abwarten. */
+const mountBulkManager = async ({ api }) => {
+  const env = await getBulkTestEnv();
+  const toasts = [];
+  const harness = createReactHarness(env.reactStub);
+  harness.mount(env.useNotesManager, {
+    api,
+    isLoggedIn: true,
+    authLoading: false,
+    showToast: (message, type) => toasts.push({ message, type }),
+    // Bulk-Toasts transportieren die acted-Anzahl — genau die wird geprüft.
+    t: (key, params) => [key, params?.count, params?.tag].filter(part => part !== undefined).join('#'),
+  });
+  await harness.settled();
+  return { harness, manager: harness.current(), toasts };
+};
+
+test('bulkSetPinned: idempotentes api.update-SET statt togglePin, Skip wenn Ist===Ziel', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [note(), note({ _id: 'note-2', isPinned: true })],
+  });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('note-1');
+  manager.toggleNoteSelection('note-2');
+  await harness.settled();
+
+  await manager.bulkSetPinned(true);
+  await harness.settled();
+
+  // Nur die ungepinnte Note braucht einen Call — die gepinnte wird geskippt …
+  assert.deepEqual(calls.update, [{ id: 'note-1', data: { isPinned: true } }]);
+  // … und der Server-Toggle ist aus dem Bulk-Pfad komplett verschwunden.
+  assert.deepEqual(calls.togglePin, []);
+  assert.deepEqual(calls.toggleArchive, []);
+  // acted zählt nur echte Calls: der Toast meldet 1, nicht die Pool-Anzahl 2.
+  assert.deepEqual(toasts, [{ message: 'bulkPinned#1', type: 'success' }]);
+
+  // Gegenrichtung: Abheften ist ebenfalls ein SET (isPinned:false), kein Toggle.
+  calls.update.length = 0;
+  toasts.length = 0;
+  manager.toggleNoteSelection('note-2'); // der Bulk hat die Auswahl geleert
+  await harness.settled();
+  await manager.bulkSetPinned(false);
+  await harness.settled();
+  assert.deepEqual(calls.update, [{ id: 'note-2', data: { isPinned: false } }]);
+  assert.deepEqual(toasts, [{ message: 'bulkUnpinned#1', type: 'success' }]);
+});
+
+test('bulkArchive: api.update mit isArchived:true statt toggleArchive, archivierte werden geskippt', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [note(), note({ _id: 'note-2', isArchived: true })],
+  });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('note-1');
+  manager.toggleNoteSelection('note-2');
+  await harness.settled();
+
+  await manager.bulkArchive();
+  await harness.settled();
+
+  assert.deepEqual(calls.update, [{ id: 'note-1', data: { isArchived: true } }]);
+  assert.deepEqual(calls.toggleArchive, []);
+  assert.deepEqual(calls.togglePin, []);
+  assert.deepEqual(toasts, [{ message: 'bulkArchived#1', type: 'success' }]);
+});
+
+test('bulkAddTag: Case-insensitiver Skip, vorhandener Tag-Satz wird erweitert statt ersetzt', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [
+      note({ tags: ['privat'] }),
+      note({ _id: 'note-2', tags: ['sonstiges'] }),
+    ],
+  });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('note-1');
+  manager.toggleNoteSelection('note-2');
+  await harness.settled();
+
+  // „Privat" hängt an note-1 in anderer Schreibweise schon dran — der alte
+  // includes-Vergleich hätte hier ein Duplikat in die Tag-Cloud geschrieben.
+  await manager.bulkAddTag('Privat');
+  await harness.settled();
+
+  assert.deepEqual(calls.update, [{ id: 'note-2', data: { tags: ['sonstiges', 'Privat'] } }]);
+  assert.match(toasts[0]?.message ?? '', /^bulkTagged#/);
+  assert.equal(toasts[0]?.type, 'success');
+
+  // Bestandsschutz: der neue Tag wird AN den vorhandenen Satz angehängt …
+  calls.update.length = 0;
+  manager.toggleNoteSelection('note-1');
+  await harness.settled();
+  // … und der Input wird getrimmt.
+  await manager.bulkAddTag(' Arbeit ');
+  await harness.settled();
+  assert.deepEqual(calls.update, [{ id: 'note-1', data: { tags: ['privat', 'Arbeit'] } }]);
+});
+
+test('off-window Auswahl: getById liefert den IST-Stand, der Pin-Skip richtet sich nach den frischen Daten', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [note()],
+    freshById: {
+      'offen-1': note({ _id: 'offen-1', isPinned: true }), // Server: längst gepinnt
+      'offen-2': note({ _id: 'offen-2', isPinned: false }), // Server: noch ungepinnt
+    },
+  });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('note-1');
+  manager.toggleNoteSelection('offen-1');
+  manager.toggleNoteSelection('offen-2');
+  await harness.settled();
+
+  await manager.bulkSetPinned(true);
+  await harness.settled();
+
+  // Nachgeladen wird nur außerhalb des Fensters — die Fenster-Notiz läuft
+  // ohne Extra-Call über den lokalen Stand.
+  assert.deepEqual([...calls.getById].sort(), ['offen-1', 'offen-2']);
+  // offen-1 ist serverseitig schon gepinnt → kein Call (der alte Toggle hätte
+  // sie hier ABGEHEFTET); offen-2 bekommt das idempotente SET mit frischem Ist.
+  assert.deepEqual(calls.update, [
+    { id: 'note-1', data: { isPinned: true } },
+    { id: 'offen-2', data: { isPinned: true } },
+  ]);
+  assert.deepEqual(toasts, [{ message: 'bulkPinned#2', type: 'success' }]);
+});
+
+test('off-window Auswahl: Tag-Skip und Bestandserhaltung anhand der frisch nachgeladenen Tags', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [],
+    freshById: { 'offen-1': note({ _id: 'offen-1', tags: ['privat'] }) },
+  });
+  const { harness, manager } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('offen-1');
+  await harness.settled();
+  await manager.bulkAddTag('Privat');
+  await harness.settled();
+  // Frisch nachgeladenes "privat" matcht "Privat" case-insensitiv → kein Update.
+  assert.deepEqual(calls.update, []);
+
+  calls.update.length = 0;
+  manager.toggleNoteSelection('offen-1'); // der Bulk hat die Auswahl geleert
+  await harness.settled();
+  await manager.bulkAddTag('Arbeit');
+  await harness.settled();
+  // Die Basis kommt aus der Nachladung: ['privat'] + 'Arbeit' — vor v1.15.0
+  // lief die Aktion mit note=undefined und ersetzte den Satz durch ['Arbeit'].
+  assert.deepEqual(calls.update, [{ id: 'offen-1', data: { tags: ['privat', 'Arbeit'] } }]);
+});
+
+test('off-window Auswahl: inzwischen gelöschte Notiz (getById → null) läuft deterministisch ohne Crash', async () => {
+  const { api, calls } = createBulkApi({
+    windowNotes: [],
+    freshById: { 'weg-1': null },
+  });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  manager.toggleNoteSelection('weg-1');
+  await harness.settled();
+
+  // Pin: null?.isPinned ist false → das SET wird regulär gesendet, kein Absturz.
+  await manager.bulkSetPinned(true);
+  await harness.settled();
+  assert.deepEqual(calls.update, [{ id: 'weg-1', data: { isPinned: true } }]);
+  assert.deepEqual(toasts, [{ message: 'bulkPinned#1', type: 'success' }]);
+
+  // Tag: fehlende Tags werden als leere Menge behandelt.
+  calls.update.length = 0;
+  toasts.length = 0;
+  manager.toggleNoteSelection('weg-1');
+  await harness.settled();
+  await manager.bulkAddTag('Neu');
+  await harness.settled();
+  assert.deepEqual(calls.update, [{ id: 'weg-1', data: { tags: ['Neu'] } }]);
+
+  // Archiv: ebenfalls deterministisch ein SET.
+  calls.update.length = 0;
+  toasts.length = 0;
+  manager.toggleNoteSelection('weg-1');
+  await harness.settled();
+  await manager.bulkArchive();
+  await harness.settled();
+  assert.deepEqual(calls.update, [{ id: 'weg-1', data: { isArchived: true } }]);
+  assert.deepEqual(toasts, [{ message: 'bulkArchived#1', type: 'success' }]);
+});
+
+test('filterNotesByTag matcht case-insensitiv wie der Server und lässt Präfixe fallen', async () => {
+  const { filterNotesByTag } = await import(moduleUrl);
+  const stock = [
+    note({ _id: 'a', tags: ['Projekt'] }),
+    note({ _id: 'b', tags: ['einkauf', 'projekt'] }),
+    note({ _id: 'c', tags: ['PROJEKT!'] }),
+    note({ _id: 'd', tags: [] }),
+    note({ _id: 'e' }),
+  ];
+
+  // Der Chip trägt die $toLower-Gruppierung der Tag-Cloud; der Bestand kann
+  // alte Schreibweisen tragen. Array.includes(selectedTag) feuerte jede Notiz
+  // mit abweichender Groß-/Kleinschreibung aus der Ansicht (Review v1.15.0).
+  const ids = (list) => list.map((item) => item._id);
+  assert.deepEqual(ids(filterNotesByTag(stock, 'projekt')), ['a', 'b']);
+  assert.deepEqual(ids(filterNotesByTag(stock, 'PROJEKT')), ['a', 'b'],
+    'auch der Chip selbst kann großgeschrieben ankommen');
+
+  // Kein Tag gewählt: alles durch, inklusive Notizen ohne tags-Feld.
+  assert.strictEqual(filterNotesByTag(stock, null), stock);
+  assert.strictEqual(filterNotesByTag(stock, ''), stock);
+
+  // Kein Präfix-/Substring-Match: der Server-Filter ist ^…$ mit i-Flag.
+  assert.deepEqual(filterNotesByTag(stock, 'proj'), []);
+
+  // Degenerierte Eingaben bleiben eine Liste, kein Crash.
+  assert.deepEqual(filterNotesByTag(null, 'projekt'), []);
+  assert.deepEqual(filterNotesByTag(stock, 'projekt').length, 2);
+});

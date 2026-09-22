@@ -12,7 +12,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { upload, uploadAudio, uploadPdf, uploadZip, isSafeStoredFilename } = require('../middleware/upload');
 const { getLinkPreview } = require('../services/linkPreviewService');
 const { acquire } = require('../utils/concurrencyGate');
-const { validateImageFiles, validateAudioFile } = require('../utils/magicNumberValidator');
+const { validateAudioFile } = require('../utils/magicNumberValidator');
 const notesService = require('../services/notesService');
 const aiService = require('../services/aiService');
 const { httpStatus } = require('../constants');
@@ -23,6 +23,16 @@ const {
   rejectDemoNoteCapabilities,
   parseDemoNoteLimit
 } = require('../middleware/demoPolicy');
+// Geteilte Upload-Pipeline (v1.15.0): dieselben Handler laufen auch hinter der
+// v1-API — Validierung und Limits driften damit nicht zwischen Session und
+// API-Key auseinander.
+const {
+  requireEditableNote,
+  rejectIfAttachmentFull,
+  wrapUpload,
+  handleImageUpload,
+  handleFileUpload
+} = require('../utils/attachmentUpload');
 
 const blockDemoCollaboration = blockDemoUser('collaboration');
 const blockDemoLinkPreview = blockDemoUser('link_preview');
@@ -140,23 +150,9 @@ const transcribeDayLimiter = rateLimit({
 
 // All routes require authentication
 router.use(authenticateToken);
-
-/**
- * Zugriff für Mitbearbeiter: eigene oder geteilte Notiz. Wird für Uploads und
- * Transkription verwendet — beides ändert den Inhalt, den auch geteilte Nutzer
- * bearbeiten dürfen. Destruktives (Löschen, Archiv, Teilen) bleibt beim Besitzer.
- */
-async function requireEditableNote(req, res, next) {
-  try {
-    req.ownedNote = await notesService.getEditableNoteById(req.params.id, req.user._id);
-    next();
-  } catch (error) {
-    if (error.statusCode === 404 || error.kind === 'ObjectId') {
-      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
-    }
-    return next(error);
-  }
-}
+// requireEditableNote (eigene oder geteilte Notiz als req.ownedNote) wohnt seit
+// v1.15.0 in utils/attachmentUpload — gemeinsam mit der Upload-Pipeline, die
+// sie neben der Session-Route auch die v1-API benutzt.
 
 // Baum-Panel (v1.10.0): Muss VOR /:id registriert sein, sonst frisst der
 // Param-Route-Match „tree" als Notiz-ID.
@@ -232,6 +228,12 @@ router.post(
  * Frontmatter, Anhaengen und Baumstruktur. Demo-Konten bleiben draussen —
  * der Import schreibt Bilddateien auf die Platte (blockDemoUploads wie bei
  * den Upload-Routen), das reine Text-Import-Ersatzlicht bleibt /import/markdown.
+ *
+ * Hinter einem Concurrency-Gate (Review v1.15.0): readFileSync + Reader +
+ * Entpacken halten ein komplettes Archiv (bis 512 MB Multer-Limit) im RAM —
+ * mehrere parallele Importe desselben Nutzers wären ein OOM-Vektor gegen das
+ * All-in-One-Image, in dem mongod und Whisper mit im Prozessraum des Hosts
+ * liegen. Ein zweiter Antrag bekommt 429 + Retry-After statt zu queueing.
  */
 router.post('/import/markdown-zip', blockDemoUploads, (req, res, next) => {
   // Wrap multer, um Dateigroessen-/Filter-Fehler als normalen Fehlerweg zu
@@ -244,11 +246,23 @@ router.post('/import/markdown-zip', blockDemoUploads, (req, res, next) => {
         if (!req.file) {
           return res.status(httpStatus.BAD_REQUEST).json({ message: 'archive (ZIP-Datei) ist erforderlich' });
         }
-        const buffer = fs.readFileSync(req.file.path);
-        const result = await notesService.importMarkdownZip(req.user._id, buffer, {
-          demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null
-        });
-        res.status(httpStatus.CREATED).json(result);
+        const gate = acquire('zipImport', 1);
+        if (!gate.acquired) {
+          res.setHeader('Retry-After', '30');
+          return res.status(httpStatus.TOO_MANY_REQUESTS).json({
+            code: 'ZIP_IMPORT_BUSY',
+            error: 'Es läuft bereits ein ZIP-Import. Bitte in einer halben Minute erneut versuchen.'
+          });
+        }
+        try {
+          const buffer = fs.readFileSync(req.file.path);
+          const result = await notesService.importMarkdownZip(req.user._id, buffer, {
+            demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null
+          });
+          res.status(httpStatus.CREATED).json(result);
+        } finally {
+          gate.release();
+        }
       })
       .catch(next)
       .finally(() => {
@@ -619,133 +633,10 @@ router.post('/link-preview', blockDemoLinkPreview, linkPreviewLimiter, async (re
  * POST /api/notes/:id/images - Upload images to a note
  * Supports multiple files (max 5 images per request)
  */
-router.post('/:id/images', blockDemoUploads, noteValidation.getOne, requireEditableNote, (req, res, next) => {
-  if ((req.ownedNote.images?.length || 0) >= 25) {
-    return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Bilder pro Notiz erlaubt' });
-  }
-
-  // Wrap multer to catch file size and other errors
-  upload.array('images', 5)(req, res, (err) => {
-    if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: 'Datei zu groß. Maximale Dateigröße: 10MB'
-        });
-      }
-      if (err.code === 'LIMIT_FILE_COUNT') {
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: 'Zu viele Dateien. Maximal 5 Bilder pro Upload.'
-        });
-      }
-      if (err.message) {
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: err.message
-        });
-      }
-      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
-        error: 'Upload-Fehler'
-      });
-    }
-    next();
-  });
-}, async (req, res, next) => {
-  const path = require('path');
-  const fs = require('fs');
-  const { tempUploadDir, finalUploadDir } = require('../middleware/upload');
-  const tempFiles = []; // Track temp files for cleanup
-
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Bilder hochgeladen' });
-    }
-
-    if ((req.ownedNote.images?.length || 0) + req.files.length > 25) {
-      await Promise.all(req.files.map(file => fs.promises.rm(file.path, { force: true })));
-      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Bilder pro Notiz erlaubt' });
-    }
-
-    // Files are currently in TEMP directory (security measure)
-    const tempFilePaths = req.files.map(file => file.path);
-    tempFiles.push(...tempFilePaths);
-
-    // Validate files in temp before moving anything into the served directory.
-    const validationResult = await validateImageFiles(req.files.map(file => ({
-      filepath: file.path,
-      mimetype: file.mimetype
-    })));
-
-    if (validationResult.invalid.length > 0) {
-      await Promise.all(tempFilePaths.map(filepath => fs.promises.rm(filepath, { force: true })));
-
-      return res.status(httpStatus.BAD_REQUEST).json({
-        error: 'Ungültige Bilddateien erkannt. Die hochgeladenen Dateien sind keine echten Bilder.'
-      });
-    }
-
-    await notesService.validateImageDimensions(tempFilePaths);
-
-    // Process sequentially so cleanup cannot race unfinished thumbnail jobs.
-    const imageData = [];
-    for (const file of req.files) {
-      const tempPath = file.path;
-      const finalPath = path.join(finalUploadDir, file.filename);
-
-      await fs.promises.rename(tempPath, finalPath);
-      const thumbnailFilename = await notesService.generateThumbnail(file.filename, finalPath);
-
-      imageData.push({
-        url: `/uploads/images/${file.filename}`,
-        filename: file.filename,
-        thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
-        thumbnailFilename: thumbnailFilename,
-        uploadedAt: new Date()
-      });
-    }
-
-    const note = await notesService.addImages(req.params.id, req.user._id, imageData);
-    res.json(note);
-  } catch (error) {
-    console.error('[IMAGE UPLOAD] ✗ Error during upload:', error);
-
-    // Clean up: Delete files from temp directory (if still there)
-    tempFiles.forEach(filepath => {
-      if (fs.existsSync(filepath)) {
-        fs.unlinkSync(filepath);
-      }
-    });
-
-    // Clean up: Delete files from final directory and thumbnails (if already moved)
-    if (req.files) {
-      req.files.forEach(file => {
-        const finalPath = path.join(finalUploadDir, file.filename);
-        if (fs.existsSync(finalPath)) {
-          fs.unlinkSync(finalPath);
-        }
-
-        // Clean up thumbnail if exists
-        const ext = path.extname(file.filename);
-        const nameWithoutExt = path.basename(file.filename, ext);
-        const thumbpath = path.join(finalUploadDir, `${nameWithoutExt}-thumb.webp`);
-        if (fs.existsSync(thumbpath)) {
-          fs.unlinkSync(thumbpath);
-        }
-      });
-    }
-
-    if (error.kind === 'ObjectId') {
-      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
-    }
-
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
-    }
-
-    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
-      error: 'Fehler beim Hochladen der Bilder',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
+router.post('/:id/images', blockDemoUploads, noteValidation.getOne, requireEditableNote,
+  rejectIfAttachmentFull('images'),
+  wrapUpload(upload.array('images', 5), { sizeLabel: '10MB', kindLabel: 'Bilder' }),
+  handleImageUpload);
 
 /**
  * DELETE /api/notes/:id/images/:filename - Delete an image from a note
@@ -796,100 +687,12 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
 /**
  * POST /api/notes/:id/files (v1.12.0) — PDF-Anhang an eine Notiz. Gleiche
  * Temp-then-move-Pipeline wie Bilder: multer legt in uploads/temp ab, die
- * Route prueft Magic Bytes (%PDF) und verschiebt erst dann nach uploads/files.
+ * Handler prueft Magic Bytes (%PDF) und verschiebt erst dann nach uploads/files.
  */
-router.post('/:id/files', blockDemoUploads, noteValidation.getOne, requireEditableNote, (req, res, next) => {
-  if ((req.ownedNote.files?.length || 0) >= 25) {
-    return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Dateianhänge pro Notiz erlaubt' });
-  }
-
-  uploadPdf.array('files', 5)(req, res, (err) => {
-    if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: 'Datei zu groß. Maximale Dateigröße: 25MB'
-        });
-      }
-      if (err.code === 'LIMIT_FILE_COUNT') {
-        return res.status(httpStatus.BAD_REQUEST).json({
-          error: 'Zu viele Dateien. Maximal 5 Anhänge pro Upload.'
-        });
-      }
-      if (err.message) {
-        return res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
-      }
-      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Upload-Fehler' });
-    }
-    next();
-  });
-}, async (req, res, next) => {
-  const path = require('path');
-  const fs = require('fs');
-  const tempFiles = [];
-
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Keine Dateien hochgeladen' });
-    }
-
-    if ((req.ownedNote.files?.length || 0) + req.files.length > 25) {
-      await Promise.all(req.files.map(file => fs.promises.rm(file.path, { force: true })));
-      return res.status(httpStatus.BAD_REQUEST).json({ error: 'Maximal 25 Dateianhänge pro Notiz erlaubt' });
-    }
-
-    // Magic-Byte-Check: %PDF- am Dateianfang. Der Multer-Filter prueft nur
-    // Client-Mime + Endung — ein Umbenanntes duerfe nie in files/ landen.
-    for (const file of req.files) {
-      const header = Buffer.alloc(5);
-      const fd = fs.openSync(file.path, 'r');
-      try {
-        fs.readSync(fd, header, 0, 5, 0);
-      } finally {
-        fs.closeSync(fd);
-      }
-      if (header.toString('latin1') !== '%PDF-') {
-        await Promise.all(req.files.map(f => fs.promises.rm(f.path, { force: true })));
-        return res.status(httpStatus.BAD_REQUEST).json({ error: 'Ungültige PDF-Dateien erkannt' });
-      }
-    }
-
-    const fileData = [];
-    for (const file of req.files) {
-      const finalPath = path.join(filesDir(), file.filename);
-      await fs.promises.rename(file.path, finalPath);
-      fileData.push({
-        url: `/uploads/files/${file.filename}`,
-        filename: file.filename,
-        originalName: path.basename(file.originalname || 'anhang.pdf').slice(0, 255),
-        mimetype: 'application/pdf',
-        size: file.size,
-        uploadedAt: new Date()
-      });
-    }
-
-    const note = await notesService.addFiles(req.params.id, req.user._id, fileData);
-    res.json(note);
-  } catch (error) {
-    console.error('[FILE UPLOAD] ✗ Error during upload:', error);
-    tempFiles.forEach(filepath => {
-      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
-    });
-    if (req.files) {
-      req.files.forEach(file => {
-        const finalPath = path.join(filesDir(), file.filename);
-        if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
-      });
-    }
-
-    if (error.kind === 'ObjectId') {
-      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
-    }
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
-    }
-    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Serverfehler beim Upload' });
-  }
-});
+router.post('/:id/files', blockDemoUploads, noteValidation.getOne, requireEditableNote,
+  rejectIfAttachmentFull('files'),
+  wrapUpload(uploadPdf.array('files', 5), { sizeLabel: '25MB', kindLabel: 'Anhänge' }),
+  handleFileUpload);
 
 /**
  * DELETE /api/notes/:id/files/:filename - Dateianhang von einer Notiz loesen

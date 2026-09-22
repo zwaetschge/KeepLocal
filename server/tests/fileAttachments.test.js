@@ -121,15 +121,24 @@ test('purging a trashed note deletes its attachment files from disk', async () =
 
 test('the upload route only accepts real PDFs — filter, magic bytes, limits', () => {
   const routes = fs.readFileSync(path.join(__dirname, '../routes/notes.js'), 'utf8');
+  // v1.15.0: Die Handler-Logik (Magic Bytes, Limits, Fehlermeldungen) wohnt in
+  // der geteilten Pipeline server/utils/attachmentUpload.js — Session-Route
+  // und v1-API benutzen dieselben Funktionen und driften nicht auseinander.
+  const pipeline = fs.readFileSync(path.join(__dirname, '../utils/attachmentUpload.js'), 'utf8');
+  const v1Routes = fs.readFileSync(path.join(__dirname, '../routes/v1/notes.js'), 'utf8');
 
   // Magic-Byte-Check: Der Multer-Filter vertraut Client-Angaben, die Route nicht.
-  assert.match(routes, /'%PDF-'/, 'files are verified by their header, not by their mime type');
-  assert.match(routes, /Ungültige PDF-Dateien erkannt/, 'a spoofed upload is rejected with a message');
+  assert.match(pipeline, /'%PDF-'/, 'files are verified by their header, not by their mime type');
+  assert.match(pipeline, /Ungültige PDF-Dateien erkannt/, 'a spoofed upload is rejected with a message');
 
   // Dasselbe Budget-Muster wie Bilder:Early-Check + Mengen-Check nach Multer.
-  assert.match(routes, /Maximal 25 Dateianhänge pro Notiz erlaubt/);
-  assert.match(routes, /Maximale Dateigröße: 25MB/);
-  assert.match(routes, /Zu viele Dateien\. Maximal 5 Anhänge pro Upload\./);
+  assert.match(pipeline, /Maximal 25 Dateianhänge pro Notiz erlaubt/);
+  assert.match(pipeline, /Datei zu groß\. Maximale Dateigröße: \$\{sizeLabel\}/);
+  assert.match(pipeline, /Zu viele Dateien\. Maximal 5 \$\{kindLabel\} pro Upload\./);
+  // Die Route instanziiert wrapUpload mit den konkreten Labels:
+  assert.match(routes, /wrapUpload\(uploadPdf\.array\('files', 5\), \{ sizeLabel: '25MB', kindLabel: 'Anhänge' \}\)/);
+  assert.match(v1Routes, /wrapUpload\(uploadPdf\.array\('files', 5\), \{ sizeLabel: '25MB', kindLabel: 'Anhänge' \}\)/,
+    'die v1-API hängt dieselbe Pipeline mit denselben Limits an');
 
   // Demo-Instanz: Uploads sind dort generell gesperrt.
   const postRoute = routes.slice(routes.indexOf("router.post('/:id/files'"));
@@ -139,8 +148,8 @@ test('the upload route only accepts real PDFs — filter, magic bytes, limits', 
 
   // Anhänge landen in uploads/files und werden über filesDir() adressiert,
   // nie über einen hartkodierten Pfad (gleiche Lehre wie UPLOADS_DIR, Nr. 6).
-  assert.match(routes, /\/uploads\/files\/\$\{file\.filename\}/);
-  assert.match(routes, /path\.join\(filesDir\(\), file\.filename\)/);
+  assert.match(pipeline, /\/uploads\/files\/\$\{file\.filename\}/);
+  assert.match(pipeline, /path\.join\(filesDir\(\), file\.filename\)/);
 });
 
 test('the multer layer enforces PDF filter and size before the route runs', () => {

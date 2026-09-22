@@ -38,6 +38,21 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
   const [apiKeyError, setApiKeyError] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
 
+  // Server-Version (v1.15.0): Der Build schreibt sie ins Image, /api/health
+  // meldet sie — vor hier war auf keinem Weg sichtbar, welche Version tatsächlich
+  // läuft (die Paket-Version des Clients sagt nichts über das Server-Image aus).
+  const [serverVersion, setServerVersion] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/health', { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(health => {
+        if (!cancelled && health?.version) setServerVersion(health.version);
+      })
+      .catch(() => { /* Footer zeigt schlicht keine Version */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // Passwort ändern: der Server erhöht sessionVersion, meldet also alle anderen
   // Geräte ab und stellt für diese Sitzung ein neues Cookie aus.
   const [pwCurrent, setPwCurrent] = useState('');
@@ -775,6 +790,16 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
         </div>
 
         <div className="settings-footer">
+          {/* Der Version-Span steht VOR dem Close-Button (Review v1.15.0):
+              .settings-footer-version trägt margin-right:auto — Auto-Margins
+              absorbieren den Flex-Freiraum vor der justify-content-Ausrichtung,
+              ein Span NACH dem Button hätte beide an den linken Rand gezogen
+              und der Button wäre beim Nachladen der Version gesprungen. */}
+          {serverVersion && (
+            <span className="settings-footer-version">
+              {t('serverVersion')}: {serverVersion}
+            </span>
+          )}
           <button className="btn-settings-close" onClick={onClose}>
             {t('close')}
           </button>

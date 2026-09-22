@@ -57,6 +57,8 @@ export const de = {
   save: 'Speichern',
   cancel: 'Abbrechen',
   close: 'Schließen',
+  // v1.15.0: Server-Version in der Einstellungs-Fußzeile (/api/health)
+  serverVersion: 'Server-Version',
 
   // Search
   search: 'Suchen',
@@ -558,6 +560,7 @@ export const de = {
   errTranscriptionMinuteLimit: 'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.',
   errAudioTooLong: 'Die Aufnahme ist zu lang für die Transkription. Bitte sie kürzen und erneut versuchen.',
   errTranscriptionBusy: 'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.',
+  errZipImportBusy: 'Es läuft bereits ein ZIP-Import. Bitte in einer halben Minute erneut versuchen.',
   errLinkUnreachable: 'Link ist nicht erreichbar.',
   errNotFound: 'Nicht gefunden.',
   errNoteConflict: 'Diese Notiz wurde inzwischen anderswo geändert.',
@@ -651,6 +654,7 @@ export const de = {
   bulkUnpinned: '{count} Notiz(en) abgeheftet',
   bulkArchived: '{count} Notiz(en) archiviert',
   bulkDeleted: '{count} Notiz(en) in den Papierkorb verschoben',
+  bulkSomeFailed: '{count} Notiz(en) konnten nicht geändert werden',
   bulkTagged: 'Tag „{tag}" zu {count} Notiz(en) hinzugefügt',
   bulkMoved: '{count} Notiz(en) verschoben',
   codeMode: 'Code-Notiz (Monospace)',

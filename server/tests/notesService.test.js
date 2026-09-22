@@ -211,7 +211,13 @@ test('getNotesMeta: eine Aggregation, Bucket-Semantik wie getAllNotes', async ()
   const match = observed.pipeline[0].$match;
   assert.equal(String(match.$or[0].userId), userId, 'eigene Notizen');
   assert.equal(String(match.$or[1].sharedWith), userId, 'und geteilte');
-  const group = observed.pipeline[1].$group;
+  // v1.15.0: $project-Stufe vor $group eingeschoben (Volltext raus aus der
+  // 60s-Sonde) — die Gruppierung liegt damit auf Index 2. Das Feld-Set ist
+  // gepinnt: Ein neues Zählfeld gehört HIERHER, nicht (nur) in $group — sonst
+  // liefert $group undefined und die Sonde vergleicht Müll-Signaturen.
+  assert.deepEqual(observed.pipeline[1].$project,
+    { deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 });
+  const group = observed.pipeline[2].$group;
   const activeCond = group.active.$sum.$cond[0].$and;
   assert.equal(activeCond[0].$eq[0].$ifNull[0], '$deletedAt', 'fehlendes deletedAt zählt als aktiv');
   assert.equal(activeCond[1].$eq[0].$ifNull[0], '$isArchived', 'fehlendes isArchived zählt als aktiv');
@@ -299,4 +305,141 @@ test('includeMeta=false spart Counts und Tag-Aggregation ein', async () => {
   assert.equal(seen.counts, 4, 'ohne includeMeta laufen die vier Counts (total+3 global)');
   assert.equal(seen.aggregates, 1, 'die Tag-Cloud läuft');
   assert.deepEqual(full.counts, { active: 0, archived: 0, trash: 0 });
+});
+
+// ---------------------------------------------------------------------------
+// v1.15.0 — isArchived per PUT: idempotentes $set für den Besitzer (kein
+// Toggle — die Bulk-Auswahl kennt den IST-Zustand fensterfremder Notizen
+// nicht), während Mitbearbeiter den Archiv-Zustand nicht ändern dürfen.
+// ---------------------------------------------------------------------------
+
+// Update-Mock: notiert findOne-/findOneAndUpdate-Aufrufe und wendet $set auf
+// das gespeicherte Dokument an — updateNote braucht eine truthy Rückgabe,
+// sonst wirft es 409 statt durchzulaufen.
+function makeUpdateMock(storedNote) {
+  const observed = { findOneQueries: [], updates: [] };
+  const NoteMock = {
+    findOne: async (query) => {
+      observed.findOneQueries.push(query);
+      return { ...storedNote };
+    },
+    findOneAndUpdate: async (query, change) => {
+      observed.updates.push({ query, change });
+      storedNote = { ...storedNote, ...change.$set };
+      return { ...storedNote };
+    }
+  };
+  return { observed, service: loadService(NoteMock) };
+}
+
+test('updateNote: Besitzer setzt isArchived idempotent per $set, kein Toggle (v1.15.0)', async () => {
+  const { observed, service } = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'user-id',
+    title: 'T',
+    content: 'Inhalt',
+    isArchived: false
+  });
+
+  // Erster Aufruf: false -> true landet als $set im Update, nicht als Pipeline.
+  await service.updateNote('note-id', { isArchived: true }, 'user-id');
+  assert.equal(observed.updates.length, 1);
+  assert.deepEqual(Object.keys(observed.updates[0].change), ['$set'], 'kein Aggregations-Pipeline-Toggle');
+  assert.equal(observed.updates[0].change.$set.isArchived, true);
+
+  // Zweiter Aufruf mit GLEICHEM Wert (Notiz ist inzwischen archiviert):
+  // derselbe $set-Wert nochmal — ein Toggle ($not) würde true nach false kippen.
+  await service.updateNote('note-id', { isArchived: true }, 'user-id');
+  assert.equal(observed.updates[1].change.$set.isArchived, true, 'gleicher Wert bleibt gleich (idempotent)');
+
+  // Und zurück: false hebt die Archivierung wieder auf.
+  await service.updateNote('note-id', { isArchived: false }, 'user-id');
+  assert.equal(observed.updates[2].change.$set.isArchived, false);
+});
+
+test('updateNote: isArchived muss Boolean sein, Validierung läuft vor dem DB-Lesen (v1.15.0)', async () => {
+  const { observed, service } = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'user-id',
+    content: 'Inhalt',
+    isArchived: false
+  });
+
+  await assert.rejects(
+    service.updateNote('note-id', { isArchived: 'ja' }, 'user-id'),
+    (error) => error.statusCode === 400 && error.message === 'isArchived muss ein Boolean sein'
+  );
+  assert.equal(observed.findOneQueries.length, 0, 'kaputte Werte erreichen die Datenbank nicht');
+  assert.equal(observed.updates.length, 0);
+});
+
+test('updateNote: Mitbearbeiter darf den Archiv-Zustand nicht ändern (v1.15.0)', async () => {
+  const { observed, service } = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'owner-id',
+    sharedWith: ['editor-id'],
+    title: 'T',
+    content: 'Inhalt',
+    isArchived: false
+  });
+
+  await assert.rejects(
+    service.updateNote('note-id', { isArchived: true }, 'editor-id'),
+    (error) => error.statusCode === 400 && /Nur der Besitzer kann die Notiz archivieren/.test(error.message)
+  );
+  assert.equal(observed.updates.length, 0, 'kein Schreiben, wenn das Besitzer-Gate zuschlägt');
+  // Die Notiz kam über die Freigabe-Query — das Gate trifft also wirklich einen Nicht-Besitzer.
+  assert.equal(observed.findOneQueries[0].$or[1].sharedWith, 'editor-id');
+});
+
+test('updateNote: Mitbearbeiter mit unverändertem isArchived bleibt ein No-Op (v1.15.0)', async () => {
+  // Clients, die das komplette Objekt zurückschicken, kennen den IST-Zustand —
+  // der darf weder einen Fehler auslösen noch geschrieben werden.
+  const archived = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'owner-id',
+    sharedWith: ['editor-id'],
+    title: 'T',
+    content: 'Inhalt',
+    isArchived: true
+  });
+  const updated = await archived.service.updateNote('note-id', { isArchived: true, title: 'Neu' }, 'editor-id');
+  assert.equal('isArchived' in archived.observed.updates[0].change.$set, false, 'isArchived wird nicht angefasst');
+  assert.equal(updated.title, 'Neu', 'die eigentliche Änderung geht durch');
+  assert.equal(updated.isArchived, true, 'Zustand unverändert');
+
+  // Gegenrichtung: nicht archiviert + isArchived:false mitgeschickt — ebenso kein Fehler.
+  const active = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'owner-id',
+    sharedWith: ['editor-id'],
+    title: 'T',
+    content: 'Inhalt',
+    isArchived: false
+  });
+  const untouched = await active.service.updateNote('note-id', { isArchived: false }, 'editor-id');
+  assert.equal('isArchived' in active.observed.updates[0].change.$set, false);
+  assert.equal(untouched.isArchived, false);
+});
+
+test('updateNote: reines Archiv-Update ändert nur isArchived, Titel/Inhalt bleiben unberührt (v1.15.0)', async () => {
+  const { observed, service } = makeUpdateMock({
+    _id: 'note-id',
+    userId: 'user-id',
+    title: 'Alter Titel',
+    content: 'Alter Inhalt',
+    isArchived: false,
+    updatedAt: new Date('2026-09-21T10:00:00.000Z')
+  });
+
+  const updated = await service.updateNote('note-id', { isArchived: true }, 'user-id');
+  const change = observed.updates[0].change;
+  assert.equal(change.$set.isArchived, true);
+  assert.equal('title' in change.$set, false, 'Titel bleibt unberührt');
+  assert.equal('content' in change.$set, false, 'Inhalt bleibt unberührt');
+  assert.equal(updated.title, 'Alter Titel');
+  assert.equal(updated.content, 'Alter Inhalt');
+  // Keine inhaltliche Änderung -> kein revisions-Snapshot (sonst frisst ein
+  // re-Save die zehn Slots mit identischen Kopien leer).
+  assert.equal(change.$push, undefined);
 });

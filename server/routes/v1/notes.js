@@ -5,9 +5,55 @@
 
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const notesService = require('../../services/notesService');
 const { httpStatus } = require('../../constants');
 const { requireApiKeyWrite } = require('../../middleware/apiKeyAuth');
+const { upload, uploadPdf, isSafeStoredFilename } = require('../../middleware/upload');
+const noteValidation = require('../../middleware/validators');
+const { blockDemoUser } = require('../../middleware/demoPolicy');
+// Geteilte Upload-Pipeline (v1.15.0): dieselben Handler wie die Session-Route.
+const {
+  requireEditableNote,
+  rejectIfAttachmentFull,
+  wrapUpload,
+  handleImageUpload,
+  handleFileUpload
+} = require('../../utils/attachmentUpload');
+const { imagesDir, filesDir } = require('../../config/paths');
+
+const blockDemoUploads = blockDemoUser('uploads');
+
+/**
+ * v1-Antwortformat fuer die geteilte Upload-Pipeline (v1.15.0). Die Kette
+ * (validators, demoPolicy, requireEditableNote, wrapUpload, Handler) antwortet
+ * im Session-Format: nackte Notiz bei Erfolg, { error } bei Ablehnung. Die
+ * v1-API verspricht aber { success, data } bzw. { success, error } — der
+ * Envelope entsteht hier, direkt nach dem Schreib-Schutz (dessen 403er bereits
+ * success: false traegt und deshalb unangetastet bleibt), damit alle
+ * Zwischenstuecke (Validierung, Demo-Sperre, Limit erreicht, Multer-Fehler,
+ * Handler, spaeter der globale Fehler-Handler) dasselbe Format liefern. Nach
+ * dem ersten json()-Aufruf ist die Verpackung wieder entfernt.
+ */
+const v1ResponseEnvelope = (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    res.json = originalJson;
+    if (body !== null && typeof body === 'object' && body.success === undefined) {
+      if (body._id !== undefined) {
+        return originalJson({ success: true, data: body });
+      }
+      if (body.error !== undefined) {
+        // Spread statt Feldkopie: Demo-Sperre (code/feature) und Validierung
+        // (details) duerfen ihre Zusatzfelder nicht verlieren.
+        return originalJson({ ...body, success: false });
+      }
+    }
+    return originalJson(body);
+  };
+  next();
+};
 
 /**
  * @swagger
@@ -731,6 +777,195 @@ router.post('/:id/archive', requireApiKeyWrite, async (req, res, next) => {
         success: false,
         error: 'Notiz nicht gefunden'
       });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/{id}/images:
+ *   post:
+ *     summary: Bilder an eine Notiz anhängen (v1.15.0)
+ *     description: 'Multipart/form-data, Feld `images`, max. 5 Dateien à 10 MB, max. 25 Bilder pro Notiz. Dieselbe Pipeline wie die Web-App: Magic-Bytes-Prüfung, Auflösungs-Limit, Thumbnail-Erzeugung. Die resultierende /uploads-URL ist mit demselben API-Key abrufbar.'
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Aktualisierte Notiz (inkl. images[])
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Note'
+ *       400:
+ *         description: Ungültige Dateien oder Limit überschritten
+ *       404:
+ *         description: Notiz nicht gefunden
+ */
+router.post('/:id/images', requireApiKeyWrite, v1ResponseEnvelope, blockDemoUploads, noteValidation.getOne, requireEditableNote,
+  rejectIfAttachmentFull('images'),
+  wrapUpload(upload.array('images', 5), { sizeLabel: '10MB', kindLabel: 'Bilder' }),
+  handleImageUpload);
+
+/**
+ * @swagger
+ * /api/v1/notes/{id}/files:
+ *   post:
+ *     summary: PDF-Anhänge an eine Notiz hängen (v1.15.0)
+ *     description: 'Multipart/form-data, Feld `files`, max. 5 PDFs à 25 MB, max. 25 Anhänge pro Notiz. Magic-Byte-Prüfung (%PDF-) wie die Web-App.'
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Aktualisierte Notiz (inkl. files[])
+ *       400:
+ *         description: Ungültige Dateien oder Limit überschritten
+ *       404:
+ *         description: Notiz nicht gefunden
+ */
+router.post('/:id/files', requireApiKeyWrite, v1ResponseEnvelope, blockDemoUploads, noteValidation.getOne, requireEditableNote,
+  rejectIfAttachmentFull('files'),
+  wrapUpload(uploadPdf.array('files', 5), { sizeLabel: '25MB', kindLabel: 'Anhänge' }),
+  handleFileUpload);
+
+/**
+ * @swagger
+ * /api/v1/notes/{id}/images/{filename}:
+ *   delete:
+ *     summary: Bild von einer Notiz lösen und Datei löschen (v1.15.0)
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Gespeicherter Dateiname (note.images[].filename, nicht die URL)
+ *     responses:
+ *       200:
+ *         description: Aktualisierte Notiz
+ *       404:
+ *         description: Notiz oder Bild nicht gefunden
+ */
+router.delete('/:id/images/:filename', requireApiKeyWrite, blockDemoUploads, noteValidation.getOne, async (req, res, next) => {
+  try {
+    if (!isSafeStoredFilename(req.params.filename)) {
+      return res.status(httpStatus.BAD_REQUEST).json({ success: false, error: 'Ungueltiger Dateiname' });
+    }
+
+    const note = await notesService.removeImage(req.params.id, req.user._id, req.params.filename);
+
+    const filepath = path.join(imagesDir(), req.params.filename);
+    await fs.promises.rm(filepath, { force: true });
+
+    const ext = path.extname(req.params.filename);
+    const nameWithoutExt = path.basename(req.params.filename, ext);
+    await fs.promises.rm(path.join(imagesDir(), `${nameWithoutExt}-thumb.webp`), { force: true });
+
+    res.json({ success: true, data: note });
+  } catch (error) {
+    if (error.statusCode === 404 || error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ success: false, error: 'Notiz oder Bild nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/notes/{id}/files/{filename}:
+ *   delete:
+ *     summary: PDF-Anhang von einer Notiz lösen und Datei löschen (v1.15.0)
+ *     tags: [Notes]
+ *     security:
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Gespeicherter Dateiname (note.files[].filename, nicht die URL)
+ *     responses:
+ *       200:
+ *         description: Aktualisierte Notiz
+ *       404:
+ *         description: Notiz oder Anhang nicht gefunden
+ */
+router.delete('/:id/files/:filename', requireApiKeyWrite, blockDemoUploads, noteValidation.getOne, async (req, res, next) => {
+  try {
+    if (!isSafeStoredFilename(req.params.filename)) {
+      return res.status(httpStatus.BAD_REQUEST).json({ success: false, error: 'Ungueltiger Dateiname' });
+    }
+
+    const note = await notesService.removeFile(req.params.id, req.user._id, req.params.filename);
+    await fs.promises.rm(path.join(filesDir(), req.params.filename), { force: true });
+
+    res.json({ success: true, data: note });
+  } catch (error) {
+    if (error.statusCode === 404 || error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ success: false, error: 'Notiz oder Anhang nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
     }
     next(error);
   }

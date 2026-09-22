@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
+const fs = require('fs');
+const path = require('path');
 const connectDB = require('./config/database');
 const notesRouter = require('./routes/notes');
 const authRouter = require('./routes/auth');
@@ -14,6 +16,7 @@ const apiKeysRouter = require('./routes/apiKeys');
 const v1Router = require('./routes/v1');
 const errorHandler = require('./middleware/errorHandler');
 const { authenticateToken } = require('./middleware/auth');
+const { authenticateSessionOrApiKey } = require('./middleware/apiKeyAuth');
 const secureFileServe = require('./middleware/secureFileServe');
 const noStore = require('./middleware/noStore');
 const errorCodeMiddleware = require('./middleware/errorCodes');
@@ -33,6 +36,18 @@ const { startBackupScheduler } = require('./services/backupScheduler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Version (v1.15.0): Der Build schreibt sie vom ARG APP_VERSION nach
+// /app/server/VERSION (Dockerfile.allinone). Ohne Datei (lokal, Tests): 'dev'.
+// Vorher stand in der Root-Route ein hartkodiertes '2.0.0', das seit Jahren
+// keiner realen Release-Nummer entsprach — /api/health meldete gar keine.
+const APP_VERSION = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim() || 'dev';
+  } catch (_error) {
+    return 'dev';
+  }
+})();
 
 // Readiness-Details: außerhalb von production standardmäßig an (lokale
 // Fehlersuche), in production nur mit HEALTH_DETAILS=true.
@@ -131,10 +146,13 @@ app.use(helmet({
 app.use(compression()); // Gzip-Komprimierung für Responses
 // Request-Id zuerst, damit jede Logzeile und die AI-Weiterleitung korrelierbar ist.
 app.use(requestId);
-// API and private upload responses can contain account data or session state.
-// Prevent browser, proxy, and CDN caches even when the backend is reached
-// directly instead of through the frontend proxy.
-app.use(['/api', '/uploads'], noStore);
+// API responses can contain account data or session state. Prevent browser,
+// proxy, and CDN caches even when the backend is reached directly instead of
+// through the frontend proxy. /uploads ist seit v1.15.0 bewusst NICHT mehr
+// dabei: Speichernamen sind frisches Random-Hex und Content wird nie mutiert,
+// secureFileServe setzt daher private+immutable und erlaubt ETag/304 — jedes
+// Notizöffnen re-transferierte vorher alle Bilder und PDFs komplett.
+app.use('/api', noStore);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (!isAllowedOrigin(req, origin)) {
@@ -163,8 +181,10 @@ app.use(passport.initialize());
 configurePassport();
 
 // Secure file serving for uploaded images - requires authentication and authorization
-// Users can only access files from notes they own or have access to
-app.get('/uploads/*', authenticateToken, secureFileServe);
+// Users can only access files from notes they own or have access to.
+// Session ODER API-Key (v1.15.0): v1-Clients konnten Anhänge hochladen, die
+// Datei-URL aber nie abrufen, weil dieses Mount nur die Session kannte.
+app.get('/uploads/*', authenticateSessionOrApiKey, secureFileServe);
 
 // CSRF-Token-Endpunkt
 app.get('/api/csrf-token', (req, res) => {
@@ -209,7 +229,7 @@ app.use('/api/friends', csrfProtection, friendsRouter);
 app.get('/', (req, res) => {
   res.json({
     message: 'KeepLocal API Server',
-    version: '2.0.0',
+    version: APP_VERSION,
     documentation: apiDocsEnabled ? '/api/docs' : undefined,
     api: {
       v1: '/api/v1',
@@ -225,6 +245,7 @@ app.get('/api/health', async (req, res) => {
   const health = await collectHealth();
   res.status(health.ready ? 200 : 503).json({
     status: health.status,
+    version: APP_VERSION,
     database: health.database.status,
     uptime: health.uptime,
     timestamp: health.timestamp
@@ -233,7 +254,7 @@ app.get('/api/health', async (req, res) => {
 
 // Liveness: läuft der Prozess? (ändert sich nie aufgrund externer Abhängigkeiten)
 app.get('/api/health/live', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  res.json({ status: 'ok', version: APP_VERSION, uptime: process.uptime() });
 });
 
 // Readiness: echter DB-Ping, beschreibbares Upload-Volume, optional AI-Dienst.
@@ -243,7 +264,8 @@ app.get('/api/health/live', (req, res) => {
 // das interne Layout — deshalb außerhalb von development nur mit Opt-in.
 app.get('/api/health/ready', async (req, res) => {
   const health = await collectHealth();
-  res.status(health.ready ? 200 : 503).json(healthDetailsEnabled ? health : publicHealth(health));
+  const body = healthDetailsEnabled ? health : publicHealth(health);
+  res.status(health.ready ? 200 : 503).json({ version: APP_VERSION, ...body });
 });
 
 app.use('/api', (req, res) => {
@@ -299,7 +321,7 @@ async function startServer() {
   startBackupScheduler();
 
   return (httpServer = app.listen(PORT, HOST, () => {
-    console.log(`Server laeuft auf ${HOST}:${PORT}`);
+    console.log(`Server laeuft auf ${HOST}:${PORT} (Version ${APP_VERSION})`);
     console.log(`API verfuegbar unter: http://localhost:${PORT}/api/v1`);
     if (apiDocsEnabled) {
       console.log(`API-Dokumentation: http://localhost:${PORT}/api/docs`);

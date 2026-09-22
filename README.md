@@ -382,6 +382,7 @@ next request on; no re-login is needed.
 | `COOKIE_SECURE` | Optional `true`/`false` override | Detected from HTTPS |
 | `TRUST_PROXY` | Trusted reverse-proxy hop count | `1` standard / `2` NPM and public demo |
 | `WHISPER_MODEL` | Bundled transcription model | `base` split / `tiny` all-in-one |
+| `MONGO_CACHE_GB` | WiredTiger cache cap for the all-in-one image's embedded MongoDB, validated `0.1`–`64` (mongod would otherwise size it after host RAM) | `0.5` |
 | `LINK_PREVIEW_LIMIT_PER_MINUTE` | Link previews per user and minute | `30` |
 | `TRANSCRIPTION_LIMIT_PER_HOUR` | Transcriptions per user and hour | `10` |
 | `TRANSCRIPTION_LIMIT_PER_DAY` | Transcriptions per user and day | `60` |

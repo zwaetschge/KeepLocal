@@ -45,7 +45,17 @@ test('all-in-one nginx sends private uploads through backend authorization', () 
   assert.ok(uploads, 'an exact /uploads/ location must exist');
   assert.match(uploads[1], /proxy_pass\s+http:\/\/localhost:5000/);
   assert.doesNotMatch(uploads[1], /alias\s+/);
-  assert.match(uploads[1], /Cache-Control\s+"private, no-store"/);
+  // v1.15.0: Speichernamen sind Random-Hex und werden nie mutiert — der
+  // Browser darf Uploads ein Jahr cachen (private = kein Shared Proxy).
+  // Autorisierung passiert weiterhin pro Request im Backend. no-store hiess:
+  // jede Notiz-Ansicht lud alle Bilder erneut, obwohl sie byte-identisch sind.
+  // Der Cache-Control-Header stammt vom BACKEND (secureFileServe setzt ihn
+  // nur auf Erfolgsantworten). Review v1.15.0: nginx add_header ... always
+  // haette ihn auch auf 401/404 gestempelt — der Browser haette die Fehler-
+  // antwort ein Jahr immutable gecached; nach einem Logout bliebe sie kleben.
+  assert.doesNotMatch(uploads[1], /Cache-Control/,
+    'nginx darf Cache-Control auf /uploads nicht selbst setzen — der Backend besitzt den Header');
+  assert.doesNotMatch(uploads[1], /no-store/);
 });
 
 test('Nginx deployments keep recovery assets and the service worker out of immutable caches', () => {
@@ -66,6 +76,27 @@ test('Nginx deployments keep recovery assets and the service worker out of immut
   assert.match(splitConfig, /location (?:\^~ )?\/uploads\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/server:5000/);
 });
 
+test('both nginx distributions allow what multer allows and never cache /uploads errors', () => {
+  // Body-Size-Parität (Review v1.15.0): Die Limits muessen in BEIDEN Confs
+  // stehen — vorher pruefte nur der all-in-one-Teil, und die Split-Distribution
+  // haette legitime Uploads (5 PDFs zu 25 MB Multipart) mit 413 abgewuergt,
+  // obwohl Multer sie akzeptiert haette.
+  for (const filename of ['client/nginx.conf', 'nginx-allinone.conf']) {
+    const config = fs.readFileSync(path.join(root, filename), 'utf8');
+    assert.match(config, /^\s*client_max_body_size 26M;/m, `${filename}: Basis-Limit`);
+    assert.match(config, /location \^~ \/api\s*\{[\s\S]*?client_max_body_size 130M;/,
+      `${filename}: /api hebt das Limit fuer Multipart-Uploads an`);
+    assert.match(config, /client_max_body_size 513M;/,
+      `${filename}: der ZIP-Import (512 MB Multer-Limit) braucht Spielraum`);
+    // Review v1.15.0: kein eigenes Cache-Control auf /uploads (der Backend
+    // setzt es nur auf Erfolgsantworten — s. Test oben).
+    const uploads = config.match(/location (?:\^~ )?\/uploads\/\s*\{([\s\S]*?)\n\s*\}/);
+    assert.ok(uploads, `${filename}: /uploads/-Location existiert`);
+    assert.doesNotMatch(uploads[1], /Cache-Control/,
+      `${filename}: nginx setzt Cache-Control auf /uploads nicht selbst`);
+  }
+});
+
 test('all-in-one internal services bind to loopback and production CORS is not wildcarded', () => {
   const supervisor = fs.readFileSync(path.join(root, 'supervisord.conf'), 'utf8');
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
@@ -78,6 +109,29 @@ test('all-in-one internal services bind to loopback and production CORS is not w
   const nginx = fs.readFileSync(path.join(root, 'nginx-allinone.conf'), 'utf8');
   assert.match(nginx, /Content-Security-Policy\s+"default-src 'self'/);
   assert.match(nginx, /font-src 'self' data:/);
+});
+
+test('mongod cache is bounded and the image reports its release version', () => {
+  // v1.15.0: mongod bemisst den WiredTiger-Cache default nach HOST-RAM (~50 %).
+  // In einem Container ohne Memory-Limit (Unraid-Default) bekam mongod auf
+  // grossen Hosts Zehner-GB zugewiesen und stritt mit nginx/Node/Whisper um
+  // den echten Speicher. Bremse: --wiredTigerCacheSizeGB aus MONGO_CACHE_GB,
+  // der entrypoint validiert den Wert, bevor supervisord ihn expandiert (ein
+  // leerer ENV-Wert wuerde mongod mit kaputtem Flag crashen lassen).
+  const supervisor = fs.readFileSync(path.join(root, 'supervisord.conf'), 'utf8');
+  const entrypoint = fs.readFileSync(path.join(root, 'entrypoint.sh'), 'utf8');
+  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile.allinone'), 'utf8');
+
+  assert.match(supervisor, /--wiredTigerCacheSizeGB %\(ENV_MONGO_CACHE_GB\)s/);
+  assert.match(entrypoint, /: "\$\{MONGO_CACHE_GB:=0\.5\}"/);
+  assert.match(entrypoint, /MONGO_CACHE_GB must be a number between 0\.1 and 64/);
+  assert.match(dockerfile, /MONGO_CACHE_GB=0\.5/);
+
+  // APP_VERSION: Der Workflow reicht steps.meta.outputs.version als Build-Arg
+  // durch; der Server liest /app/server/VERSION beim Start und meldet sie ueber
+  // /api/health. Ohne Build-Arg (lokaler Build) bleibt ein 'dev' Fallback.
+  assert.match(dockerfile, /^ARG APP_VERSION=dev$/m);
+  assert.match(dockerfile, /printf '%s' "\$APP_VERSION" > \/app\/server\/VERSION/);
 });
 
 test('every long-running all-in-one log stream is size-capped', () => {
@@ -109,6 +163,15 @@ test('CI runs the full test, lint and build suites before images are published',
   assert.match(ci, /server[\s\S]*?run: npm ci\n[\s\S]*?run: npm test/);
   assert.match(ci, /client[\s\S]*?run: npm ci\n[\s\S]*?run: npm test\n[\s\S]*?run: npm run lint\n[\s\S]*?run: npm run build/);
   assert.match(ci, /uses: actions\/setup-node@v4/);
+
+  // v1.15.0 (Ops-Paket): Der Android-Client hatte keine CI — Regressionen in
+  // SyncManager/entity-mappern fielen erst beim Release-Build auf. Der Job
+  // laeuft mit den anderen in der CI, und docker-build.yml (workflow_run auf
+  // "CI" conclusion=success) wartet auf die GESAMTE CI — ein roter Android-Test
+  // haelt damit auch die Bild-Publikation auf.
+  assert.match(ci, /\n  android:\n\s+name: Android \(Unit-Tests\)\n\s+runs-on: ubuntu-latest\n\s+timeout-minutes: 25/);
+  assert.match(ci, /\n  android:\n[\s\S]*?uses: actions\/setup-java@v4\n\s+with:\n\s+distribution: temurin\n\s+java-version: '17'\n\s+cache: gradle/);
+  assert.match(ci, /\n  android:\n[\s\S]*?working-directory: android\n\s+run: \|\n\s+chmod \+x gradlew\n\s+\.\/gradlew :app:testDebugUnitTest --no-daemon/);
 });
 
 test('CI blocks known high advisories in both dependency trees', () => {
@@ -294,6 +357,48 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   assert.match(testJob, /find \/app -path "\*\/node_modules" -prune/);
 });
 
+test('images reach moving tags only after both architectures passed smoke tests', () => {
+  // Test-then-Promote (v1.15.0): Vorher landete `latest` Sekunden nach dem
+  // Build auf Docker Hub — ein Image, das nur unter arm64 nicht startet, war
+  // dann schon bei allen Self-Hostern, die automatisch pullen. Jetzt pushed
+  // der Build NUR den immutablen Tag; main/latest/semver vergibt der
+  // promote-Job per `imagetools create`, nachdem test-image (beide Archs)
+  // gruen war.
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/docker-build.yml'), 'utf8');
+  const prBuildJob = workflow.match(/\n  pr-build:\n([\s\S]*?)\n  build-and-push:\n/)?.[1] || '';
+  const buildJob = workflow.match(/\n  build-and-push:\n([\s\S]*?)\n  test-image:\n/)?.[1] || '';
+  const promoteJob = workflow.match(/\n  promote:\n([\s\S]*)/)?.[1] || '';
+
+  assert.match(workflow, /on:\n\s+pull_request:\n/, 'pull_request must trigger pr-build');
+
+  // Der Build published ausschliesslich den immutable Tag und stempelt die
+  // Version ins Image (APP_VERSION -> /app/server/VERSION -> /api/health).
+  assert.match(buildJob, /tags: \$\{\{ steps\.meta\.outputs\.publish-tags \}\}/);
+  assert.doesNotMatch(buildJob, /steps\.meta\.outputs\.tags \}\}/, 'the old combined tags output must not come back');
+  assert.match(buildJob, /build-args: \|\n\s+APP_VERSION=\$\{\{ steps\.meta\.outputs\.version \}\}/);
+  assert.match(
+    buildJob,
+    /outputs:\n\s+test-tag: \$\{\{ steps\.meta\.outputs\.test-tag \}\}\n\s+promote-tags: \$\{\{ steps\.meta\.outputs\.promote-tags \}\}/,
+  );
+  assert.match(buildJob, /github\.event_name != 'pull_request' &&/, 'PR events must never publish');
+
+  // Promote erst nach BEIDEN Architektur-Smoke-Tests; Branch-Verifikations-
+  // Builds liefern promote-tags leer und ueberspringen den Job komplett.
+  assert.match(promoteJob, /needs: \[build-and-push, test-image\]/);
+  assert.match(promoteJob, /if: needs\.build-and-push\.outputs\.promote-tags != ''/);
+  assert.match(promoteJob, /docker buildx imagetools create -t "\$tag" "\$\{IMAGE\}:\$\{IMMUTABLE_TAG\}"/);
+
+  // PRs bauen nur lokal: kein Login, kein Push, kein Metadata-Skript (dessen
+  // Pflicht-Variablen wie GITHUB_REF_TYPE sind bei pull_request-Events leer
+  // und wuerden den Job sofort abbrechen).
+  assert.ok(prBuildJob, 'pr-build job must exist');
+  assert.match(prBuildJob, /if: github\.event_name == 'pull_request'/);
+  assert.match(prBuildJob, /push: false/);
+  assert.match(prBuildJob, /APP_VERSION=pr-\$\{\{ github\.event\.pull_request\.number \}\}/);
+  assert.doesNotMatch(prBuildJob, /run: \.github\/scripts\/docker-metadata\.sh/);
+  assert.doesNotMatch(prBuildJob, /login-action|DOCKERHUB_USERNAME/);
+});
+
 test('dockerignore patterns reach into subdirectories', () => {
   // Docker matcht .dockerignore-Muster gegen den Pfad relativ zur Kontext-Wurzel:
   // `node_modules` erfasst NUR ./node_modules, nicht ./server/node_modules.
@@ -349,6 +454,12 @@ test('Docker metadata is generated locally for main and semantic-version release
   assert.match(main.output, /example\/keeplocal:latest/);
   assert.match(main.output, new RegExp(`org\\.opencontainers\\.image\\.revision=${main.sha}`));
   assert.match(main.output, /test-tag=\d{4}-\d{2}-\d{2}-0123456/);
+  // Test-then-Promote (v1.15.0): publish-tags enthaelt EXAKT den immutablen
+  // Tag — main/latest duerfen nur im promote-Output stehen, den der promote-
+  // Job erst nach bestandenem Smoke-Test beider Architekturen anfasst.
+  assert.match(main.output, /publish-tags<<__DOCKER_TAGS__\nexample\/keeplocal:\d{4}-\d{2}-\d{2}-0123456\n__DOCKER_TAGS__/);
+  assert.match(main.output, /promote-tags<<__DOCKER_PROMOTE_TAGS__\nexample\/keeplocal:main\nexample\/keeplocal:latest\n__DOCKER_PROMOTE_TAGS__/);
+  assert.match(main.output, /version=main\n/);
 
   const release = runDockerMetadata({
     GITHUB_REF_NAME: 'v2.3.4',
@@ -359,6 +470,8 @@ test('Docker metadata is generated locally for main and semantic-version release
   assert.match(release.output, /example\/keeplocal:2\.3\n/);
   assert.match(release.output, /example\/keeplocal:2\n/);
   assert.match(release.output, /example\/keeplocal:latest/);
+  assert.match(release.output, /publish-tags<<__DOCKER_TAGS__\nexample\/keeplocal:\d{4}-\d{2}-\d{2}-0123456\n__DOCKER_TAGS__/);
+  assert.doesNotMatch(release.output, /publish-tags<<__DOCKER_TAGS__\n[^\n]*latest/);
 
   const prerelease = runDockerMetadata({
     GITHUB_REF_NAME: 'v2.3.4-rc.1',
@@ -427,6 +540,9 @@ test('Docker metadata allows dispatched branch verification builds without touch
   assert.match(branchVerification.output, new RegExp(`org\\.opencontainers\\.image\\.revision=${branchVerification.sha}`));
   assert.doesNotMatch(branchVerification.output, /example\/keeplocal:main/);
   assert.doesNotMatch(branchVerification.output, /example\/keeplocal:latest/);
+  // Leerer promote-Output: Der promote-Job ueberspringt sich selbst, und die
+  // Verifikation bleibt ein reiner Immutable-Build.
+  assert.match(branchVerification.output, /promote-tags=\n/);
 
   // Alle anderen Events auf einem Branch bleiben verboten — nur der manuelle
   // Dispatch ist der Verifikationsweg.

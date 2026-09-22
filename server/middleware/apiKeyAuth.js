@@ -72,4 +72,35 @@ const requireApiKeyWrite = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateApiKey, requireApiKeyWrite };
+/**
+ * Dual auth für /uploads (v1.15.0): Der Browser kommt mit Session-Cookie
+ * (kl_session → authenticateToken), Skripte mit X-API-Key. Bis jetzt konnte ein
+ * v1-Client Anhänge hochladen (ab sofort, siehe v1-Upload-Routen), aber die
+ * Datei-URL nicht abrufen — GET /uploads/<name> kannte nur die Session.
+ * Reihenfolge: X-API-Key gewinnt, wenn beide present sind (explizit vor
+ * implizit; Browser senden den Header nie). Ohne beides: 401 mit Hinweis auf
+ * beide Wege.
+ *
+ * ./auth wird LAZY geladen: Das Modul validiert JWT_SECRET beim require und
+ * wirft dann. apiKeyAuth allein (Key-Gate der v1-API) braucht die Session-
+ * Mechanik nicht — ein top-level-require machte jedes Test-Bundle, das die
+ * echte Middleware lädt, von einem gesetzten JWT_SECRET abhängig (CI-Fail
+ * nach v1.15.0, lokal grün, weil die Shell ihn exportiert hatte). Der
+ * require.cache-Eintrag der Tests greift auch hier: Wer auth mockt, seeded
+ * den Cache VOR dem ersten Aufruf.
+ */
+const authenticateSessionOrApiKey = (req, res, next) => {
+  const { authenticateToken, AUTH_COOKIE_NAME } = require('./auth');
+  if (req.headers['x-api-key']) {
+    return authenticateApiKey(req, res, next);
+  }
+  if (req.cookies?.[AUTH_COOKIE_NAME]) {
+    return authenticateToken(req, res, next);
+  }
+  return res.status(401).json({
+    success: false,
+    error: 'Authentifizierung erforderlich (Session-Cookie oder X-API-Key Header)'
+  });
+};
+
+module.exports = { authenticateApiKey, requireApiKeyWrite, authenticateSessionOrApiKey };

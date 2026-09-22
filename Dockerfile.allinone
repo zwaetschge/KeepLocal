@@ -68,6 +68,10 @@ RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel \
 FROM ubuntu:22.04
 
 ARG WHISPER_MODEL=tiny
+# Release-Nummer (v1.15.0): Der Workflow gibt steps.meta.outputs.version hierher
+# durch; der Server liest /app/server/VERSION beim Start und meldet sie über
+# /api/health und die Root-Route. Ohne Build-Arg (lokaler Build): 'dev'.
+ARG APP_VERSION=dev
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -125,6 +129,8 @@ COPY --chown=node:node server/package*.json ./
 RUN chown node:node /app/server \
     && su -s /bin/sh node -c "npm ci --omit=dev && npm cache clean --force"
 COPY --chown=node:node server/ ./
+# Release-Version ins Image schreiben (v1.15.0) — server.js liest sie beim Boot.
+RUN printf '%s' "$APP_VERSION" > /app/server/VERSION && chown node:node /app/server/VERSION
 
 # AI service: wheels from the builder, then the source (cache order again).
 # /install/local replicates the /usr/local tree — the gunicorn script's
@@ -197,7 +203,8 @@ ENV NODE_ENV=production \
     GOOGLE_CLIENT_ID="" \
     GOOGLE_CALLBACK_URL="" \
     GITHUB_CLIENT_ID="" \
-    GITHUB_CALLBACK_URL=""
+    GITHUB_CALLBACK_URL="" \
+    MONGO_CACHE_GB=0.5
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

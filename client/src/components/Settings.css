@@ -209,7 +209,19 @@ input:checked + .toggle-slider:before {
   padding: 1rem 2rem 1.5rem;
   border-top: 1px solid var(--border-color);
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 1rem;
+}
+
+/* Server-Version (v1.15.0): dezente Fußzeilen-Angabe links, Close-Button
+   rechts. margin-right:auto schiebt alles Folgende an den rechten Rand —
+   der Span muss dafür VOR dem Button im DOM stehen (sonst ziehen Auto-
+   Margins beide nach links, s. Kommentar in Settings.jsx). */
+.settings-footer-version {
+  margin-right: auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #888);
 }
 
 .btn-settings-close {

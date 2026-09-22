@@ -3,12 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const http = require('node:http');
 const express = require('express');
 
 // Audit 2026-09-12 (Top-30 Nr. 21): `middleware/secureFileServe.js` ist das
 // einzige Tor zu privaten Notizbildern — und war bis hierhin ungeprüft
 // (`grep -rn secureFileServe server/tests client/tests client/e2e` → keine
 // Treffer). Jede Runde wurde es von Hand probiert.
+// v1.15.0: Uploads dürfen jetzt gecacht werden (private + immutable statt
+// no-store), denn der Random-Hex-Speichername wird nie wiederverwendet —
+// revalidiert wird über den ETag aus sendFile. Beides wird hier mit echter
+// HTTP-Semantik gegen einen echten Express-Server geprüft.
 
 const noteModelPath = require.resolve('../models/Note');
 const pathsPath = require.resolve('../config/paths');
@@ -79,6 +84,35 @@ function writeImage(name, content = 'image-bytes') {
   return file;
 }
 
+/** Startet die Middleware hinter echtem Express (ein Nutzer pro Server-Instanz). */
+async function startServer(userId = OWNER) {
+  const app = express();
+  app.get('/uploads/*', (req, _res, next) => { req.user = { _id: userId }; next(); }, require(middlewarePath));
+  const server = await new Promise(resolve => {
+    const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+  });
+  return { port: server.address().port, close: () => server.close() };
+}
+
+/**
+ * Roher GET über node:http statt fetch — nötig für Revalidation: undici-fetch
+ * schickt bei If-None-Match von sich aus `cache-control: no-cache` mit
+ * (Cache-Mode der Fetch-Spec), und fresh() behandelt so einen Request korrekt
+ * als stale. Ein 304 wäre über fetch also nie beobachtbar, obwohl ein echter
+ * Browser es bekommt. Der rohe Client schickt nur, was wir ihm geben.
+ */
+function rawGet(port, urlPath, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: '127.0.0.1', port, path: urlPath, method: 'GET', headers: extraHeaders }, res => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }));
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
 function writeAttachment(name, content = '%PDF-1.7-bytes') {
   const file = path.join(uploadsRootDir, 'files', name);
   fs.writeFileSync(file, content);
@@ -107,7 +141,76 @@ test('the owner gets the image with a private cache header', async () => {
   const result = await get(`/uploads/images/${fileName}`, OWNER);
   assert.equal(result.status, 200);
   assert.equal(result.body, 'ORIGINAL');
-  assert.equal(result.cacheControl, 'private, no-store', 'private images must never be cached by proxies');
+  // v1.15.0: private + immutable statt no-store — private Bilder bleiben aus
+  // Shared Proxies raus, dürfen aber im Browser ein Jahr liegen bleiben.
+  assert.equal(result.cacheControl, 'private, max-age=31536000, immutable', 'private images must never be cached by proxies');
+});
+
+// v1.15.0: Der Random-Hex-Speichername wird nie mutiert, also darf der Browser
+// Bytes wiederverwenden, statt jedes Notizoeffnen alle Bilder und PDFs neu zu
+// laden. Genau dieser Header, kein no-store, und nie public.
+test('uploads become cacheable: exactly one year, immutable, never no-store', async () => {
+  writeImage('cacheable.png', 'CACHEABLE-IMAGE');
+  writeAttachment('cacheable.pdf', '%PDF-1.7');
+  loadServer({
+    'cacheable.png': note(OWNER, ['cacheable.png']),
+    'cacheable.pdf': attachmentNote(OWNER, 'cacheable.pdf')
+  });
+
+  for (const urlPath of ['/uploads/images/cacheable.png', '/uploads/files/cacheable.pdf']) {
+    const result = await get(urlPath, OWNER);
+    assert.equal(result.status, 200);
+    assert.equal(result.cacheControl, 'private, max-age=31536000, immutable', `${urlPath}: the exact v1.15.0 policy, images and attachments alike`);
+    assert.equal(result.cacheControl.includes('no-store'), false, `${urlPath}: no-store would force a full re-download forever`);
+    assert.equal(result.cacheControl.includes('public'), false, `${urlPath}: uploads must stay out of shared proxies`);
+  }
+});
+
+// sendFile liefert ETag/Last-Modified mit; ein Browser revalidiert dann mit
+// If-None-Match. Über den rohen Client (siehe rawGet) bekommt der 304-Fall
+// dieselbe private Policy — sonst würde ein Proxy den 304 nicht als Aktualität
+// des Cache-Eintrags verstehen.
+test('revalidation: If-None-Match answers 304 without a body, a stale or missing validator answers with one', async () => {
+  writeImage('revalidate.png', 'REVALIDATE-BYTES');
+  loadServer({ 'revalidate.png': note(OWNER, ['revalidate.png']) });
+  const { port, close } = await startServer(OWNER);
+  try {
+    // Erster Abruf ohne Validator: voller Körper, plus die Validatoren für später.
+    const first = await rawGet(port, '/uploads/images/revalidate.png');
+    assert.equal(first.status, 200);
+    assert.equal(first.body, 'REVALIDATE-BYTES');
+    assert.equal(first.headers['cache-control'], 'private, max-age=31536000, immutable');
+    assert.ok(first.headers.etag, 'sendFile must expose an ETag, otherwise no client can revalidate');
+    assert.ok(first.headers['last-modified'], 'and a Last-Modified as the coarse fallback');
+
+    // Gleicher ETag zurückgeschickt: 304 ohne Bytes — der gesparte Download.
+    const fresh = await rawGet(port, '/uploads/images/revalidate.png', { 'If-None-Match': first.headers.etag });
+    assert.equal(fresh.status, 304, 'unchanged content must not be sent twice');
+    assert.equal(fresh.body, '', 'a 304 carries no bytes');
+    assert.equal(fresh.headers['cache-control'], 'private, max-age=31536000, immutable', 'the 304 keeps the private policy so the cached entry stays browser-only');
+
+    // Falscher ETag: wieder voller Körper, nichts wird blind als frisch behauptet.
+    const stale = await rawGet(port, '/uploads/images/revalidate.png', { 'If-None-Match': '"stale-etag"' });
+    assert.equal(stale.status, 200);
+    assert.equal(stale.body, 'REVALIDATE-BYTES', 'a mismatching ETag gets the full response');
+  } finally {
+    close();
+  }
+});
+
+// Fehler antworten für einen konkreten, fehlgeschlagenen Abruf — sie dürfen
+// dem Aufrufer keine Policy mitgeben, die er für den Inhalt cachen könnte.
+test('error paths set no success cache header at all', async () => {
+  writeImage('forbidden.png', 'FORBIDDEN');
+  loadServer({ 'forbidden.png': note(OWNER, ['forbidden.png']) });
+
+  const stranger = await get('/uploads/images/forbidden.png', STRANGER);
+  assert.equal(stranger.status, 403);
+  assert.equal(stranger.cacheControl, null, 'a denial must not advertise any caching');
+
+  const missing = await get('/uploads/images/never-existed.png', OWNER);
+  assert.equal(missing.status, 404);
+  assert.equal(missing.cacheControl, null, 'a 404 must not inherit the immutable policy either');
 });
 
 test('a collaborator gets the image, a stranger does not', async () => {
@@ -209,7 +312,11 @@ test('both traversal guards exist: the path regex and the resolved prefix check'
   assert.ok(source.includes(String.raw`/^files\/[^/\\]+$/`), 'the route only accepts files/<basename>');
   assert.match(source, /filepath\.startsWith\(baseDir \+ path\.sep\)/, 'the resolved path must stay inside its base directory');
   assert.match(source, /uploadsRoot\(\)/, 'the directory comes from config/paths, not from a hardcoded relative path');
-  assert.match(source, /res\.setHeader\('Cache-Control', 'private, no-store'\)/);
+  // v1.15.0: exakt eine Cache-Control-Zeile, und die ist private+immutable.
+  const cacheControlLines = source.split('\n').filter(line => line.includes("setHeader('Cache-Control'"));
+  assert.equal(cacheControlLines.length, 1, 'exactly one place decides the caching policy');
+  assert.match(cacheControlLines[0], /'private, max-age=31536000, immutable'/, 'uploads are cacheable for the browser only');
+  assert.doesNotMatch(cacheControlLines[0], /no-store/, 'no-store would defeat revalidation entirely');
 });
 
 test('attachments download with PDF headers and the original filename', async () => {
@@ -222,7 +329,7 @@ test('attachments download with PDF headers and the original filename', async ()
   assert.equal(owner.contentType, 'application/pdf', 'the type is fixed, never sniffed');
   assert.match(owner.contentDisposition, /^attachment; /, 'PDFs must download, not render inline');
   assert.match(owner.contentDisposition, /filename\*=UTF-8''Bericht%202026\.pdf/, 'RFC 5987 keeps spaces and umlauts intact');
-  assert.equal(owner.cacheControl, 'private, no-store');
+  assert.equal(owner.cacheControl, 'private, max-age=31536000, immutable', 'attachments benefit from the same immutability');
 
   const friend = await get('/uploads/files/report.pdf', FRIEND);
   assert.equal(friend.status, 200, 'collaborators reach shared attachments');

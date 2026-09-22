@@ -57,6 +57,8 @@ export const en = {
   save: 'Save',
   cancel: 'Cancel',
   close: 'Close',
+  // v1.15.0: Server-Version in der Einstellungs-Fußzeile (/api/health)
+  serverVersion: 'Server version',
 
   // Search
   search: 'Search',
@@ -558,6 +560,7 @@ export const en = {
   errTranscriptionMinuteLimit: 'Daily audio-minute budget exhausted. Please try again tomorrow.',
   errAudioTooLong: 'The recording is too long to transcribe. Please shorten it and try again.',
   errTranscriptionBusy: 'The transcription service is busy. Please try again in half a minute.',
+  errZipImportBusy: 'A ZIP import is already running. Please try again in half a minute.',
   errLinkUnreachable: 'The link is not reachable.',
   errNotFound: 'Not found.',
   errNoteConflict: 'This note was changed elsewhere in the meantime.',
@@ -651,6 +654,7 @@ export const en = {
   bulkUnpinned: '{count} note(s) unpinned',
   bulkArchived: '{count} note(s) archived',
   bulkDeleted: '{count} note(s) moved to trash',
+  bulkSomeFailed: '{count} note(s) could not be changed',
   bulkTagged: 'Tag "{tag}" added to {count} note(s)',
   bulkMoved: '{count} note(s) moved',
   codeMode: 'Code note (monospace)',

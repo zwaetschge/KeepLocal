@@ -74,6 +74,40 @@ jobs:
         working-directory: client
         run: npm run build
 
+  # Android-Unit-Tests (v1.15.0): Der Kotlin/Compose-Client hatte keine CI —
+  # Regressionen in SyncManager/PendingOperation/entity-Mappern fielen erst
+  # beim manuellen Release-Build auf. Nur testDebugUnitTest (kein assemble):
+  # APK-Builds macht der Release-Workflow, hier zaehlen die 243 Unit-Tests.
+  # ubuntu-latest bringt das Android-SDK vorinstalliert mit; JDK 17 entspricht
+  # jvmTarget/sourceCompatibility in app/build.gradle.kts.
+  android:
+    name: Android (Unit-Tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Run unit tests
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-report
+          path: android/app/build/reports/tests/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # Die Unit-Suite mockt die Modelle; MongoDB-Semantik ($expr/$size, partielle
   # und TTL-Indizes, Aggregationen, explain(), Unique-Verletzungen) läuft hier
   # gegen eine echte Datenbank — genau dort saßen der COLLSCAN pro Thumbnail und

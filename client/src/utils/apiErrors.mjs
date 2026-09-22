@@ -39,6 +39,7 @@ export const API_ERROR_KEYS = {
   TRANSCRIPTION_MINUTE_LIMIT: 'errTranscriptionMinuteLimit',
   AUDIO_TOO_LONG: 'errAudioTooLong',
   TRANSCRIPTION_BUSY: 'errTranscriptionBusy',
+  ZIP_IMPORT_BUSY: 'errZipImportBusy',
   SHARE_REQUIRES_FRIEND: 'errShareRequiresFriend',
   FILE_NOT_FOUND: 'errFileNotFound',
   FILE_SERVE_FAILED: 'errFileServeFailed',
