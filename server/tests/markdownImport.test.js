@@ -85,11 +85,14 @@ test('importMarkdownNotes legt Ordner elternzuerst und Notizen mit parentId an',
 
   const roadmap = store.inserted.find((doc) => doc.title === 'Roadmap');
   assert.equal(String(roadmap.parentId), String(keeplocal._id));
-  assert.equal(roadmap.order, 6, 'erste Notiz auf naechster Top-Order-Position (max 5 + 1)');
+  // v1.16.0: positionsstreu ABSTEIGEND — der Export schreibt order:-1, der
+  // erste Eintrag einer Dateiliste ist der oberste. Aufsteigend (bis v1.15)
+  // stand der Round-trip komplett kopfüber.
+  assert.equal(roadmap.order, 8, 'erste Notiz steht oben (max 5 + 3 Notizen - 1)');
 
   const solo = store.inserted.find((doc) => doc.title === 'lose Notiz');
   assert.equal(solo.parentId, null);
-  assert.equal(solo.order, 8, 'order steigt in Datei-Reihenfolge');
+  assert.equal(solo.order, 6, 'letzte Datei bekommt die niedrigste Position');
 });
 
 test('importMarkdownNotes verwendet bestehende Ordner-Knoten wieder', async () => {
@@ -270,4 +273,108 @@ test('importMarkdownNotes clampt remindAt NICHT — Zukunfts-Erinnerung bleibt',
   const note = store.inserted.find((doc) => doc.title === 'Erinnerung');
   assert.ok(note.remindAt instanceof Date);
   assert.equal(note.remindAt.getTime(), new Date(ZUKUNFT).getTime(), 'Erinnerungen in der Zukunft sind der Normalfall');
+});
+
+// ---------------------------------------------------------------------------
+// v1.16.0 Round-trip-Ehrlichkeit: order reist im Frontmatter, und die 10-KB-
+// Grenze gilt fuer den BODY statt fuer den Roh-String (Frontmatter reist im-
+// selben String mit). Bis v1.15: randvolle 10-KB-Notiz exportierbar, aber
+// nicht wieder importierbar; sortierte Notizen/Ordner sanken auf 0 zurueck.
+// ---------------------------------------------------------------------------
+
+test('importMarkdownNotes uebernimmt order aus dem Frontmatter vor der Position', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'A', content: '---\norder: 99\ntitle: A\n---\nA' },
+    { path: '', title: 'B', content: 'B ohne Frontmatter' }
+  ]);
+
+  const a = store.inserted.find((doc) => doc.title === 'A');
+  const b = store.inserted.find((doc) => doc.title === 'B');
+  assert.equal(a.order, 99, 'Frontmatter-order gewinnt');
+  assert.equal(b.order, 0, 'ohne Frontmatter: positionsstreu (leerer Bestand → baseOrder 0, letzte Datei unten)');
+});
+
+test('frontmatter-order: ungueltige Werte sind unsortiert statt Skalen-Sprenger', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'negativ', content: '---\norder: -5\n---\nx' },
+    { path: '', title: 'keine-zahl', content: '---\norder:oben\n---\nx' },
+    { path: '', title: 'riesig', content: `---\norder: 2147483648\n---\nx` }
+  ]);
+
+  for (const doc of store.inserted) {
+    assert.ok(doc.order < 5, `${doc.title}: ungueltige order faellt auf die positionsstreu-Fallback (0..2), nicht ${doc.order}`);
+  }
+});
+
+test('Ordner-Notizen behalten ihre frontmatter-order statt auf 0 zu sinken', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: 'Projekte', title: 'Projekte', content: '---\norder: 42\n---\nOrdner-Inhalt', isFolderIndex: true },
+    { path: 'Projekte', title: 'Kind', content: 'Kind-Inhalt' }
+  ]);
+
+  const folder = store.inserted.find((doc) => doc.title === 'Projekte');
+  assert.equal(folder.order, 42, '_index-Frontmatter-order wird Ordner-order');
+});
+
+test('die 10-KB-Grenze gilt fuer den Body, nicht fuer den Roh-String', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  // Randvoller Body (10.000) plus Frontmatter — vor v1.16.0 war der Roh-String
+  // damit > 10.000 und der Import brach mit 400 ab: Round-trip einer rand-
+  // vollen Notiz unmoeglich.
+  const full = 'x'.repeat(10000);
+  const result = await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Voll', content: `---\ntitle: Voll\ntags: [a, b]\ncreated: 2026-01-01T00:00:00.000Z\nupdated: 2026-01-02T00:00:00.000Z\n---\n${full}` }
+  ]);
+  assert.equal(result.created, 1);
+  assert.equal(store.inserted[0].content, full, 'Frontmatter zaehlt nicht ins Body-Budget');
+
+  // Body ueber 10 KB bleibt ein 400er (alles-oder-nichts, nichts angelegt).
+  const second = makeStore();
+  await assert.rejects(
+    () => loadService(second.NoteMock).importMarkdownNotes(OWNER_ID, [
+      { path: '', title: 'Zu lang', content: `---\ntitle: Zu lang\n---\n${'x'.repeat(10001)}` }
+    ]),
+    /länger als 10\.000/
+  );
+  assert.equal(second.inserted.length, 0);
+});
+
+test('Anhang-URL-Wachstum ueber 10 KB wird ehrlich abgelehnt statt gekuerzt', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  // Body exakt 10.000 Zeichen, mit zwei kurzem Asset-Platzhalter, die der
+  // Import zu langen Server-URLs (~70 Zeichen) macht — der Slice bis v1.15
+  // kappte mitten in der zweiten URL: kaputter Link, stiller Verlust.
+  const assetA = 'assets/images/a'.repeat(1);
+  const assetB = 'assets/images/b';
+  const filler = 'y'.repeat(10000 - assetA.length - assetB.length);
+  const body = `${assetA}${filler}${assetB}`;
+
+  await assert.rejects(
+    () => service.importMarkdownNotes(OWNER_ID, [
+      {
+        path: '', title: 'Bildschwer', content: body,
+        attachedImages: new Map() // irrelevant: Asset-Map simuliert das Wachstum unten direkt
+      }
+    ], {
+      assetMap: new Map([
+        ['assets/images/a', { kind: 'images', filename: 'a'.repeat(48) + '.png', url: `/uploads/images/${'a'.repeat(48)}.png`, size: 1 }],
+        ['assets/images/b', { kind: 'images', filename: 'b'.repeat(48) + '.png', url: `/uploads/images/${'b'.repeat(48)}.png`, size: 1 }]
+      ])
+    }),
+    /wächst durch die Anhang-URLs über 10\.000/
+  );
+  assert.equal(store.inserted.length, 0, 'Import ist alles-oder-nichts: nichts halb angelegt');
 });
