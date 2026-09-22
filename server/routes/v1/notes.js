@@ -22,6 +22,7 @@ const {
   handleFileUpload
 } = require('../../utils/attachmentUpload');
 const { imagesDir, filesDir } = require('../../config/paths');
+const { acquire } = require('../../utils/concurrencyGate');
 
 const blockDemoUploads = blockDemoUser('uploads');
 
@@ -384,6 +385,18 @@ router.get('/meta', async (req, res, next) => {
  *               format: binary
  */
 router.get('/export/markdown', async (req, res, next) => {
+  // Gate pro Nutzer (v1.16.0), identisch zur Session-Route: read-only Keys
+  // koennen denselben speicherhungrigen Export anstossen wie der Browser —
+  // und umgehen den globalen IP-Limiter via mehrere Keys/Adressen.
+  const gate = acquire(`export:${req.user._id}`, 1);
+  if (!gate.acquired) {
+    res.setHeader('Retry-After', '30');
+    return res.status(httpStatus.TOO_MANY_REQUESTS).json({
+      success: false,
+      code: 'EXPORT_BUSY',
+      error: 'Es läuft bereits ein Export. Bitte in einer halben Minute erneut versuchen.'
+    });
+  }
   try {
     const archive = await notesService.buildMarkdownExport(req.user._id);
     res.setHeader('Content-Type', 'application/zip');
@@ -391,6 +404,8 @@ router.get('/export/markdown', async (req, res, next) => {
     res.end(archive);
   } catch (error) {
     next(error);
+  } finally {
+    gate.release();
   }
 });
 

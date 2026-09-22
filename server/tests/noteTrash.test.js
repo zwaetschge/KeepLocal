@@ -78,6 +78,38 @@ test('the trash view lists only own deleted notes, newest first', async () => {
   assert.equal(result.notes.length, 1);
 });
 
+// v1.16.0: Der Papierkorb-Zweig ignorierte `since` und `tag` still — obwohl der
+// since-Parser darüber ungültige Werte mit 400 ablehnte (der Client cache-t einen
+// Stempel, den diese Ansicht dann nie versteht). Delta-Stempel der Ansicht ist
+// deletedAt (der Löschzeitpunkt), nicht updatedAt; der Tag-Filter matcht wie
+// buildNotesQuery case-insensitiv exakt.
+test('the trash view honours since (on deletedAt) and the tag filter', async () => {
+  const seen = {};
+  const chain = {
+    populate() { return this; },
+    select() { return this; },
+    sort(value) { seen.sort = value; return this; },
+    skip() { return this; },
+    limit: async () => []
+  };
+  const service = loadService({
+    countDocuments: async (query) => { seen.counts = seen.counts || []; seen.counts.push(query); return 1; },
+    find: (query) => { seen.find = query; return chain; }
+  });
+
+  const since = '2026-09-20T12:00:00.000Z';
+  await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, deleted: 'true', since, tag: 'Projekt' });
+
+  assert.deepEqual(seen.find.deletedAt, { $gt: new Date(since) });
+  assert.equal(seen.find.userId, OWNER_ID);
+  assert.ok(seen.find.tags.$regex instanceof RegExp, 'Tag-Filter als RegExp');
+  assert.equal(seen.find.tags.$regex.source, '^Projekt$');
+  assert.equal(seen.find.tags.$regex.flags, 'i');
+  // Dasselbe Prädikat zählt die Pagination-Summe — nicht eine Variante ohne seit/tag.
+  assert.deepEqual(seen.counts[0].deletedAt, { $gt: new Date(since) });
+  assert.equal(seen.counts[0].tags.$regex.source, '^Projekt$');
+});
+
 test('restore clears deletedAt and purge only accepts trashed notes', async () => {
   const seen = [];
   // restoreNote chains .populate().populate() on the update query.

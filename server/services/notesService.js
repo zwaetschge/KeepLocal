@@ -431,13 +431,20 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   // Papierkorb: nur eigene Notizen, unabhängig vom Archiv-Status, zuletzt
-  // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar.
+  // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar; `since` filtert hier
+  // auf deletedAt (der Delta-Stempel der Ansicht ist der Löschzeitpunkt, nicht
+  // updatedAt) — bis v1.15 wurden since und tag in diesem Zweig still
+  // ignoriert, obwohl der Parser oben ungültige since-Werte mit 400 ablehnte.
   if (isDeleted) {
     const trashQuery = {
       userId,
-      deletedAt: { $ne: null },
+      deletedAt: sinceDate ? { $gt: sinceDate } : { $ne: null },
       ...(typeof search === 'string' && search.trim() !== '' ? { $text: { $search: search.trim() } } : {})
     };
+    if (typeof tag === 'string' && tag.trim() !== '') {
+      // Gleiches case-insensitive Exakt-Matching wie buildNotesQuery (v1.15.0).
+      trashQuery.tags = { $regex: new RegExp(`^${tag.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    }
     const skip = (safePage - 1) * safeLimit;
     // includeMeta=false (v1.14.0): Folgeseiten brauchen die globalen Zähler
     // nicht — die Sidebar hat sie von Seite 1. Spart zwei countDocuments.
@@ -1395,12 +1402,15 @@ async function buildMarkdownExport(userId) {
   const manifest = {};
   const collectedAssets = new Map();
   const rewriteRules = [];
-  const collectAsset = (kind, filename, originalName, mimetype) => {
+  const collectAsset = async (kind, filename, originalName, mimetype) => {
     if (!filename || collectedAssets.has(filename)) return;
     const source = path.join(kind === 'images' ? imagesDir() : filesDir(), filename);
     let bytes = null;
     try {
-      bytes = fs.readFileSync(source);
+      // fs.promises statt readFileSync (v1.16.0): Der Export laeuft hinter dem
+      // Route-Gate, aber sync-Reads blockieren trotzdem den Event-Loop — je
+      // Anhang friert die ganze Instanz (inkl. mongod-Nachbarn im Host) ein.
+      bytes = await fs.promises.readFile(source);
     } catch (_error) {
       return; // Datei weg: Referenz bleibt auf die alte URL zeigen
     }
@@ -1412,8 +1422,8 @@ async function buildMarkdownExport(userId) {
     rewriteRules.push([`/uploads/${kind}/${filename}`, zipPath, { kind, filename, bytes }]);
   };
   for (const note of notes) {
-    for (const image of note.images || []) collectAsset('images', image.filename, image.filename, 'image/jpeg');
-    for (const file of note.files || []) collectAsset('files', file.filename, file.originalName, file.mimetype);
+    for (const image of note.images || []) await collectAsset('images', image.filename, image.filename, 'image/jpeg');
+    for (const file of note.files || []) await collectAsset('files', file.filename, file.originalName, file.mimetype);
   }
 
   const frontmatter = (note) => {
