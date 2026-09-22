@@ -48,6 +48,77 @@ export function notesMetaSignature(meta) {
   return `${meta.active ?? 0}/${meta.archived ?? 0}/${meta.trash ?? 0}/${meta.maxUpdatedAt || ''}`;
 }
 
+/**
+ * Delta-Sync-Fähigkeit des 60s-Polls (v1.16.0): Darf der Refresh statt der
+ * vollen 50er-Seite nur die Änderungen seit dem letzten Sondieren ziehen
+ * (GET /api/notes?since=…&getTree?since=…), ist das hier wahr — sonst falsch.
+ *
+ * Die Bedingung ist bewusst konservativ, weil ein Delta nur ANKOMMENDE
+ * Änderungen sieht:
+ * - Alle drei Zählungen müssen gleich bleiben. Jede Löschung/Restauration
+ *   bewegt die trash-Zahl, jede Neuanlage die active-Zahl — sobald sich
+ *   Mitgliedschaft ändern KANN, muss das Fenster komplett neu sortiert werden.
+ * - Der Cursor (maxUpdatedAt der VORHERIGEN Sonde) muss existieren; beim
+ *   allerersten Tick nach Login gibt es keinen.
+ * - Die Ansicht muss ungefiltert sein: Suche/Tag/Ordner ändern die
+ *   Fenstermitgliedschaft, ohne die globalen Zählungen zu bewegen (eine Notiz
+ *   verliert ihr Tag → verschwindet aus der Tag-Ansicht, active bleibt gleich).
+ *   Auch der Papierkorb scheidet aus — dort ist deletedAt der Delta-Schlüssel,
+ *   aber Purges sind im Delta unsichtbar.
+ * - Nur Seite 1: Auf Folgeseiten landen Delta-Notizen außerhalb des Fensters
+ *   ignoriert, während die Fensterzusammensetzung (Pagination) längst
+ *   serverseitig neu vergeben wurde.
+ */
+export function canUseDeltaSync(previousMeta, nextMeta, view = {}) {
+  if (!previousMeta || !nextMeta) return false;
+  if (!previousMeta.maxUpdatedAt || !nextMeta.maxUpdatedAt) return false;
+  for (const key of ['active', 'archived', 'trash']) {
+    if (String(previousMeta[key] ?? 0) !== String(nextMeta[key] ?? 0)) return false;
+  }
+  if (previousMeta.maxUpdatedAt === nextMeta.maxUpdatedAt) return false;
+  if (view.trash || view.search || view.tag || view.folderScope) return false;
+  if (view.page !== 1) return false;
+  return true;
+}
+
+/**
+ * Delta-Antwort in das geladene Fenster mischen (v1.16.0). Notizen, die nicht
+ * im Fenster sind, werden ignoriert (sie gehören auf eine andere Seite); Notizen,
+ * die seit dem Laden die Ansicht gewechselt haben (archiviert/gelöscht), fliegen
+ * raus — das Fenster bleibt sonst ehrlich nur bis zum nächsten Voll-Refresh.
+ * Identitäts-stabil: Bei keiner Änderung kommt dieselbe Array-Referenz zurück.
+ *
+ * @param {Array} currentNotes - geladenes Fenster
+ * @param {Array} deltaNotes - seit-Cursor-Antwort des Servers
+ * @param {Object} view - { archived: boolean } — die aktuelle Ansicht
+ * @returns {Array} das (ggf. unveränderte) Fenster
+ */
+export function mergeNotesDelta(currentNotes, deltaNotes, { archived = false } = {}) {
+  if (!Array.isArray(currentNotes) || !Array.isArray(deltaNotes) || deltaNotes.length === 0) {
+    return Array.isArray(currentNotes) ? currentNotes : [];
+  }
+  const deltaById = new Map();
+  for (const delta of deltaNotes) {
+    if (delta && typeof delta._id === 'string') deltaById.set(delta._id, delta);
+  }
+  if (deltaById.size === 0) return currentNotes;
+  let changed = false;
+  const next = [];
+  for (const existing of currentNotes) {
+    const delta = deltaById.get(existing._id);
+    if (!delta) {
+      next.push(existing);
+      continue;
+    }
+    changed = true;
+    // Ansichtswechsel seit dem Laden: raus statt ersetzen (die Voll-Liste des
+    // Servers enthält sie in dieser Ansicht nicht mehr).
+    if (delta.deletedAt || Boolean(delta.isArchived) !== archived) continue;
+    next.push(delta);
+  }
+  return changed ? next : currentNotes;
+}
+
 const DEFAULT_PAGINATION = { page: 1, limit: NOTES_PAGE_LIMIT, total: 0, pages: 0 };
 const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 
@@ -350,6 +421,9 @@ export function useNotesManager({
   // v1.13.0 Nr. 9: Signatur der letzten Meta-Sonde — 60s-Poll-Ticks ohne
   // serverseitige Änderung überspringen Liste+Baum komplett.
   const metaSignatureRef = useRef(null);
+  // v1.16.0: Letztes Meta-Objekt (nicht nur die Signatur) — der Delta-Pfad
+  // braucht die Zählungen zum Vergleich und den alten maxUpdatedAt als Cursor.
+  const lastMetaRef = useRef(null);
   const [folderScope, setFolderScope] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -435,11 +509,33 @@ export function useNotesManager({
   }, []);
 
   /**
+   * Delta-Antwort (since-Cursor) übernehmen (v1.16.0): Fenster in-place
+   * mischen, Pagination bleibt Fenster-Wahrheit — Counts und Tag-Cloud der
+   * Antwort sind global und frisch (der Server berechnet sie ohne since).
+   */
+  const applyNotesDelta = useCallback((normalized, { archivedView = false } = {}) => {
+    const current = stateRef.current;
+    const nextNotes = mergeNotesDelta(current.notes, normalized.notes, { archived: archivedView });
+    const nextCounts = normalized.hasCounts === false ? current.noteCounts : normalized.counts;
+    const nextTags = normalized.hasTags === false ? current.allTags : normalized.tags;
+    if (
+      nextNotes === current.notes
+      && nextCounts === current.noteCounts
+      && nextTags === current.allTags
+    ) return;
+    setNotes(nextNotes);
+    setNoteCounts(nextCounts);
+    setAllTags(nextTags);
+  }, []);
+
+  /**
    * Notizen laden. Vordergrund (default) setzt `loading` (Skeleton beim ersten
    * Laden), Hintergrund (`background: true`) setzt `refreshing` ohne Spinner.
    * `silent` unterdrückt Fehler-Toasts (Interval-Poll/Focus, P17).
+   * `since` (v1.16.0) holt nur Änderungen seit dem Cursor — die Antwort wird
+   * dann via applyNotesDelta ins Fenster gemischt statt es zu ersetzen.
    */
-  const fetchNotes = useCallback(async (search = '', page = 1, { background = false, silent = false } = {}) => {
+  const fetchNotes = useCallback(async (search = '', page = 1, { background = false, silent = false, since = null } = {}) => {
     if (!isLoggedIn) return;
     const requestSequence = ++fetchSequenceRef.current;
     // Der vorherige Request wird ersetzt, nicht nur ignoriert.
@@ -482,9 +578,18 @@ export function useNotesManager({
       // dann können sich auch Counts geändert haben → Meta mitliefern.
       const skipMeta = !background && page > 1;
       if (skipMeta) params.includeMeta = false;
+      if (since) params.since = since;
 
       const response = await api.getAll(params, { signal: controller.signal });
       if (requestSequence !== fetchSequenceRef.current) return;
+      if (since) {
+        // Delta-Pfad: Fenster mischen statt ersetzen — die Pagination der
+        // Antwort zählt nur die geänderten Notizen und ist keine Fenster-Wahrheit.
+        applyNotesDelta(normalizeNotesPayload(response), {
+          archivedView: params.archived === 'true'
+        });
+        return;
+      }
       applyServerState(normalizeNotesPayload(response), { merge: background, keepAbsentMeta: skipMeta });
     } catch (error) {
       if (requestSequence !== fetchSequenceRef.current) return;
@@ -509,13 +614,14 @@ export function useNotesManager({
         setRefreshing(false);
       }
     }
-  }, [isLoggedIn, api, applyServerState, showToast, t]);
+  }, [isLoggedIn, api, applyServerState, applyNotesDelta, showToast, t]);
 
   /**
-   * Hintergrund-Refetch (stale-while-revalidate) ohne Spinner.
+   * Hintergrund-Refetch (stale-while-revalidate) ohne Spinner. `since` (v1.16.0)
+   * schaltet auf den Delta-Pfad um (siehe fetchNotes).
    */
-  const refreshInBackground = useCallback((search = stateRef.current.searchTerm, page = stateRef.current.pagination.page, { silent = false } = {}) => {
-    fetchNotes(search, page, { background: true, silent });
+  const refreshInBackground = useCallback((search = stateRef.current.searchTerm, page = stateRef.current.pagination.page, { silent = false, since = null } = {}) => {
+    fetchNotes(search, page, { background: true, silent, since });
   }, [fetchNotes]);
 
   /**
@@ -523,11 +629,29 @@ export function useNotesManager({
    * neben der Liste, kein primärer Inhalt — ein Fehler dort toastet nur, wenn
    * explizit danach gefragt wird (Erst-/Zweitaufruf über Mutationen bleibt stumm).
    */
-  const refreshTree = useCallback(async ({ silent = true } = {}) => {
+  const refreshTree = useCallback(async ({ silent = true, since = null } = {}) => {
     if (!isLoggedIn) return;
     try {
-      const flat = await api.getTree();
-      if (!Array.isArray(flat)) return;
+      const fetched = await api.getTree(since ? { since } : {});
+      if (!Array.isArray(fetched)) return;
+      let flat = fetched;
+      if (since && fetched.length === 0) {
+        // Leeres Baum-Delta: kein Knoten hat sich bewegt — nichts zu tun (der
+        // Signatur-Vergleich unten würde sonst den vollen Baum wegwerfen).
+        return;
+      }
+      if (since) {
+        // Delta-Pfad (v1.16.0): geänderte Knoten in den Bestand upsen. Löschungen
+        // sind hier unsichtbar (der Server filtert deletedAt), dürfen unter dem
+        // Delta-Gate aber nie passieren — jede Löschung bewegt die trash-Zahl
+        // und erzwingt den Voll-Pfad (canUseDeltaSync). Neue/geänderte Knoten
+        // ersetzen per id; unveränderte behalten ihre Identität.
+        const merged = { ...stateRef.current.treeNodes };
+        for (const node of fetched) {
+          if (node && typeof node.id === 'string') merged[node.id] = node;
+        }
+        flat = Object.values(merged);
+      }
       // v1.10.1: Der Baum reist jetzt im 60-s-Poll mit — der Signatur-Vergleich
       // verhindert, dass jeder Tick bei unverändertem Baum zwei neue Objekt-
       // Identitäten (und damit ein Sidebar-Rerender) erzeugt.
@@ -572,6 +696,7 @@ export function useNotesManager({
       // Meta-Signatur ebenfalls verwerfen: Der nächste Login (ggf. ein anderer
       // Account) darf nicht gegen die Signatur der alten Session vergleichen.
       metaSignatureRef.current = null;
+      lastMetaRef.current = null;
       setFolderScope(null);
       setSelectedIds(new Set());
     }
@@ -1110,7 +1235,30 @@ export function useNotesManager({
           const meta = await api.getMeta();
           const signature = notesMetaSignature(meta);
           if (metaSignatureRef.current === signature) return;
+          const previousMeta = lastMetaRef.current;
+          lastMetaRef.current = meta;
           metaSignatureRef.current = signature;
+          // Delta-Sync (v1.16.0): Reine Änderungen ohne Zählungs-Bewegung —
+          // der Cursor ist der maxUpdatedAt der VORHERIGEN Sonde. Filter, andere
+          // Seiten oder der Papierkorb laden weiter voll (canUseDeltaSync
+          // dokumentiert warum). Fail-open: Ein Fehler im Delta-Pfad fällt
+          // unten in den Voll-Refresh zurück.
+          const deltaEligible = canUseDeltaSync(previousMeta, meta, {
+            trash: stateRef.current.showTrash,
+            search: stateRef.current.searchTerm,
+            tag: stateRef.current.selectedTag,
+            folderScope: stateRef.current.folderScope,
+            page: stateRef.current.pagination.page
+          });
+          if (deltaEligible) {
+            // Fehler fangen fetchNotes/refreshTree selbst (silent) — der Poll
+            // bleibt in jedem Fall beim nächsten Tick wieder dran.
+            refreshInBackground(stateRef.current.searchTerm, 1, {
+              silent: true, since: previousMeta.maxUpdatedAt
+            });
+            refreshTree({ since: previousMeta.maxUpdatedAt });
+            return;
+          }
         } catch (_error) {
           // Sonde unerreichbar: unten voll weiterladen.
         }
