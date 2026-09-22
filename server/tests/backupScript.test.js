@@ -211,3 +211,102 @@ test('recovery point names cannot collide within the same second', () => {
   assert.match(verifyScript, /two backups in the same second get distinct directories/);
   assert.match(verifyScript, /the good recovery point survived the failed run/);
 });
+
+// ---------------------------------------------------------------------------
+// v1.16.0 Nr. 6 — Backup-Governance: statfs-Gate vor dem Schreiben und
+// Retention auch im Fehlerlauf. Bis v1.15 lief applyRetention NUR auf dem
+// Erfolgspfad — der klassische ENOSPC-Deadlock: Volle Platte → Backup schlägt
+// fehl → Retention läuft nie → Platz wird nie wieder frei → jeder weitere
+// Lauf scheitert am selben Fehler. Und das Gate verhindert, dass der Lauf die
+// Platte (im All-in-One-Image inkl. mongod-Nachbar) erst füllt.
+// ---------------------------------------------------------------------------
+
+function reloadBackupWith(env) {
+  const scriptPath = require.resolve('../scripts/backup');
+  const original = {};
+  for (const [key, value] of Object.entries(env)) {
+    original[key] = process.env[key];
+    process.env[key] = value;
+  }
+  delete require.cache[scriptPath];
+  const reloaded = require(scriptPath);
+  return {
+    reloaded,
+    restore() {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      delete require.cache[scriptPath];
+    }
+  };
+}
+
+test('createBackup lehnt sich ab, wenn das Backup-Volume fast voll ist', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-gate-'));
+  // Schwelle jenseits jeder realen Platte — das Gate muss deterministisch
+  // zuschlagen, und zwar BEVOR ein Zielverzeichnis entsteht.
+  const { reloaded, restore } = reloadBackupWith({ BACKUP_DIR: directory, BACKUP_MIN_FREE_MB: '99999999' });
+  try {
+    await assert.rejects(
+      () => reloaded.createBackup(),
+      (error) => {
+        assert.match(error.message, /zu wenig freier Speicher auf dem Backup-Volume/);
+        assert.match(error.message, /99999999 MB gefordert/);
+        assert.match(error.message, /BACKUP_MIN_FREE_MB/);
+        return true;
+      }
+    );
+    assert.deepEqual(fs.readdirSync(directory), [], 'das Gate läuft vor mkdtemp — nichts Halbfertiges');
+  } finally {
+    restore();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('BACKUP_MIN_FREE_MB=0 schaltet das Gate ab', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-gate-'));
+  const { reloaded, restore } = reloadBackupWith({ BACKUP_DIR: directory, BACKUP_MIN_FREE_MB: '0' });
+  try {
+    // Ohne Gate läuft der Lauf bis zur ersten DB-Berührung und scheitert dort
+    // (kein mongoose verbunden) — aber NICHT am Speicher-Plug.
+    let failure = null;
+    try {
+      await reloaded.createBackup();
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, 'ohne Verbindung scheitert der Lauf trotzdem');
+    assert.doesNotMatch(failure.message, /zu wenig freier Speicher/);
+    // Der fehlgeschlagene Lauf hinterlässt kein Verzeichnis (Catch-All-Räumung).
+    assert.deepEqual(fs.readdirSync(directory).filter(name => name.startsWith('keeplocal-')), []);
+  } finally {
+    restore();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('ein fehlgeschlagener Lauf räumt trotzdem nach der Retention auf', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-retention-'));
+  const names = [
+    'keeplocal-20260101-000000', 'keeplocal-20260102-000000', 'keeplocal-20260103-000000',
+    'keeplocal-20260104-000000', 'keeplocal-20260105-000000'
+  ];
+  for (const name of names) fs.mkdirSync(path.join(directory, name));
+
+  const { reloaded, restore } = reloadBackupWith({ BACKUP_DIR: directory, BACKUP_MIN_FREE_MB: '0' });
+  try {
+    // Scheitert an der fehlenden DB-Verbindung — bis v1.16.0 lief die Retention
+    // danach NIE: fünf Recovery Points blieben liegen, selbst wenn die Platte
+    // voll war. Jetzt räumt der Fehlerlauf auch auf.
+    await assert.rejects(() => reloaded.createBackup(2));
+    assert.deepEqual(
+      reloaded.listBackups(),
+      ['keeplocal-20260104-000000', 'keeplocal-20260105-000000'],
+      'Retention lief im Fehlerlauf: nur die zwei neuesten bleiben'
+    );
+  } finally {
+    restore();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -567,10 +567,15 @@ test('Sidebar TagRow: Umbenennen/Zusammenführen/Löschen ohne Button-in-Button'
   assert.match(sidebar, /run\('merge', mergeTarget\)/);
   // Löschen fragt zweimal nach statt eines nativen Confirm-Dialogs.
   assert.match(sidebar, /confirmDelete \? run\('delete'\) : setConfirmDelete\(true\)/);
-  // App.jsx verdrahtet den Handler und gibt den Busy-Zustand weiter.
+  // App.jsx verdrahtet den Handler und gibt den Busy-Zustand weiter. Seit
+  // v1.16.0 lebt der Handler in useFolderFeatures (inkl. Mitnahme von
+  // Tag-Farben und gespeicherten Suchen).
   const app = readClientFile('src/App.jsx');
   assert.match(app, /onTagManage=\{handleTagManage\}/);
-  assert.match(app, /const handleTagManage = useCallback/);
+  assert.doesNotMatch(app, /const handleTagManage = useCallback/);
+  const features = readClientFile('src/hooks/useFolderFeatures.js');
+  assert.match(features, /const handleTagManage = useCallback/);
+  assert.match(features, /migrateTagReferences\(action, from, to, settings\)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -614,10 +619,10 @@ test('60s-Poll: Meta-Sonde gatet den Voll-Abruf, fail-open bei Fehler', () => {
   assert.match(source, /if \(metaSignatureRef\.current === signature\) return;/);
   // … und ein Fehler der Sonde lädt trotzdem voll weiter (fail-open), statt
   // den Poll still verhungern zu lassen. (Der Slice beginnt am Gate und endet
-  // am ERSTEN refreshInBackground danach — die Focus-Antwort ruft dieselbe
-  // Zeile schon vor dem Gate auf.)
+  // am Interval-Ende — seit v1.16.0 ruft der Delta-Zweig refreshInBackground
+  // schon vor dem catch auf.)
   const gateStart = source.indexOf('typeof api.getMeta');
-  const gate = source.slice(gateStart, source.indexOf('refreshInBackground', gateStart));
+  const gate = source.slice(gateStart, source.indexOf('}, POLL_INTERVAL_MS', gateStart));
   assert.match(gate, /catch \(_error\) \{/);
   // Beim Logout wird die Signatur zurückgesetzt, damit der nächste Login
   // nicht mit der Signatur der alten Session vergleicht.
@@ -1115,4 +1120,193 @@ test('filterNotesByTag matcht case-insensitiv wie der Server und lässt Präfixe
   // Degenerierte Eingaben bleiben eine Liste, kein Crash.
   assert.deepEqual(filterNotesByTag(null, 'projekt'), []);
   assert.deepEqual(filterNotesByTag(stock, 'projekt').length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Delta-Sync (v1.16.0): Der 60s-Poll schickt finally `since` mit — der Server
+// kann es seit v1.13, der Client lud bei jeder Sonden-Änderung trotzdem die
+// volle 50er-Seite plus den kompletten Baum.
+// ---------------------------------------------------------------------------
+
+test('canUseDeltaSync: reine Änderungen ohne Zählungs-Bewegung sind delta-fähig', async () => {
+  const { canUseDeltaSync } = await import(moduleUrl);
+  const previous = { active: 10, archived: 2, trash: 1, maxUpdatedAt: '2026-09-22T10:00:00.000Z' };
+  const edited = { active: 10, archived: 2, trash: 1, maxUpdatedAt: '2026-09-22T10:05:00.000Z' };
+
+  assert.equal(canUseDeltaSync(previous, edited, { page: 1 }), true);
+  // page fehlt = kein bewiesenes Fenster 1 → voll laden (strikte Lesart).
+  assert.equal(canUseDeltaSync(previous, edited, {}), false);
+
+  // Jede Zählungs-Bewegung kann Fenster-Mitgliedschaft ändern: voll laden.
+  for (const key of ['active', 'archived', 'trash']) {
+    const moved = { ...edited, [key]: edited[key] + 1 };
+    assert.equal(canUseDeltaSync(previous, moved, { page: 1 }), false, `${key} bewegt`);
+  }
+
+  // Ohne Cursor (erster Tick nach Login) gibt es kein since.
+  assert.equal(canUseDeltaSync(null, edited, { page: 1 }), false);
+  assert.equal(canUseDeltaSync({ ...previous, maxUpdatedAt: null }, edited, { page: 1 }), false);
+  assert.equal(canUseDeltaSync(previous, { ...edited, maxUpdatedAt: null }, { page: 1 }), false);
+
+  // Gleicher Zeitstempel: Signatur hätte sich gar nicht ändern dürfen.
+  assert.equal(canUseDeltaSync(previous, previous, { page: 1 }), false);
+});
+
+test('canUseDeltaSync: gefilterte Ansichten und Folgeseiten laden weiter voll', async () => {
+  const { canUseDeltaSync } = await import(moduleUrl);
+  const previous = { active: 10, archived: 2, trash: 1, maxUpdatedAt: '2026-09-22T10:00:00.000Z' };
+  const edited = { ...previous, maxUpdatedAt: '2026-09-22T10:05:00.000Z' };
+
+  // Suche/Tag/Ordner ändern Fenster-Mitgliedschaft OHNE die globalen Zählungen
+  // zu bewegen (Notiz verliert ihr Tag → verschwindet aus der Ansicht).
+  assert.equal(canUseDeltaSync(previous, edited, { page: 1, search: 'rezept' }), false);
+  assert.equal(canUseDeltaSync(previous, edited, { page: 1, tag: 'projekt' }), false);
+  assert.equal(canUseDeltaSync(previous, edited, { page: 1, folderScope: 'root' }), false);
+  // Papierkorb: deletedAt ist dort der Delta-Schlüssel, Purges bleiben unsichtbar.
+  assert.equal(canUseDeltaSync(previous, edited, { page: 1, trash: true }), false);
+  // Folgeseiten: Fenster-Zusammensetzung wird serverseitig neu vergeben.
+  assert.equal(canUseDeltaSync(previous, edited, { page: 2 }), false);
+});
+
+test('mergeNotesDelta: ersetzt Fenster-Notizen in-place und ignoriert den Rest', async () => {
+  const { mergeNotesDelta } = await import(moduleUrl);
+  const a = note({ _id: 'a', content: 'alt' });
+  const b = note({ _id: 'b', content: 'bleibt' });
+  const window = [a, b];
+
+  const next = mergeNotesDelta(window, [
+    note({ _id: 'a', content: 'neu' }),
+    note({ _id: 'fremd', content: 'gehört auf eine andere Seite' }),
+  ], { archived: false });
+
+  assert.equal(next.length, 2, 'Fenster-Notizen ohne Delta bleiben, fremde werden nicht angehängt');
+  assert.equal(next[0].content, 'neu');
+  assert.equal(next[1], b, 'unveränderte Notizen behalten ihre Identität');
+});
+
+test('mergeNotesDelta: ansichts-gewechselte Notizen fliegen raus', async () => {
+  const { mergeNotesDelta } = await import(moduleUrl);
+  const window = [
+    note({ _id: 'a' }),
+    note({ _id: 'b' }),
+    note({ _id: 'c' }),
+  ];
+
+  const next = mergeNotesDelta(window, [
+    note({ _id: 'b', isArchived: true }), // wurde archiviert — aktiv-Ansicht
+    note({ _id: 'c', deletedAt: '2026-09-22T10:00:00.000Z' }), // gelöscht
+  ], { archived: false });
+
+  assert.deepEqual(next.map((item) => item._id), ['a'],
+    'archivierte und gelöschte Notizen verschwinden aus dem Fenster');
+});
+
+test('mergeNotesDelta: identitäts-stabil bei leerem oder irrelevantem Delta', async () => {
+  const { mergeNotesDelta } = await import(moduleUrl);
+  const window = [note({ _id: 'a' }), note({ _id: 'b' })];
+
+  assert.equal(mergeNotesDelta(window, [], { archived: false }), window);
+  assert.equal(mergeNotesDelta(window, [note({ _id: 'x' })], { archived: false }), window,
+    'Delta ohne Fenster-Treffer ändert nichts');
+  assert.equal(mergeNotesDelta(window, [null, { noId: true }], { archived: false }), window);
+  assert.deepEqual(mergeNotesDelta(null, [note()], { archived: false }), []);
+});
+
+test('Delta-Sync-Verdrahtung: Poll schickt since, API baut die Query, leerer Baum-Delta ist ein No-Op', async () => {
+  const hookSource = fs.readFileSync(
+    path.join(__dirname, '../src/hooks/useNotesManager.js'), 'utf8'
+  );
+  const apiSource = fs.readFileSync(
+    path.join(__dirname, '../src/services/api/notesAPI.js'), 'utf8'
+  );
+
+  // Der Poll reicht den Cursor der VORHERIGEN Sonde durch …
+  assert.match(hookSource, /since: previousMeta\.maxUpdatedAt/);
+  // … an fetchNotes (Query-Param) …
+  assert.match(hookSource, /if \(since\) params\.since = since;/);
+  // … und an refreshTree + api.getTree.
+  assert.match(hookSource, /refreshTree\(\{ since: previousMeta\.maxUpdatedAt \}\)/);
+  assert.match(apiSource, /getTree:\s*\(params = \{\}, options = \{\}\) => \{/);
+
+  // Der Delta-Pfad ersetzt das Fenster nicht mehr (applyNotesDelta mischt),
+  // und ein leerer Baum-Delta verwirft den Baum nicht.
+  assert.match(hookSource, /applyNotesDelta\(normalizeNotesPayload\(response\)/);
+  assert.match(hookSource, /if \(since && fetched\.length === 0\) \{\s*\n\s*\/\/ Leeres Baum-Delta/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.16.0 Nr. 9: Tag-Pflege nimmt Tag-Farben und gespeicherte Suchen mit
+// ---------------------------------------------------------------------------
+
+const tagMigrationUrl = pathToFileURL(
+  path.join(__dirname, '../src/utils/tagMigration.mjs')
+).href;
+
+test('migrateTagReferences: rename trägt die Farbe auf den neuen Namen über', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+  const result = migrateTagReferences('rename', ['projekt'], 'Projekt 2026', {
+    tagColors: { projekt: '#ff0000', privat: '#00ff00' },
+    savedSearches: [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'projekt' }],
+  });
+
+  assert.deepEqual(result.tagColors, { 'Projekt 2026': '#ff0000', privat: '#00ff00' },
+    'die Farbe folgt dem neuen Namen, andere bleiben unangetastet');
+  assert.deepEqual(result.savedSearches,
+    [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'Projekt 2026' }]);
+});
+
+test('migrateTagReferences: merge respektiert eine vorhandene Zielfarbe, delete räumt komplett weg', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+  const merge = migrateTagReferences('merge', ['alt'], 'neu', {
+    tagColors: { alt: '#ff0000', neu: '#0000ff' },
+    savedSearches: [{ id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'alt' }],
+  });
+  assert.deepEqual(merge.tagColors, { neu: '#0000ff' }, 'Zielfarbe gewinnt vor der Spenderfarbe');
+  assert.deepEqual(merge.savedSearches,
+    [{ id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'neu' }]);
+
+  const del = migrateTagReferences('delete', ['alt'], null, {
+    tagColors: { alt: '#ff0000', neu: '#0000ff' },
+    savedSearches: [
+      { id: 's1', name: '#alt', query: '', typeFilter: null, tag: 'alt' },
+      { id: 's2', name: '#neu', query: '', typeFilter: null, tag: 'neu' },
+    ],
+  });
+  assert.deepEqual(del.tagColors, { neu: '#0000ff' });
+  assert.deepEqual(del.savedSearches.map((s) => s.id), ['s2'],
+    'Suchen auf einen gelöschten Tag fallen weg');
+});
+
+test('migrateTagReferences: case-insensitiv, unveränderte Bestände bleiben identisch (null)', async () => {
+  const { migrateTagReferences } = await import(tagMigrationUrl);
+
+  // Der Tag im Bestand heißt anders geschrieben als in der Verwaltungs-UI.
+  const result = migrateTagReferences('rename', ['Projekt'], 'Ziel', {
+    tagColors: { projekt: '#ff0000' },
+    savedSearches: [],
+  });
+  assert.deepEqual(result.tagColors, { Ziel: '#ff0000' });
+
+  // Nichts betroffen → null, damit der Handler keine sinnlosen Settings-Pushes lostritt.
+  assert.equal(migrateTagReferences('rename', ['andere'], 'Ziel',
+    { tagColors: { projekt: '#ff0000' }, savedSearches: [{ id: 's1', name: '', query: '', typeFilter: null, tag: 'projekt' }] }), null);
+  // Reine Groß-/Kleinschreibungs-Rename nimmt die Farbe nicht doppelt mit.
+  const caseOnly = migrateTagReferences('rename', ['projekt'], 'Projekt', { tagColors: { projekt: '#ff0000' } });
+  assert.deepEqual(caseOnly.tagColors, { Projekt: '#ff0000' });
+});
+
+test('Tag-Chips auf den Karten filtern die Liste (Klick öffnet nicht die Notiz)', () => {
+  const noteComponent = readClientFile('src/components/Note.jsx');
+  // Chip als Button nur mit Handler — im Papierkorb bleibt er ein Span.
+  assert.match(noteComponent, /onTagSelect \? \(/);
+  assert.match(noteComponent, /e\.stopPropagation\(\); onTagSelect\(tag\)/);
+  const noteList = readClientFile('src/components/NoteList.jsx');
+  assert.match(noteList, /onTagSelect=\{onTagSelect\}/);
+  const app = readClientFile('src/App.jsx');
+  // Nur im Nicht-Papierkorb-Zweig von listActions — der Papierkorb-Zweig
+  // destrukturiert onTagSelect nicht.
+  const trashBranch = app.split('showTrash')[1];
+  assert.doesNotMatch(trashBranch.split(': {')[0] + trashBranch.split(':')[1].split(':')[0], /onTagSelect/);
+  assert.match(app, /onTagSelect: handleTagSelect/);
+  assert.match(app, /handleTagSelect, settings\.tagColors/);
 });

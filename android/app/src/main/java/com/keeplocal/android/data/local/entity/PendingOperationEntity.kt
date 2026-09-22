@@ -9,7 +9,15 @@ data class PendingOperationEntity(
     val operationType: String,
     val noteId: String,
     val payloadJson: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Server-side failures only (HTTP answer ≠ 2xx) — network hiccups and
+     *  expired sessions do NOT count, or a flaky connection would poison the
+     *  whole queue. v1.16.0: cap see SyncManager.MAX_SYNC_ATTEMPTS. */
+    val attemptCount: Int = 0,
+    /** Poisoned ops stay in the table (sync-queue view can still discard
+     *  them) but the drain never picks them up again — a permanently
+     *  rejected op used to retry every 15 minutes forever. */
+    val poisoned: Boolean = false
 )
 
 object OperationType {

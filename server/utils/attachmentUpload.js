@@ -18,6 +18,7 @@ const { validateImageFiles } = require('./magicNumberValidator');
 const notesService = require('../services/notesService');
 const { httpStatus } = require('../constants');
 const { imagesDir, filesDir } = require('../config/paths');
+const { assertStorageQuota } = require('./storageQuota');
 
 const MAX_ATTACHMENTS_PER_NOTE = 25;
 
@@ -111,6 +112,15 @@ async function handleImageUpload(req, res) {
 
     await notesService.validateImageDimensions(tempFilePaths);
 
+    // Quota (v1.16.0): nach allen Validierungen, vor dem ersten Verschieben —
+    // ein abgelehnter Upload hinterlässt keine Datei. Die Multiplikator-Summe
+    // (Größe × Dateien) kann das Budget überschreiten, obwohl jede einzelne
+    // Datei unter dem Multer-Limit bleibt.
+    await assertStorageQuota(
+      req.user._id,
+      req.files.reduce((sum, file) => sum + (file.size || 0), 0)
+    );
+
     // Process sequentially so cleanup cannot race unfinished thumbnail jobs.
     const imageData = [];
     for (const file of req.files) {
@@ -125,6 +135,7 @@ async function handleImageUpload(req, res) {
         filename: file.filename,
         thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
         thumbnailFilename: thumbnailFilename,
+        size: file.size,
         uploadedAt: new Date()
       });
     }
@@ -164,7 +175,9 @@ async function handleImageUpload(req, res) {
     }
 
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
+      // Fehler-Code (z. B. STORAGE_QUOTA_EXCEEDED) mitreichen — der v1-Envelope
+      // übernimmt ihn via Spread in success:false-Antworten.
+      return res.status(error.statusCode).json({ ...(error.code ? { code: error.code } : {}), error: error.message });
     }
 
     return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
@@ -204,6 +217,12 @@ async function handleFileUpload(req, res) {
       }
     }
 
+    // Quota wie bei Bildern (v1.16.0): Validierungen durch, nichts verschoben.
+    await assertStorageQuota(
+      req.user._id,
+      req.files.reduce((sum, file) => sum + (file.size || 0), 0)
+    );
+
     const fileData = [];
     for (const file of req.files) {
       const finalPath = path.join(filesDir(), file.filename);
@@ -236,7 +255,7 @@ async function handleFileUpload(req, res) {
       return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
     }
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
+      return res.status(error.statusCode).json({ ...(error.code ? { code: error.code } : {}), error: error.message });
     }
     return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Serverfehler beim Upload' });
   }

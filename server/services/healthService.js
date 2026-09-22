@@ -2,6 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const mongoose = require('mongoose');
 const { imagesDir, uploadsRoot, backupRoot } = require('../config/paths');
+// Backup-Governance (v1.16.0): Der Scheduler schreibt seinen Lauf-Status als
+// JSON in die Backup-Wurzel (ueberlebt auch einen DB-Restore). healthService
+// liest ihn nur — backupScheduler haengt an scripts/backup + config/paths,
+// ein Zyklus zurueck auf healthService existiert nicht.
+const { readStatus, INTERVAL_HOURS: BACKUP_INTERVAL_HOURS } = require('./backupScheduler');
 
 /**
  * Readiness checks that go beyond mongoose's cached connection state.
@@ -38,6 +43,7 @@ const DISK_FATAL = process.env.HEALTH_DISK_FATAL === 'true';
 const uploadsProbeCache = { at: 0, value: null };
 const aiProbeCache = { at: 0, value: null };
 const diskProbeCache = { at: 0, value: null };
+const backupStatusCache = { at: 0, value: null, probed: false };
 
 /** Cache leeren (Tests, erzwungene Neu-Probe). */
 function resetHealthCaches() {
@@ -47,6 +53,9 @@ function resetHealthCaches() {
   aiProbeCache.value = null;
   diskProbeCache.at = 0;
   diskProbeCache.value = null;
+  backupStatusCache.at = 0;
+  backupStatusCache.value = null;
+  backupStatusCache.probed = false;
 }
 
 /** Real round trip instead of trusting the driver's cached state. */
@@ -156,6 +165,47 @@ function checkDiskSpace() {
   return diskProbeCache.value;
 }
 
+// Backup-Governance (v1.16.0): 3x Intervall = veraltet. Ein verpasster Lauf
+// ist kein Grund, die Readiness zu kippen (Restoren koennen aus alten Points),
+// aber der Status soll es sagen — sonst faellt ein stillstehender Scheduler
+// erst beim ersten Restore auf.
+const BACKUP_STALE_FACTOR = 3;
+
+/**
+ * Lauf-Status des Backup-Schedulers, wie ihn readStatus() aus der Backup-Wurzel
+ * liest. null = kein Urteil (Scheduler per BACKUP_INTERVAL_HOURS=0 aus oder noch
+ * kein einziger Lauf — beides ist kein Fehler-Zustand, frische Instanz).
+ */
+function probeBackupStatus() {
+  if (BACKUP_INTERVAL_HOURS <= 0) return null;
+  const status = readStatus();
+  if (!status || typeof status !== 'object') return null;
+  const lastRunMs = status.lastRunAt ? new Date(status.lastRunAt).getTime() : 0;
+  const ageHours = Number.isFinite(lastRunMs) && lastRunMs > 0
+    ? (Date.now() - lastRunMs) / 3600000
+    : Infinity;
+  return {
+    ok: status.ok === true,
+    lastRunAt: status.lastRunAt ?? null,
+    ageHours,
+    stale: status.ok !== true || ageHours > BACKUP_INTERVAL_HOURS * BACKUP_STALE_FACTOR
+  };
+}
+
+/** Cached backup status probe; see PROBE_TTL_MS. */
+function checkBackupStatus() {
+  const now = Date.now();
+  // `probed` statt value-Null-Check: null ist hier ein gueltiges Ergebnis
+  // (kein Urteil) und darf trotzdem im Cache liegen bleiben.
+  if (backupStatusCache.probed && now - backupStatusCache.at < PROBE_TTL_MS) {
+    return backupStatusCache.value;
+  }
+  backupStatusCache.value = probeBackupStatus();
+  backupStatusCache.at = now;
+  backupStatusCache.probed = true;
+  return backupStatusCache.value;
+}
+
 /**
  * @returns {Promise<{status: string, database: Object, uploads: Object, ai: Object, uptime: number, timestamp: string}>}
  */
@@ -163,16 +213,22 @@ async function collectHealth() {
   const [database, ai] = await Promise.all([pingDatabase(), checkAiService()]);
   const uploads = checkUploadsWritable();
   const storage = checkDiskSpace();
+  const backup = checkBackupStatus();
   const aiFatal = process.env.REQUIRE_AI_FOR_READY === 'true';
   const storageLow = Object.values(storage).some((volume) => volume.low);
+  // Ein verpasster oder fehlgeschlagener Backup-Lauf degradiert den Status,
+  // aber nicht die Readiness: Der laufende Dienst ist gesund, nur die letzte
+  // Sicherung ist alt — genau umgekehrt waere jede Backup-Panne ein Ausfall.
+  const backupStale = backup?.stale === true;
 
   const ready = database.ok && uploads.ok && (!aiFatal || ai.ok) && (!DISK_FATAL || !storageLow);
   return {
-    status: ready && !storageLow ? 'ok' : 'degraded',
+    status: ready && !storageLow && !backupStale ? 'ok' : 'degraded',
     ready,
     database: { status: database.ok ? 'connected' : 'disconnected', detail: database.detail },
     uploads: { writable: uploads.ok, detail: uploads.detail },
     storage,
+    backup,
     ai: { reachable: ai.ok, checked: Boolean(ai.checked), detail: ai.detail, fatal: aiFatal },
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
@@ -199,6 +255,8 @@ function publicHealth(health) {
     database: { status: health.database.status },
     uploads: { writable: health.uploads.writable },
     storage,
+    // lastRunAt/ageHours sind Betreiber-Information; anonym bleibt ok/stale.
+    backup: health.backup ? { ok: health.backup.ok, stale: health.backup.stale } : null,
     ai: { reachable: health.ai.reachable, checked: health.ai.checked, fatal: health.ai.fatal },
     uptime: health.uptime,
     timestamp: health.timestamp
@@ -213,6 +271,7 @@ module.exports = {
   checkAiService,
   probeDiskSpace,
   checkDiskSpace,
+  checkBackupStatus,
   resetHealthCaches,
   PROBE_TTL_MS,
   UPLOADS_DIR

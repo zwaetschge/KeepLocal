@@ -51,7 +51,10 @@ data class PendingOpItem(
     val operationType: String,
     /** Note title for display; falls back to the raw id (offline/reorder). */
     val noteTitle: String,
-    val createdAt: Long
+    val createdAt: Long,
+    /** v1.16.0: op hit the attempt cap — visible and discardable, but the
+     *  drain never picks it up again. */
+    val poisoned: Boolean = false
 )
 
 data class SettingsUiState(
@@ -330,7 +333,8 @@ class SettingsViewModel @Inject constructor(
                         id = op.id,
                         operationType = op.operationType,
                         noteTitle = title?.ifBlank { op.noteId } ?: op.noteId,
-                        createdAt = op.createdAt
+                        createdAt = op.createdAt,
+                        poisoned = op.poisoned
                     )
                 }
             } catch (e: Exception) {

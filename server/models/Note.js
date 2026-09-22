@@ -49,6 +49,10 @@ const noteSchema = new mongoose.Schema({
     filename: String,
     thumbnailUrl: String,
     thumbnailFilename: String,
+    // Originalgröße in Bytes (v1.16.0) — Grundlage der Speicher-Quota
+    // (utils/storageQuota.js). Thumbnails zählen bewusst nicht mit: Sie sind
+    // abgeleitet und verschwinden mit dem Original. Bestand ohne size = 0.
+    size: Number,
     uploadedAt: Date
   }],
   // Dateianhänge (v1.12.0, bisher PDF): eigene Directory, eigener Serve-Pfad

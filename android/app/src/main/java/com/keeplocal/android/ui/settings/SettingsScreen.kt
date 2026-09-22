@@ -768,6 +768,13 @@ fun SettingsScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (op.poisoned) {
+                                            Text(
+                                                stringResource(R.string.settings_queue_poisoned),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
                                     }
                                     IconButton(onClick = { viewModel.discardPendingOp(op.id) }) {
                                         Icon(

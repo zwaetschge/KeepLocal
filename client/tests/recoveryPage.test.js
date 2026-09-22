@@ -32,7 +32,7 @@ test('standalone recovery removes only KeepLocal browser state before redirectin
 });
 
 test('recovery assets bypass service worker and edge caches', () => {
-  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v7['"]/);
+  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v8['"]/);
   assert.match(serviceWorker, /\['\/recover\.html', '\/recover\.js', '\/recover\.css', '\/guard\.js'\]\.includes/);
   assert.match(serviceWorker, /fetch\(event\.request, \{ cache: 'no-store' \}\)/);
 

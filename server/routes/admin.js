@@ -12,6 +12,7 @@ const { createPasswordResetToken } = require('../utils/passwordReset');
 const { checkDiskSpace } = require('../services/healthService');
 const { runScheduledBackup, listBackupSummaries, readStatus } = require('../services/backupScheduler');
 const { imagesDir, filesDir } = require('../config/paths');
+const { quotaLimitBytes, getStorageUsage } = require('../utils/storageQuota');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -50,7 +51,18 @@ router.get('/users', async (req, res) => {
       .select('-password')
       .sort({ createdAt: -1 });
 
-    res.json({ users });
+    // Speicher-Quota (v1.16.0): Belegung pro Nutzer dazu — die Admin-Übersicht
+    // ist der einzige Ort, an dem ein Volllauf sichtbar wird, bevor das Volume
+    // voll ist. Eine Aggregation pro Nutzer; self-hosted bedeutet hier wenige
+    // Nutzer. storageLimitBytes 0 = Quota nicht konfiguriert.
+    const storageLimitBytes = quotaLimitBytes();
+    const usersWithStorage = await Promise.all(users.map(async (user) => ({
+      ...user.toObject(),
+      storageBytes: await getStorageUsage(user._id),
+      storageLimitBytes
+    })));
+
+    res.json({ users: usersWithStorage });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ error: 'Fehler beim Laden der Benutzer' });

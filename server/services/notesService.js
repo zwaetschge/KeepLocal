@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { validateImageFile } = require('../utils/magicNumberValidator');
+const { assertStorageQuota } = require('../utils/storageQuota');
 
 const NOTE_COLORS = new Set([
   '#ffffff', '#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb',
@@ -431,13 +432,20 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   // Papierkorb: nur eigene Notizen, unabhängig vom Archiv-Status, zuletzt
-  // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar.
+  // gelöschte zuerst. Suche/Tag-Filter bleiben verfügbar; `since` filtert hier
+  // auf deletedAt (der Delta-Stempel der Ansicht ist der Löschzeitpunkt, nicht
+  // updatedAt) — bis v1.15 wurden since und tag in diesem Zweig still
+  // ignoriert, obwohl der Parser oben ungültige since-Werte mit 400 ablehnte.
   if (isDeleted) {
     const trashQuery = {
       userId,
-      deletedAt: { $ne: null },
+      deletedAt: sinceDate ? { $gt: sinceDate } : { $ne: null },
       ...(typeof search === 'string' && search.trim() !== '' ? { $text: { $search: search.trim() } } : {})
     };
+    if (typeof tag === 'string' && tag.trim() !== '') {
+      // Gleiches case-insensitive Exakt-Matching wie buildNotesQuery (v1.15.0).
+      trashQuery.tags = { $regex: new RegExp(`^${tag.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    }
     const skip = (safePage - 1) * safeLimit;
     // includeMeta=false (v1.14.0): Folgeseiten brauchen die globalen Zähler
     // nicht — die Sidebar hat sie von Seite 1. Spart zwei countDocuments.
@@ -1262,6 +1270,57 @@ async function getNoteTree(userId, since) {
   }));
 }
 
+// Backlinks (v1.16.0): Cap für „Erwähnt in“ — die Liste ist eine Navigations-
+// Hilfe im Modal, keine Volltextrecherche. 50 wie überall.
+const BACKLINKS_LIMIT = 50;
+
+/**
+ * Notizen, die diese Notiz per Wiki-Link `[[Titel]]` erwähnen (v1.16.0).
+ *
+ * Bis v1.15 rechnete der Web-Client das im geladenen 50er-Fenster aus — bei
+ * vollem Korpus (Trilium-Import: hunderte Notizen) zeigte „Erwähnt in“ fast
+ * immer eine leere oder falsche Liste. Der Server sucht über das echte Korpus:
+ * eigene + geteilte, nicht gelöschte, nicht archivierte Notizen, deren Inhalt
+ * den Titel in Doppelklammern trägt — case-insensitiv, weil importierte
+ * Bestände gemischte Schreibweisen tragen (der Link-Resolver im Editor ist
+ * exakt, die Erwähnung ist aber trotzdem eine).
+ *
+ * @param {string} noteId - die erwähnte Notiz
+ * @param {string} userId - Caller (Sichtbarkeit: eigene + geteilte Notizen)
+ * @returns {Promise<Array>} [{ id, title, updatedAt }] — neueste zuerst, max. 50
+ */
+async function getNoteBacklinks(noteId, userId) {
+  const note = await Note.findOne(noteEditQuery(noteId, userId)).select('title').lean();
+  if (!note) {
+    throw notFoundError();
+  }
+  const title = (note.title || '').trim();
+  if (!title) return [];
+
+  const mentioned = await Note.find({
+    $or: [{ userId }, { sharedWith: userId }],
+    deletedAt: null,
+    isArchived: false,
+    _id: { $ne: noteId },
+    content: { $regex: new RegExp(`\\[\\[${escapeRegexLiteral(title)}\\]\\]`, 'i') }
+  })
+    .select('title updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(BACKLINKS_LIMIT)
+    .lean();
+
+  return mentioned.map((source) => ({
+    id: source._id,
+    title: source.title || '',
+    updatedAt: source.updatedAt ?? null
+  }));
+}
+
+/** Titel als Regex-Literal — auch Titel können Regex-Metazeichen tragen. */
+function escapeRegexLiteral(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** YAML-Skalar: Strings mit Sonderlagen in Anfuehrungszeichen, Rest roh. */
 function yamlScalar(value) {
   if (value === null || value === undefined) return 'null';
@@ -1330,6 +1389,17 @@ function frontmatterFlag(value) {
   return value === true || value === 'true';
 }
 
+/**
+ * Frontmatter-order (v1.16.0): ganze Zahl 0..MAX_ORDER_VALUE, sonst null
+ * (= unsortiert). Fremd-Frontmatter darf die Reihenfolge-Skala nicht sprengen.
+ */
+function frontmatterOrder(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_ORDER_VALUE) return null;
+  return parsed;
+}
+
 /** ISO-Zeitpunkt oder null — kaputte Werte sind null, kein Fehler (robuster Import). */
 function frontmatterDate(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -1357,11 +1427,14 @@ function clampImportedTimestamp(value, now = new Date()) {
  * Ergebnis ist ein Round-trip-Partner zum Trilium-/Markdown-Ordner-Import und
  * zugleich ein lesbares Volldaten-Backup.
  * Seit v1.13.0 verlustfrei: YAML-Frontmatter traegt ALLE Metadaten (tags,
- * pinned, archived, isCode, color, remindAt, created/updated), und Bild- und
- * Datei-Anhaenge reisen als assets/ mit — der Markdown-Koerper referenziert
- * sie relativ. Der Import (POST /api/notes/import/markdown-zip) setzt beides
- * zurueck, inklusive frischer Thumbnails. Archivierte Notizen kommen mit,
- * geloeschte nicht.
+ * pinned, archived, isCode, color, remindAt, created/updated, seit v1.16.0
+ * auch order), und Bild- und Datei-Anhaenge reisen als assets/ mit — der
+ * Markdown-Koerper referenziert sie relativ. Der Import (POST /api/notes/
+ * import/markdown-zip) setzt beides zurueck, inklusive frischer Thumbnails.
+ * Grenze: Der INHALT (ohne Frontmatter) darf 10.000 Zeichen nicht ueberschrei-
+ * ten — wächst er beim Import durch die laengeren Anhang-URLs darueber, lehnt
+ * der Import ehrlich ab statt mitten in einer URL abzuschneiden. Archivierte
+ * Notizen kommen mit, geloeschte nicht.
  * @param {string} userId
  * @returns {Promise<Buffer>} ZIP-Archiv
  */
@@ -1395,12 +1468,15 @@ async function buildMarkdownExport(userId) {
   const manifest = {};
   const collectedAssets = new Map();
   const rewriteRules = [];
-  const collectAsset = (kind, filename, originalName, mimetype) => {
+  const collectAsset = async (kind, filename, originalName, mimetype) => {
     if (!filename || collectedAssets.has(filename)) return;
     const source = path.join(kind === 'images' ? imagesDir() : filesDir(), filename);
     let bytes = null;
     try {
-      bytes = fs.readFileSync(source);
+      // fs.promises statt readFileSync (v1.16.0): Der Export laeuft hinter dem
+      // Route-Gate, aber sync-Reads blockieren trotzdem den Event-Loop — je
+      // Anhang friert die ganze Instanz (inkl. mongod-Nachbarn im Host) ein.
+      bytes = await fs.promises.readFile(source);
     } catch (_error) {
       return; // Datei weg: Referenz bleibt auf die alte URL zeigen
     }
@@ -1412,8 +1488,8 @@ async function buildMarkdownExport(userId) {
     rewriteRules.push([`/uploads/${kind}/${filename}`, zipPath, { kind, filename, bytes }]);
   };
   for (const note of notes) {
-    for (const image of note.images || []) collectAsset('images', image.filename, image.filename, 'image/jpeg');
-    for (const file of note.files || []) collectAsset('files', file.filename, file.originalName, file.mimetype);
+    for (const image of note.images || []) await collectAsset('images', image.filename, image.filename, 'image/jpeg');
+    for (const file of note.files || []) await collectAsset('files', file.filename, file.originalName, file.mimetype);
   }
 
   const frontmatter = (note) => {
@@ -1425,6 +1501,10 @@ async function buildMarkdownExport(userId) {
     if (note.isPinned) lines.push('pinned: true');
     if (note.isArchived) lines.push('archived: true');
     if (note.isCode) lines.push('isCode: true');
+    // Manuelle Reihenfolge (v1.16.0): Ohne order im Frontmatter sank beim
+    // Round-trip jede manuell sortierte Notiz auf die recency-Fallback-Ordnung
+    // zurück und jeder Ordner auf Position 0.
+    if (note.order) lines.push(`order: ${note.order}`);
     if (note.isTodoList) lines.push('isTodoList: true');
     if (note.color && note.color !== '#ffffff') lines.push(`color: ${yamlScalar(note.color)}`);
     if (note.remindAt) lines.push(`remindAt: ${yamlScalar(new Date(note.remindAt).toISOString())}`);
@@ -1543,16 +1623,24 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     if (raw.content !== undefined && typeof raw.content !== 'string') {
       throw clientError(`items[${index}].content muss ein String sein`);
     }
-    if (raw.content !== undefined && raw.content.length > 10000) {
-      throw clientError(`items[${index}].content ist länger als 10.000 Zeichen`);
+    // Roh-Cap mit Frontmatter-Spielraum: Die 10-KB-Grenze gilt fuer den BODY —
+    // Frontmatter (bis ~2700 Zeichen bei 50 Tags) reist im selben String. Bis
+    // v1.15 galt sie fuer den Roh-String UND parseMarkdownFrontmatter schnitt
+    // ihn vorher auf 10 KB: Eine randvolle 10-KB-Notiz liess sich exportieren,
+    // aber nicht wieder importieren (400), und die Body-Spitze fiel still weg.
+    if (raw.content !== undefined && raw.content.length > 20000) {
+      throw clientError(`items[${index}].content ist länger als 20.000 Zeichen`);
     }
 
     // Frontmatter (v1.13.0): Der koerpertragene Metadaten-Block aus dem
     // Round-trip-Export. Der alte Trilium-Ordner-Import sendet title/tags
     // direkt — die treffen hier auf leeres Meta und verhalten sich wie zuvor.
     const { meta, body } = parseMarkdownFrontmatter(
-      (typeof raw.content === 'string' ? raw.content : '').slice(0, 10000)
+      typeof raw.content === 'string' ? raw.content : ''
     );
+    if (body.length > 10000) {
+      throw clientError(`items[${index}]: Inhalt ist länger als 10.000 Zeichen`);
+    }
     // Meta-Keys sind lowercased (Parser) — die Zugriffe hier nutzen genau
     // dieselbe Schreibweise, bleibt case-insensitiv fuer Fremd-Frontmatter.
     const rawTags = Array.isArray(raw.tags)
@@ -1583,9 +1671,13 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     if (attachedFiles.size > MAX_FILES_PER_NOTE) {
       throw clientError(`items[${index}] referenziert mehr als ${MAX_FILES_PER_NOTE} Dateianhänge`);
     }
-    // Der umgeschriebene Inhalt kann durch die laengeren Server-URLs wachsen —
-    // die 10-KB-Grenze gilt weiterhin (Kuerzung wie beim Markdown-Body).
-    content = content.slice(0, 10000);
+    // Der umgeschriebene Inhalt kann durch die laengeren Server-URLs wachsen.
+    // Still kuerzen hielte mitten in einer Anhang-URL ab — kaputter Link,
+    // stiller Datenverlust. Der Import ist alles-oder-nichts: ehrlich ablehnen
+    // (v1.16.0; bis v1.15 wurde hier gekuerzt).
+    if (content.length > 10000) {
+      throw clientError(`items[${index}]: Inhalt wächst durch die Anhang-URLs über 10.000 Zeichen — Notiz teilen oder Anhänge reduzieren`);
+    }
 
     const explicitTitle = typeof raw.title === 'string' && raw.title.trim();
     const frontTitle = typeof meta.title === 'string' && meta.title.trim();
@@ -1643,6 +1735,9 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
       isCode: frontmatterFlag(meta.iscode) === true,
       color,
       remindAt: frontmatterDate(meta.remindat),
+      // Manuelle Reihenfolge (v1.16.0): order reist im Frontmatter — ohne
+      // sie sank jede sortierte Notiz beim Round-trip auf die Fallback-Ordnung.
+      order: frontmatterOrder(meta.order),
       createdAt: importedCreatedAt,
       updatedAt: importedUpdatedAt,
       attachedImages,
@@ -1732,7 +1827,7 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
       images: indexItem ? attachmentMetadata(indexItem).images : [],
       files: indexItem ? attachmentMetadata(indexItem).files : [],
       ...(indexItem?.createdAt ? { createdAt: indexItem.createdAt, updatedAt: indexItem.updatedAt ?? indexItem.createdAt } : {}),
-      parentId, userId, order: 0
+      parentId, userId, order: indexItem?.order ?? 0
     });
   }
 
@@ -1751,8 +1846,10 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
   }
 
   // 6) Anlegen: Ordner zuerst (Eltern vor Kindern, insertMany haelt die
-  //    Reihenfolge), dann die Notizen mit aufsteigenden order-Werten ab der
-  //    aktuellen Spitze — importierte Notizen stehen oben in Datei-Reihenfolge.
+  //    Reihenfolge), dann die Notizen ab der aktuellen Spitze. Die positionelle
+  //    Vergabe ist ABSTEIGEND (v1.16.0): Der Export schreibt order:-1, der
+  //    erste Eintrag ist also der oberste — aufsteigend (bis v1..15) stand der
+  //    Round-trip komplett kopfüber. Frontmatter-order gewinnt vor Position.
   if (newFolders.length > 0) {
     await Note.insertMany(newFolders);
   }
@@ -1773,7 +1870,7 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     ...(item.createdAt ? { createdAt: item.createdAt, updatedAt: item.updatedAt ?? item.createdAt } : {}),
     parentId: item.segments.length === 0 ? null : (folderIdByPath.get(item.segments.join('/')) ?? null),
     userId,
-    order: baseOrder + index
+    order: item.order ?? (baseOrder + (noteItems.length - 1 - index))
   }));
   await Note.insertMany(newNotes);
 
@@ -1793,6 +1890,7 @@ function attachmentMetadata(item) {
       filename: asset.filename,
       thumbnailUrl: asset.thumbnailUrl || '',
       thumbnailFilename: asset.thumbnailFilename || '',
+      size: asset.size ?? 0,
       uploadedAt
     })),
     files: [...item.attachedFiles.values()].map((asset) => ({
@@ -1846,6 +1944,13 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
   //    Nur Eintraege unter assets/ sind Kandidaten; alles andere im Archiv
   //    ist hoechstens Markdown (Schritt 2). Zielverzeichnisse sicherstellen —
   //    der Import ist auch gegen einen frisch geleerten Volume lauffaehig.
+  //    Quota zuerst (v1.16.0): Der Import ist alles-oder-nichts — die
+  //    geplanten Anhang-Bytes werden geprüft, BEVOR die erste Datei entsteht.
+  let plannedAssetBytes = 0;
+  for (const [name, bytes] of entries) {
+    if (name.startsWith('assets/images/') || name.startsWith('assets/files/')) plannedAssetBytes += bytes.length;
+  }
+  await assertStorageQuota(userId, plannedAssetBytes);
   fs.mkdirSync(imagesDir(), { recursive: true });
   fs.mkdirSync(filesDir(), { recursive: true });
   const assetMap = new Map();
@@ -1889,7 +1994,8 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         }
         assetMap.set(name, {
           kind, filename, url: `/uploads/images/${filename}`,
-          thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : ''
+          thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
+          size: bytes.length
         });
       } else {
         const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
@@ -2365,6 +2471,7 @@ module.exports = {
   revokeSharedNotesBetween,
   getNoteTree,
   getNotesMeta,
+  getNoteBacklinks,
   getNoteRevisions,
   getNoteRevision,
   restoreNoteRevision,

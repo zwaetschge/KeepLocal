@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { initializeCSRF, notesAPI } from './services/api';
-import { useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh } from './hooks';
+import { useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh, useUpdatePrompt } from './hooks';
 import OfflineBanner from './components/OfflineBanner';
 import BulkActionBar from './components/BulkActionBar';
 import FolderScopeBar from './components/FolderScopeBar';
@@ -51,7 +51,7 @@ function AppContent() {
   // Theme ist eine Konto-Einstellung (SettingsContext) und folgt damit dem
   // Login statt dem Gerät. v1.10.0: Tag-Farben, gespeicherte Suchen und der
   // Journal-Ordner reisen auf demselben Weg mit.
-  const { settings, setTheme, setTagColor, setSavedSearches } = useSettings();
+  const { settings, setTheme, setTagColor, updateSettings, setSavedSearches } = useSettings();
   const theme = settings.theme;
 
   // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
@@ -109,12 +109,13 @@ function AppContent() {
       showToast(t('backOnline'), 'success', { duration: 4000 });
     }
   });
+  // PWA-Update-Prompt: Toast mit „Jetzt laden“ statt lautlosem skipWaiting.
+  useUpdatePrompt({ showToast, t });
 
   // Initialize CSRF token on mount
   useEffect(() => {
     initializeCSRF();
   }, []);
-
 
   // Theme anwenden (Persistenz übernimmt der SettingsContext)
   useEffect(() => {
@@ -152,28 +153,19 @@ function AppContent() {
     setSelectedTag(tag);
   }, []);
 
-  // v1.11.0: Tag-Pflege aus der Sidebar — der aktive Tag-Filter wandert mit.
-  const handleTagManage = useCallback(async (action, from, to) => {
-    const result = await manageTag(action, from, to);
-    if (!result) return;
-    const affected = from.map((tag) => tag.toLowerCase());
-    const current = selectedTag?.toLowerCase();
-    if (!current || !affected.includes(current)) return;
-    setSelectedTag(action === 'delete' ? null : (to?.toLowerCase() ?? null));
-  }, [manageTag, selectedTag]);
-
   // v1.10.0: Ordner-Baum, Journal, gespeicherte Suchen, Wiki-Links — die
   // Ableitungen und Handler leben im eigenen Hook, damit App.jsx Verdrahtung
-  // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js).
+  // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js). Seit v1.16.0 auch
+  // die Tag-Pflege inkl. Mitnahme von Tag-Farben und gespeicherten Suchen.
   const {
-    folderOptions, wikiNotes, allKnownTags, backlinks,
+    folderOptions, wikiNotes, allKnownTags,
     handleOpenNoteById, handleOpenToday, handleRunSavedSearch, handleSaveCurrentSearch,
-    handleDeleteSavedSearch, handleFolderDrop, handleDataImported,
+    handleDeleteSavedSearch, handleTagManage, handleFolderDrop, handleDataImported,
   } = useFolderFeatures({
     notes, noteTree, treeNodes, allTags, noteModal,
     findOrCreateTodayNote, moveNote, draggedNoteId, refreshTree, fetchNotes,
     openNoteModal, showToast, t, searchTerm, selectedTag,
-    settings, setSavedSearches,
+    settings, manageTag, updateSettings, setSavedSearches,
     setSearchTerm, setSelectedTag, setShowTrash, setShowArchived,
   });
 
@@ -197,10 +189,12 @@ function AppContent() {
       // v1.10.0: Mehrfachauswahl (die Karten zeigen die Checkbox, sobald
       // eine Auswahl aktiv ist)
       selectedIds, onToggleSelect: toggleNoteSelection,
+      // v1.16.0: Tag-Chips auf den Karten filtern die Liste
+      onTagSelect: handleTagSelect,
       tagColors: settings.tagColors,
       highlight: searchTerm,
       operationLoading,
-    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, settings.tagColors, searchTerm]);
+    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, handleTagSelect, settings.tagColors, searchTerm]);
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
@@ -215,7 +209,9 @@ function AppContent() {
   };
 
   useKeyboardShortcuts({
-    'Ctrl+n': () => noteFormRef.current?.focus(),
+    // v1.16.0: Strg+N reserviert der Browser (Chrome/Edge) — die Seite sieht das
+    // keydown nie; nur Strg+Alt+n kommt durch.
+    'Ctrl+Alt+n': () => noteFormRef.current?.focus(),
     'Ctrl+f': () => searchBarRef.current?.focus(),
     'Ctrl+k': toggleTheme,
     'Ctrl+Shift+L': () => handleLogout(),
@@ -470,7 +466,6 @@ function AppContent() {
             onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
             availableTags={allKnownTags}
             wikiNotes={wikiNotes}
-            backlinks={backlinks}
             onOpenNote={handleOpenNoteById}
             folders={folderOptions}
             defaultParentId={folderScope && folderScope !== 'root' ? folderScope : null}

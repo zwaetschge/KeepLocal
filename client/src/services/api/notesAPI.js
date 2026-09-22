@@ -78,7 +78,21 @@ const notesAPI = {
    * @param {Object} [options] - `{ signal }`
    * @returns {Promise<Array>} Flat tree nodes
    */
-  getTree: (options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.TREE, { signal: options.signal }),
+  getTree: (params = {}, options = {}) => {
+    // params (v1.16.0): { since } liefert nur geänderte Knoten — der Server
+    // kann das seit v1.13, der Client schickte es bis v1.15 nie.
+    const query = buildQueryString(params);
+    return fetchWithAuth(`${API_ENDPOINTS.NOTES.TREE}${query ? `?${query}` : ''}`, { signal: options.signal });
+  },
+
+  /**
+   * „Erwähnt in“ (v1.16.0): Notizen, die die angegebene per [[Titel]] erwähnen.
+   * Läuft serverseitig über das echte Korpus — das geladene 50er-Fenster
+   * zeigte bei vollem Bestand eine leere oder falsche Liste.
+   * @returns {Promise<Array>} [{ id, title, updatedAt }]
+   */
+  getBacklinks: (id, options = {}) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.BACKLINKS(id), { signal: options.signal }),
 
   /**
    * Markdown ZIP export (v1.10.0): the whole tree as folders of .md files.

@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const ApiKey = require('../models/ApiKey');
 const {
   generateToken,
   authenticateToken,
@@ -293,6 +294,21 @@ router.post('/login', [
   }
 });
 
+/**
+ * API-Keys des Kontos verwerfen, wenn das Passwort wechselt (v1.16.0).
+ * Eine Passwort-Rotation ist der Notfall-Hebel nach einem Leak — sessionVersion
+ * kippt nur die JWT-Sitzungen, die Keys der /api/v1 liefen bisher einfach
+ * weiter. Läuft vor dem save(), damit ein fehlgeschlagener Aufruf nie den
+ * Zustand „neues Passwort, alte Keys" hinterlässt (umgekehrt wären verlorene
+ * Keys lediglich lästig — der sichere Fehler).
+ */
+async function revokeApiKeys(userId) {
+  await ApiKey.updateMany(
+    { userId, isActive: true },
+    { $set: { isActive: false } }
+  );
+}
+
 // POST /api/auth/change-password - eigenes Passwort ändern (angemeldet).
 // Erhöht sessionVersion, damit alle anderen Sitzungen ungültig werden; die
 // aktuelle Sitzung bekommt sofort ein Cookie mit der neuen Version.
@@ -329,6 +345,9 @@ router.post('/change-password', authenticateToken, blockDemoUser('password'), [
 
     user.password = req.body.newPassword; // pre-save hook hashes
     user.sessionVersion = (user.sessionVersion || 0) + 1;
+    // Keys zuerst verwerfen (siehe revokeApiKeys): Schlägt das fehl, gilt das
+    // alte Passwort weiter — der sichere Zwischenzustand.
+    await revokeApiKeys(user._id);
     await user.save();
 
     const token = generateToken(user._id, user.sessionVersion);
@@ -368,8 +387,10 @@ router.post('/reset-password', [
     user.password = req.body.newPassword;
     user.passwordResetToken = null;
     user.passwordResetExpires = null;
-    // Alle bestehenden Sitzungen verlieren ihre Gültigkeit.
+    // Alle bestehenden Sitzungen verlieren ihre Gültigkeit — und die API-Keys
+    // gleich mit (v1.16.0): Der Token-Inhaber beweist Konto-Zugriff, mehr nicht.
     user.sessionVersion = (user.sessionVersion || 0) + 1;
+    await revokeApiKeys(user._id);
     await user.save();
 
     res.json({ message: 'Passwort zurückgesetzt. Bitte melde dich neu an.' });

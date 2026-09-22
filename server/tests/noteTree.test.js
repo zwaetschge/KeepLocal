@@ -320,6 +320,41 @@ test('GET /api/notes/export/markdown streamt ein ZIP als Anhang', async () => {
   });
 });
 
+// v1.16.0: Der Export sitzt hinter einem Concurrency-Gate pro Nutzer (gleiches
+// Profil wie der ZIP-Import: alle Anhang-Bytes plus Archiv im RAM). Deterministisch
+// getestet, indem der Test das Gate VOR dem Request selbst hält — die Route muss
+// 429 + Retry-After liefern, ohne den Service anzufassen; nach dem Release
+// klappt derselbe Export wieder.
+test('GET /api/notes/export/markdown weist einen zweiten parallelen Export mit 429 ab', async () => {
+  const { acquire } = require('../utils/concurrencyGate');
+  const gate = acquire(`export:${OWNER_ID}`, 1);
+  assert.equal(gate.acquired, true);
+  const calls = [];
+  const router = loadRouter({
+    buildMarkdownExport: async (userId) => { calls.push(userId); return Buffer.from('PK'); }
+  });
+
+  try {
+    await withServer(router, async base => {
+      const busy = await fetch(`${base}/export/markdown`);
+      const body = await busy.json();
+
+      assert.equal(busy.status, 429);
+      assert.equal(busy.headers.get('retry-after'), '30');
+      assert.equal(body.code, 'EXPORT_BUSY');
+      assert.deepEqual(calls, [], 'belegtes Gate darf den Service nicht starten');
+
+      gate.release();
+
+      const ok = await fetch(`${base}/export/markdown`);
+      assert.equal(ok.status, 200);
+      assert.deepEqual(calls, [OWNER_ID], 'nach dem Release läuft der Export normal');
+    });
+  } finally {
+    gate.release(); // idempotent: räumt auch ab, wenn ein Assert oben feuert
+  }
+});
+
 // v1.10.1 defensive: Der Export darf Notizen, die von der Wurzel aus
 // unerreichbar sind (Eltern geloescht, Zyklus in der DB), nicht still
 // verschlucken und nicht in eine Endlos-Rekursion laufen.

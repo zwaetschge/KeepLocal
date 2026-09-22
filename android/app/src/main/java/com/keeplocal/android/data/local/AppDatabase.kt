@@ -12,7 +12,7 @@ import com.keeplocal.android.data.local.entity.PendingOperationEntity
 
 @Database(
     entities = [NoteEntity::class, PendingOperationEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -70,6 +70,20 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_5_6: Migration = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE notes ADD COLUMN filesJson TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        /**
+         * v7 adds the poison guard to `pending_operations` (v1.16.0):
+         * `attemptCount` counts server-side rejections, `poisoned` takes an
+         * op out of the drain rotation after SyncManager.MAX_SYNC_ATTEMPTS.
+         * Both additive with neutral defaults — every existing queued op
+         * starts at zero attempts, unpoisoned.
+         */
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pending_operations ADD COLUMN attemptCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE pending_operations ADD COLUMN poisoned INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

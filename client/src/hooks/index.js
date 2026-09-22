@@ -14,3 +14,4 @@ export { useNotesManager } from './useNotesManager';
 export { useMarkdownHtml } from './useMarkdown';
 export { useFolderFeatures } from './useFolderFeatures';
 export { useOnlineStatus, useOnlineRefresh } from './useOnlineStatus';
+export { useUpdatePrompt } from './useUpdatePrompt';

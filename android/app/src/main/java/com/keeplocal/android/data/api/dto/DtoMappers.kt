@@ -2,6 +2,7 @@ package com.keeplocal.android.data.api.dto
 
 import com.keeplocal.android.data.api.NullableString
 import com.keeplocal.android.domain.model.*
+import com.keeplocal.android.util.MarkdownNoteParser
 import java.time.Instant
 
 fun NoteDto.toDomain(): Note = Note(
@@ -147,6 +148,42 @@ fun TodoItem.toDto(): TodoItemDto = TodoItemDto(
     isCompleted = isCompleted,
     position = position
 )
+
+
+/**
+ * v1.16.0: Flacht einen geparsten Markdown-Import auf die Items des
+ * Bulk-Endpunkts /api/notes/import/markdown ab — Ordner als `<pfad>/_index.md`
+ * mit isFolderIndex (der Server verschmilzt sie wieder mit dem Ordnerknoten),
+ * Dateien unter ihrem Originalpfad. Todo-Listen reisen als
+ * isTodoList-Frontmatter + Checkbox-Markdown, exakt das Format, das der Server
+ * beim Import wieder zu todoItems parst (derselbe Round-trip wie beim Export).
+ */
+fun buildMarkdownImportItems(parsed: MarkdownNoteParser.ParsedImport): List<ImportMarkdownItemDto> {
+    val dirItems = parsed.dirs.map { dir ->
+        ImportMarkdownItemDto(
+            path = "${dir.dirPath.trimEnd('/')}/_index.md",
+            title = dir.title,
+            content = dir.indexContent ?: "# ${dir.title}",
+            isFolderIndex = true
+        )
+    }
+    val fileItems = parsed.files.map { file ->
+        ImportMarkdownItemDto(
+            path = file.path,
+            title = file.title,
+            content = if (file.isTodoList) {
+                val checkboxes = file.todoItems.joinToString("\n") { item ->
+                    "- [${if (item.isCompleted) "x" else " "}] ${item.text}"
+                }
+                "---\nisTodoList: true\n---\n$checkboxes"
+            } else {
+                file.content
+            },
+            tags = file.tags.takeIf { it.isNotEmpty() }
+        )
+    }
+    return dirItems + fileItems
+}
 
 private fun parseInstant(dateString: String): Instant {
     return try {

@@ -44,6 +44,8 @@ export const de = {
   offlineBanner: 'Keine Verbindung — Änderungen werden gerade nicht gespeichert.',
   offlineRetry: 'Erneut versuchen',
   backOnline: 'Wieder verbunden — Notizen wurden aktualisiert.',
+  updateAvailable: 'Eine neue Version ist verfügbar.',
+  updateNow: 'Jetzt laden',
   newNote: 'Neue Notiz',
   title: 'Titel',
   content: 'Inhalt',
@@ -409,7 +411,7 @@ export const de = {
   // Audit 2026-09-10: vorher hartkodierte deutsche Zeichenketten
   appTitle: 'KeepLocal - Notizen App',
   loadingApp: 'Lade...',
-  shortcutCtrlN: 'Strg+N',
+  shortcutCtrlN: 'Strg+Alt+N',
   openMenu: 'Menü öffnen',
   skipToContent: 'Zum Inhalt springen',
   toggleTheme: 'Design wechseln',

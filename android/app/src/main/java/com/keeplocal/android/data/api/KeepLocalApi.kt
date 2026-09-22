@@ -87,6 +87,11 @@ interface KeepLocalApi {
     @POST("api/notes")
     suspend fun createNote(@Body note: CreateNoteDto): Response<NoteDto>
 
+    /** Bulk import (v1.16.0): one request per 500er chunk instead of one
+     *  createNote per file — the server builds the tree from the paths. */
+    @POST("api/notes/import/markdown")
+    suspend fun importMarkdown(@Body body: ImportMarkdownRequestDto): Response<ImportMarkdownResultDto>
+
     @PUT("api/notes/{id}")
     suspend fun updateNote(@Path("id") id: String, @Body note: UpdateNoteDto): Response<NoteDto>
 

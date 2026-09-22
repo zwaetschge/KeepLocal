@@ -44,6 +44,8 @@ export const en = {
   offlineBanner: 'No connection — changes are not being saved right now.',
   offlineRetry: 'Try again',
   backOnline: 'Back online — notes refreshed.',
+  updateAvailable: 'A new version is available.',
+  updateNow: 'Reload now',
   newNote: 'New Note',
   title: 'Title',
   content: 'Content',
@@ -409,7 +411,7 @@ export const en = {
   // Audit 2026-09-10: previously hardcoded German strings
   appTitle: 'KeepLocal - Notes App',
   loadingApp: 'Loading...',
-  shortcutCtrlN: 'Ctrl+N',
+  shortcutCtrlN: 'Ctrl+Alt+N',
   openMenu: 'Open menu',
   skipToContent: 'Skip to content',
   toggleTheme: 'Toggle theme',

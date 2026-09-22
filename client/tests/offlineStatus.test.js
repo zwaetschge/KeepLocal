@@ -112,7 +112,7 @@ test('a failed save while offline says so instead of "error updating note"', asy
 
 test('the app shows the banner offline and refreshes on reconnect', () => {
   const app = read('App.jsx');
-  assert.match(app, /import \{ useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh \} from '\.\/hooks';/);
+  assert.match(app, /import \{ useKeyboardShortcuts, useNotesManager, useFolderFeatures, useOnlineRefresh, useUpdatePrompt \} from '\.\/hooks';/);
   assert.match(app, /import OfflineBanner from '\.\/components\/OfflineBanner';/);
   assert.match(app, /const isOnline = useOnlineRefresh\(\{\n\s+enabled: isLoggedIn,/);
   assert.match(app, /\{!isOnline && \(\n\s+<OfflineBanner onRetry=/, 'the banner renders in the authenticated shell');

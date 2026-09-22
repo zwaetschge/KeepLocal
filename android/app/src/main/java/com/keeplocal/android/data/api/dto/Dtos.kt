@@ -131,7 +131,10 @@ data class NoteDto(
     @Json(name = "images") val images: List<NoteImageDto>? = null,
     @Json(name = "sharedWith") val sharedWith: List<SharedUserDto>? = null,
     @Json(name = "owner") val owner: String = "",
-    @Json(name = "position") val position: Int = 0,
+    // v1.16.0 wire fix: the server field is `order` (Note schema, web client,
+    // v1 API). `position` was never sent by the server and never understood in
+    // a PUT — manual order silently round-tripped as 0 in both directions.
+    @Json(name = "order") val position: Int = 0,
     @Json(name = "createdAt") val createdAt: String? = null,
     @Json(name = "updatedAt") val updatedAt: String? = null,
     // Set while the note sits in the 30-day trash; null on live notes.
@@ -226,13 +229,17 @@ data class TranscriptionResultDto(
     @Json(name = "language") val language: String? = null
 )
 
+// v1.16.0 wire fix: the server todo contract is completed/order (Note schema
+// + validateNoteFields), exactly what the web client sends. isCompleted/position
+// passed server validation (undefined is allowed) but the strict Mongoose schema
+// stripped them — check marks and item order were silently lost on every sync.
 @JsonClass(generateAdapter = true)
 data class TodoItemDto(
     @Json(name = "_id") val mongoId: String = "",
     @Json(name = "id") val id: String = "",
     @Json(name = "text") val text: String = "",
-    @Json(name = "isCompleted") val isCompleted: Boolean = false,
-    @Json(name = "position") val position: Int = 0
+    @Json(name = "completed") val isCompleted: Boolean = false,
+    @Json(name = "order") val position: Int = 0
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
 }
@@ -268,7 +275,8 @@ data class UpdateNoteDto(
     @Json(name = "isTodoList") val isTodoList: Boolean? = null,
     @Json(name = "todoItems") val todoItems: List<TodoItemDto>? = null,
     @Json(name = "tags") val tags: List<String>? = null,
-    @Json(name = "position") val position: Int? = null,
+    // v1.16.0: sends the note order under its server name (see NoteDto).
+    @Json(name = "order") val position: Int? = null,
     // Optimistic locking: the updatedAt of the version the edit started from.
     // Server answers 409 with the current note when it was changed meanwhile.
     @Json(name = "baseUpdatedAt") val baseUpdatedAt: String? = null,
@@ -291,6 +299,31 @@ data class ShareNoteDto(
 @JsonClass(generateAdapter = true)
 data class ReorderNotesDto(
     @Json(name = "orderedIds") val orderedIds: List<String>
+)
+
+/** One parsed .md entry for POST /api/notes/import/markdown (v1.16.0): the
+ *  server builds the tree from the paths, folders come across as
+ *  `<ordner>/_index.md` + isFolderIndex — same wire format the web client
+ *  sends, instead of one createNote request per file. */
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownItemDto(
+    @Json(name = "path") val path: String,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "content") val content: String? = null,
+    @Json(name = "tags") val tags: List<String>? = null,
+    @Json(name = "isFolderIndex") val isFolderIndex: Boolean? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownRequestDto(
+    @Json(name = "items") val items: List<ImportMarkdownItemDto>
+)
+
+/** Answer of /import/markdown: how many notes/folders the server created. */
+@JsonClass(generateAdapter = true)
+data class ImportMarkdownResultDto(
+    @Json(name = "created") val created: Int = 0,
+    @Json(name = "foldersCreated") val foldersCreated: Int = 0
 )
 
 /** GET /api/auth/providers — only configured providers are offered. */

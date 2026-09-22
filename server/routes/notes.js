@@ -185,8 +185,23 @@ router.get('/meta', async (req, res, next) => {
 /**
  * GET /api/notes/export/markdown - Gesamter Baum als Markdown-ZIP (Round-trip
  * zum Trilium-/Ordner-Import, zugleich lesbares Backup).
+ *
+ * Hinter einem Concurrency-Gate pro Nutzer (v1.16.0): Der Export liest jede
+ * Anhangs-Datei und haelt alle Bytes plus das fertige Archiv im RAM. Ein zweiter
+ * paralleler Antrag desselben Nutzers (Doppelklick, zweites Tab, read-only
+ * API-Key ueber die v1-Route) waere ein OOM-Vektor gegen das All-in-One-Image,
+ * in dem mongod und Whisper mit auf dem Host liegen — der Import-Endpunkt
+ * gate't exakt dieses Profil seit v1.15.0 (siehe unten).
  */
 router.get('/export/markdown', async (req, res, next) => {
+  const gate = acquire(`export:${req.user._id}`, 1);
+  if (!gate.acquired) {
+    res.setHeader('Retry-After', '30');
+    return res.status(httpStatus.TOO_MANY_REQUESTS).json({
+      code: 'EXPORT_BUSY',
+      error: 'Es läuft bereits ein Export. Bitte in einer halben Minute erneut versuchen.'
+    });
+  }
   try {
     const archive = await notesService.buildMarkdownExport(req.user._id);
     res.setHeader('Content-Type', 'application/zip');
@@ -194,6 +209,8 @@ router.get('/export/markdown', async (req, res, next) => {
     res.end(archive);
   } catch (error) {
     next(error);
+  } finally {
+    gate.release();
   }
 });
 
@@ -304,6 +321,26 @@ router.get('/', noteValidation.search, async (req, res, next) => {
 // -------------------------------------------------------------------------
 // Notiz-Historie (v1.13.0)
 // -------------------------------------------------------------------------
+
+/**
+ * GET /api/notes/:id/backlinks - Notizen, die diese per `[[Titel]]` erwähnen
+ * (v1.16.0). Muss VOR /:id registriert sein. Liefert [{id, title, updatedAt}],
+ * neueste zuerst, maximal 50.
+ */
+router.get('/:id/backlinks', noteValidation.getOne, async (req, res, next) => {
+  try {
+    const backlinks = await notesService.getNoteBacklinks(req.params.id, req.user._id);
+    res.json(backlinks);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
 
 /**
  * GET /api/notes/:id/revisions - Revisionsliste (Metadaten) oder mit ?at=ISO

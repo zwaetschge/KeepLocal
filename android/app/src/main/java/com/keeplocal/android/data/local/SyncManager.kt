@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.time.ZonedDateTime
@@ -37,12 +38,21 @@ import javax.inject.Singleton
 /** Page size for the background delta pull — matches the server-side list limit. */
 private const val PULL_PAGE_LIMIT = 100
 
+/**
+ * Poison cap (v1.16.0): a queued op the server keeps rejecting gets at most
+ * this many drains before it is poisoned (kept in the table, never replayed).
+ * Counted are server-side failures only — network hiccups and 401s are free,
+ * otherwise one elevator ride offline would bury the whole queue.
+ */
+const val MAX_SYNC_ATTEMPTS = 8
+
 /** Snapshot of the offline queue, collected by the notes UI for its sync banner. */
 data class SyncStatus(
     val isSyncing: Boolean = false,
     val pendingCount: Int = 0,
     val failedCount: Int = 0,
     val skippedCount: Int = 0,
+    val poisonedCount: Int = 0,
     val authRequired: Boolean = false,
     val conflicts: List<String> = emptyList()
 )
@@ -67,10 +77,13 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun syncPendingOperations(): SyncResult = withContext(Dispatchers.IO) {
-        val operations = pendingOperationDao.getAllOperations()
+        // v1.16.0: poisoned ops never replay — a permanently rejected op
+        // (validation, deleted shared note, …) used to retry every drain
+        // forever. They stay in the table for the sync-queue view.
+        val operations = pendingOperationDao.getActiveOperations()
         if (operations.isEmpty()) {
-            _syncStatus.value = SyncStatus()
-            return@withContext SyncResult(0, 0)
+            _syncStatus.value = SyncStatus(pendingCount = pendingOperationDao.getCount(), poisonedCount = pendingOperationDao.getPoisonedCount())
+            return@withContext SyncResult(0, 0, poisoned = pendingOperationDao.getPoisonedCount())
         }
 
         _syncStatus.value = _syncStatus.value.copy(isSyncing = true)
@@ -78,6 +91,7 @@ class SyncManager @Inject constructor(
         var synced = 0
         var failed = 0
         var skipped = 0
+        var poisoned = 0
         var authRequired = false
         val conflicts = mutableListOf<String>()
         // A successful CREATE replaces the temporary offline id with the server
@@ -99,12 +113,28 @@ class SyncManager @Inject constructor(
                         synced++
                     }
                     OpOutcome.SKIPPED -> skipped++
-                    OpOutcome.FAILED -> failed++
+                    OpOutcome.FAILED -> {
+                        failed++
+                        // Poison cap (v1.16.0): only server rejections count —
+                        // this branch is unreachable for IOException (the catch
+                        // below intercepts transport errors first).
+                        pendingOperationDao.incrementAttempts(op.id)
+                        if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
+                            pendingOperationDao.markPoisoned(op.id)
+                            poisoned++
+                        }
+                    }
                     OpOutcome.AUTH_REQUIRED -> {
                         authRequired = true
                         failed++
                     }
                 }
+            } catch (e: IOException) {
+                // Netz weg mitten im Drain (v1.16.0): abbrechen statt durch die
+                // Rest-Queue zu hungern — jede weitere Op liefe bis zum
+                // Timeout. Kein failed-, kein Versuch-Zähler: der nächste
+                // Drain (wieder online) setzt unverändert fort.
+                break
             } catch (_: Exception) {
                 failed++
             }
@@ -114,6 +144,7 @@ class SyncManager @Inject constructor(
             synced = synced,
             failed = failed,
             skipped = skipped,
+            poisoned = poisoned,
             authRequired = authRequired,
             conflicts = conflicts
         )
@@ -121,6 +152,7 @@ class SyncManager @Inject constructor(
             pendingCount = pendingOperationDao.getCount(),
             failedCount = failed,
             skippedCount = skipped,
+            poisonedCount = pendingOperationDao.getPoisonedCount(),
             authRequired = authRequired,
             conflicts = conflicts
         )
@@ -456,6 +488,8 @@ data class SyncResult(
     val synced: Int,
     val failed: Int,
     val skipped: Int = 0,
+    /** Ops newly poisoned in THIS drain (hit the attempt cap). */
+    val poisoned: Int = 0,
     val authRequired: Boolean = false,
     val conflicts: List<String> = emptyList()
 )

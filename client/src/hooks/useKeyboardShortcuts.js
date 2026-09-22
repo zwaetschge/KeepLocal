@@ -10,9 +10,9 @@ import { subscribeToWindowEvent } from '../utils/browserEnvironment.mjs';
  *
  * @example
  * useKeyboardShortcuts({
- *   'Ctrl+N': () => console.log('New note'),
- *   'Ctrl+F': () => searchRef.current.focus(),
- *   'Ctrl+K': toggleTheme,
+ *   'Ctrl+Alt+n': () => console.log('New note'), // Strg+N reserviert der Browser
+ *   'Ctrl+f': () => searchRef.current.focus(),
+ *   'Ctrl+k': toggleTheme,
  *   'Ctrl+Shift+L': logout,
  *   'Escape': closeModal,
  *   'Ctrl+Enter': saveNote,

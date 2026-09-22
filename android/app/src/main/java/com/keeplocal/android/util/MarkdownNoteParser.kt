@@ -36,7 +36,11 @@ object MarkdownNoteParser {
         val tags: List<String>,
         val isTodoList: Boolean,
         val todoItems: List<TodoItem>,
-        val parentPath: String? // null = root level
+        val parentPath: String?, // null = root level
+        /** Normalized full file path ("ordner/datei.md") — v1.16.0: needed to
+         *  hand the parsed tree to the server's bulk import endpoint, which
+         *  rebuilds the structure from exactly these paths. */
+        val path: String = ""
     )
 
     data class ParsedImport(val dirs: List<ParsedDir>, val files: List<ParsedFile>)
@@ -79,7 +83,9 @@ object MarkdownNoteParser {
                 // An _index.md at the picked root has no folder to decorate —
                 // it imports as a plain root-level note instead.
             }
-            outFiles += parseFile(stem, entry.content).let { it.copy(parentPath = dirPath.ifEmpty { null }) }
+            outFiles += parseFile(stem, entry.content).let {
+                it.copy(path = entry.path, parentPath = dirPath.ifEmpty { null })
+            }
         }
 
         // Merge the _index.md bodies into their folders and sort by depth so

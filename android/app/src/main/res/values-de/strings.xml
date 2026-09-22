@@ -319,6 +319,7 @@
     <string name="settings_queue_dialog_hint">Diese Änderungen entstanden offline und werden automatisch synchronisiert. Verwerfe nur Einträge, deren Verlust du sicher willst — die Änderung erreicht den Server dann nie.</string>
     <string name="settings_queue_empty">Die Warteschlange ist leer — alles synchronisiert.</string>
     <string name="settings_queue_discard">Wartende Änderung verwerfen</string>
+    <string name="settings_queue_poisoned">Nach 8 Fehlversuchen gestoppt — wird nicht automatisch wiederholt</string>
     <string name="settings_queue_type_create">Anlegen</string>
     <string name="settings_queue_type_update">Bearbeiten</string>
     <string name="settings_queue_type_delete">Löschen</string>

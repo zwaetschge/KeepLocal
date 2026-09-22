@@ -302,6 +302,42 @@ test('the v1 surface exposes tree, meta, export and bulk import', async () => {
   assert.equal(calls.find((c) => c.op === 'getNoteTree').since, '2026-09-01T00:00:00.000Z');
 });
 
+// v1.16.0: Die v1-Route teilt sich das Export-Gate mit der Session-Route — der
+// Gate-Schlüssel ist der NUTZER, nicht der Auth-Weg. Ein read-only Key kann
+// denselben speicherhungrigen Export anstoßen wie der Browser; der 429er-Fehler-
+// Körper trägt hier den v1-Envelope (success: false).
+test('the v1 export shares the per-user concurrency gate (429 while busy)', async () => {
+  const { acquire } = require('../utils/concurrencyGate');
+  const { app, calls } = loadApi({
+    serviceOverrides: {
+      buildMarkdownExport: async () => { calls.push({ op: 'buildMarkdownExport' }); return Buffer.from('PK'); }
+    }
+  });
+
+  const gate = acquire(`export:${USER}`, 1);
+  assert.equal(gate.acquired, true);
+  try {
+    await withServer(app, async (base) => {
+      const busy = await fetch(`${base}/api/v1/notes/export/markdown`);
+      const body = await busy.json();
+
+      assert.equal(busy.status, 429);
+      assert.equal(busy.headers.get('retry-after'), '30');
+      assert.equal(body.success, false);
+      assert.equal(body.code, 'EXPORT_BUSY');
+      assert.deepEqual(calls, []);
+
+      gate.release();
+
+      const ok = await fetch(`${base}/api/v1/notes/export/markdown`);
+      assert.equal(ok.status, 200);
+      assert.equal(calls.length, 1);
+    });
+  } finally {
+    gate.release(); // idempotent
+  }
+});
+
 test('the new v1 routes are registered before /:id', () => {
   const fs = require('node:fs');
   const source = fs.readFileSync(notesRouterPath, 'utf8');

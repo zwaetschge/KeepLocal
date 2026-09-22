@@ -331,6 +331,7 @@
     <string name="settings_queue_dialog_hint">These changes were made offline and will sync automatically. Discard only entries you are sure about — the change will not reach the server.</string>
     <string name="settings_queue_empty">The queue is empty — everything is synced.</string>
     <string name="settings_queue_discard">Discard queued change</string>
+    <string name="settings_queue_poisoned">Stopped after 8 failed attempts — will not retry automatically</string>
     <string name="settings_queue_type_create">Create</string>
     <string name="settings_queue_type_update">Edit</string>
     <string name="settings_queue_type_delete">Delete</string>
