@@ -1,5 +1,6 @@
 const ApiKey = require('../models/ApiKey');
 const User = require('../models/User');
+const { authenticateToken, AUTH_COOKIE_NAME } = require('./auth');
 
 /**
  * Authenticate requests via API key (X-API-Key header)
@@ -72,4 +73,26 @@ const requireApiKeyWrite = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateApiKey, requireApiKeyWrite };
+/**
+ * Dual auth für /uploads (v1.15.0): Der Browser kommt mit Session-Cookie
+ * (kl_session → authenticateToken), Skripte mit X-API-Key. Bis jetzt konnte ein
+ * v1-Client Anhänge hochladen (ab sofort, siehe v1-Upload-Routen), aber die
+ * Datei-URL nicht abrufen — GET /uploads/<name> kannte nur die Session.
+ * Reihenfolge: X-API-Key gewinnt, wenn beide present sind (explizit vor
+ * implizit; Browser senden den Header nie). Ohne beides: 401 mit Hinweis auf
+ * beide Wege.
+ */
+const authenticateSessionOrApiKey = (req, res, next) => {
+  if (req.headers['x-api-key']) {
+    return authenticateApiKey(req, res, next);
+  }
+  if (req.cookies?.[AUTH_COOKIE_NAME]) {
+    return authenticateToken(req, res, next);
+  }
+  return res.status(401).json({
+    success: false,
+    error: 'Authentifizierung erforderlich (Session-Cookie oder X-API-Key Header)'
+  });
+};
+
+module.exports = { authenticateApiKey, requireApiKeyWrite, authenticateSessionOrApiKey };

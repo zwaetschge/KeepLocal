@@ -181,3 +181,93 @@ test('importMarkdownNotes normalisiert Titel/Tags/Pfade defensiv', async () => {
   assert.deepEqual(note.tags, ['arbeit', 'x'.repeat(50)], 'getrimmt, lowercase, leere gefiltert, auf 50 gekappt');
   assert.ok(note.parentId, 'Pfad-Slashes am Rand sind entfernt, Ordner angelegt');
 });
+
+// v1.15.0: created/updated aus Fremd-Frontmatter werden auf den Import-
+// Zeitpunkt geclampt (eine einzige Zukunfts-Notiz vergiftet den Sync-Cursor
+// und die Meta-Sonde fuer immer), danach Monotonie created <= updated.
+// clampImportedTimestamp ist nicht exportiert — deshalb integriert ueber
+// importMarkdownNotes; remindAt bleibt bewusst unangefasst.
+
+const ZUKUNFT = '2999-01-01T00:00:00.000Z';
+
+test('importMarkdownNotes clampt created aus der Zukunft auf den Import-Zeitpunkt', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  const before = Date.now();
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Zukunft', content: `---\ncreated: ${ZUKUNFT}\n---\nBody` }
+  ]);
+
+  const note = store.inserted.find((doc) => doc.title === 'Zukunft');
+  assert.ok(note.createdAt instanceof Date, 'Frontmatter-Datum kommt als Date an');
+  assert.ok(note.createdAt.getTime() >= before - 1000, 'geclampt auf jetzt, nicht auf 2999');
+  assert.ok(note.createdAt.getTime() <= Date.now(), 'nicht spaeter als der Import-Aufruf');
+});
+
+test('importMarkdownNotes clampt updated aus der Zukunft analog', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  const before = Date.now();
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Update-Zukunft', content: `---\ncreated: 2020-05-01T12:00:00.000Z\nupdated: ${ZUKUNFT}\n---\nBody` }
+  ]);
+
+  const note = store.inserted.find((doc) => doc.title === 'Update-Zukunft');
+  assert.equal(note.createdAt.getTime(), new Date('2020-05-01T12:00:00.000Z').getTime(), 'created in der Vergangenheit bleibt exakt');
+  assert.ok(note.updatedAt instanceof Date);
+  assert.ok(note.updatedAt.getTime() >= before - 1000, 'updated aus 2999 wird auf jetzt gezogen');
+  assert.ok(note.updatedAt.getTime() <= Date.now(), 'auch updated nicht spaeter als der Import');
+});
+
+test('importMarkdownNotes erhaelt valide Vergangenheits-Daten unveraendert', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Altbestand', content: '---\ncreated: 2020-05-01T12:00:00.000Z\nupdated: 2021-06-02T13:30:00.000Z\n---\nBody' }
+  ]);
+
+  const note = store.inserted.find((doc) => doc.title === 'Altbestand');
+  assert.equal(note.createdAt.getTime(), new Date('2020-05-01T12:00:00.000Z').getTime());
+  assert.equal(note.updatedAt.getTime(), new Date('2021-06-02T13:30:00.000Z').getTime());
+});
+
+test('importMarkdownNotes stellt Monotonie her: created nach updated wird angeglichen', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  //created in 2999, updated 2020 — ein reines Clampen haette created auf jetzt
+  //gezogen und die Notiz damit NACH ihrem eigenen Update sortiert. Erwartet:
+  //created wird auf das echte updated gezogen.
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Dreher', content: `---\ncreated: ${ZUKUNFT}\nupdated: 2020-01-01T00:00:00.000Z\n---\nBody` }
+  ]);
+
+  const note = store.inserted.find((doc) => doc.title === 'Dreher');
+  assert.equal(note.createdAt.getTime(), new Date('2020-01-01T00:00:00.000Z').getTime(), 'created folgt updated');
+  assert.equal(note.updatedAt.getTime(), new Date('2020-01-01T00:00:00.000Z').getTime());
+
+  // Derselbe Dreher ohne jede Zukunfts-Angabe — Monotonie greift auch im
+  // reinen Vergangenheits-Bestand (Fremd-Exporte mit vertauschten Daten).
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Dreher alt', content: '---\ncreated: 2022-01-01T00:00:00.000Z\nupdated: 2021-01-01T00:00:00.000Z\n---\nBody' }
+  ]);
+  const older = store.inserted.find((doc) => doc.title === 'Dreher alt');
+  assert.equal(older.createdAt.getTime(), new Date('2021-01-01T00:00:00.000Z').getTime());
+  assert.ok(older.createdAt.getTime() <= older.updatedAt.getTime());
+});
+
+test('importMarkdownNotes clampt remindAt NICHT — Zukunfts-Erinnerung bleibt', async () => {
+  const store = makeStore();
+  const service = loadService(store.NoteMock);
+
+  await service.importMarkdownNotes(OWNER_ID, [
+    { path: '', title: 'Erinnerung', content: `---\nremindAt: ${ZUKUNFT}\n---\nBody` }
+  ]);
+
+  const note = store.inserted.find((doc) => doc.title === 'Erinnerung');
+  assert.ok(note.remindAt instanceof Date);
+  assert.equal(note.remindAt.getTime(), new Date(ZUKUNFT).getTime(), 'Erinnerungen in der Zukunft sind der Normalfall');
+});

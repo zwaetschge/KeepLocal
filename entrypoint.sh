@@ -47,6 +47,19 @@ else
     echo "✓ AI_SERVICE_TOKEN is configured"
 fi
 
+# MONGO_CACHE_GB (v1.15.0): supervisord expands %(ENV_MONGO_CACHE_GB)s ins
+# mongod-Command — ein leerer/ungesetzter Wert wuerde mongod mit einem kaputten
+# --wiredTigerCacheSizeGB starten lassen. Default hier setzen und offensichtliche
+# Fehlwerte (nicht-numerisch, < 0.1, jenseits von 64 GB) abweisen.
+: "${MONGO_CACHE_GB:=0.5}"
+export MONGO_CACHE_GB
+if ! printf '%s' "$MONGO_CACHE_GB" | grep -Eq '^[0-9]+([.][0-9]+)?$' \
+   || ! awk -v v="$MONGO_CACHE_GB" 'BEGIN { exit !(v >= 0.1 && v <= 64) }'; then
+    echo "ERROR: MONGO_CACHE_GB must be a number between 0.1 and 64 (got: '$MONGO_CACHE_GB')."
+    exit 1
+fi
+echo "✓ MongoDB WiredTiger cache: ${MONGO_CACHE_GB} GB"
+
 # The all-in-one image bakes the Whisper model at build time. Overriding
 # WHISPER_MODEL at runtime would force a download at every boot and can leave
 # the AI service dead on offline hosts — fail fast with instructions instead.

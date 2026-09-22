@@ -12,7 +12,20 @@ name: Docker Build and Push
 #     docker-metadata.sh publisht dann NUR den immutablen Tag (nie main/latest),
 #     damit Dockerfile-Änderungen vor dem Merge echt multi-arch gebaut und
 #     getestet werden koennen.
+#   - pull_request (v1.15.0): feuert NUR pr-build — ein amd64-Build ohne Push
+#     pro PR, damit Dockerfile-/Stage-Brueche schon im Review auffallen und
+#     nicht erst nach dem Merge. build-and-push bleibt via `if` fuer
+#     pull_request-Events gesperrt (kein Login, kein Push aus einem PR).
+#
+# Test-then-Promote (v1.15.0): build-and-push pushed NUR den immutablen Tag
+# (<Datum>-<shortsha>). Erst nachdem test-image das Image auf amd64 UND arm64
+# smoke-getestet hat, vergibt der promote-Job die beweglichen Kanaele
+# (main/latest/semver) per `docker buildx imagetools create`. Ein Image, das
+# auf einer Architektur nicht startet, kann so nie unter `latest` landen —
+# vorher war `latest` Sekunden nach dem Build oeffentlich, und Self-Hoster
+# mit automatischem Pull zogen es sich ungefragt.
 on:
+  pull_request:
   workflow_run:
     workflows: ["CI"]
     types:
@@ -38,6 +51,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # PR-Vollpruefung des Dockerfiles (v1.15.0): Bisher testeten PRs nur die
+  # Source-Ebenen (Server/Client/Android) — ein Tippfehler im Dockerfile oder
+  # eine kaputte Stage fiel erst im Merge-Durchlauf auf (oder gar nicht, weil
+  # nur der Verifikations-Dispatch baut). Ein amd64-Build ohne Push faengt das
+  # im PR. Kein Login, keine Secrets; arm64 bleibt dem Merge-Build vorbehalten
+  # — der QEMU-Doppelbuild pro PR waere reine Runner-Zeit.
+  pr-build:
+    name: PR Dockerfile check (amd64, no push)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build All-in-One image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.allinone
+          platforms: linux/amd64
+          push: false
+          # Kein docker-metadata.sh hier: Das Skript verlangt Pflicht-Variablen
+          # (GITHUB_REF_TYPE etc.), die bei pull_request-Events leer sind und
+          # wuerde den Job sofort abbrechen. APP_VERSION=pr-<Nummer> genuegt.
+          build-args: |
+            APP_VERSION=pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build-and-push:
     runs-on: ubuntu-latest
     # Multi-Arch (QEMU-arm64) mit frischem npm-ci-Layer braucht je nach Runner-
@@ -47,14 +95,18 @@ jobs:
     timeout-minutes: 150
     # Nur veroeffentlichen, wenn die CI desselben Commits erfolgreich war.
     # `workflow_run.event == 'push'` schliesst PR-Laeufe aus, deren head_branch
-    # zufaellig main heisst (z. B. Forks).
+    # zufaellig main heisst (z. B. Forks). pull_request-Events (seit v1.15.0
+    # Trigger dieses Workflows) bedient pr-build — ohne die erste Zeile waere
+    # der true-Zweig aktiv und ein PR wuerde publishen.
     if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'))
     outputs:
       test-tag: ${{ steps.meta.outputs.test-tag }}
+      promote-tags: ${{ steps.meta.outputs.promote-tags }}
     permissions:
       contents: read
       packages: write
@@ -91,6 +143,10 @@ jobs:
           GITHUB_REF_TYPE: ${{ github.event_name == 'workflow_run' && 'branch' || github.ref_type }}
         run: .github/scripts/docker-metadata.sh
 
+      # Test-then-Promote: NUR der immutable Tag (publish-tags) — die
+      # beweglichen Kanaele vergibt der promote-Job nach bestandenem
+      # test-image. APP_VERSION landet via Dockerfile-ARG in
+      # /app/server/VERSION und damit in /api/health und der Root-Route.
       - name: Build and push All-in-One Docker image
         uses: docker/build-push-action@v5
         with:
@@ -98,8 +154,10 @@ jobs:
           file: ./Dockerfile.allinone
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.meta.outputs.publish-tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -283,3 +341,42 @@ jobs:
         run: |
           docker stop keeplocal-test || true
           docker rm keeplocal-test || true
+
+  # Test-then-Promote (v1.15.0): Erst wenn BEIDE Architekturen des Images
+  # smoke-getestet sind, werden die beweglichen Kanaele (main/latest/semver)
+  # auf den bereits gepushten immutable Tag gelegt. `imagetools create -t`
+  # erzeugt einen neuen Tag, der auf dieselbe Multi-Arch-Manifestliste zeigt —
+  # ohne Rebuild, ohne abweichende Digests. Branch-Verifikations-Builds
+  # liefern promote-tags leer und ueberspringen diesen Job komplett.
+  promote:
+    name: Promote tested image
+    needs: [build-and-push, test-image]
+    if: needs.build-and-push.outputs.promote-tags != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Promote immutable tag to channel tags
+        env:
+          PROMOTE_TAGS: ${{ needs.build-and-push.outputs.promote-tags }}
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          IMMUTABLE_TAG: ${{ needs.build-and-push.outputs.test-tag }}
+        run: |
+          set -eu
+          echo "Promoting ${IMAGE}:${IMMUTABLE_TAG}:"
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "  -> ${tag}"
+            docker buildx imagetools create -t "$tag" "${IMAGE}:${IMMUTABLE_TAG}"
+          done <<< "$PROMOTE_TAGS"
+          echo "All channel tags now point at the tested image."

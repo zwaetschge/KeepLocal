@@ -227,7 +227,7 @@ test('all restricted routes and the reset worker are wired into deployment', () 
   assert.doesNotMatch(supervisor, /^environment=/m);
 });
 
-test('API and upload responses are marked private and non-cacheable', () => {
+test('API responses are marked private and non-cacheable, uploads deliberately are not', () => {
   const noStore = require('../middleware/noStore');
   const headers = {};
   let continued = false;
@@ -245,5 +245,13 @@ test('API and upload responses are marked private and non-cacheable', () => {
   assert.equal(headers.Expires, '0');
 
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  assert.match(server, /app\.use\(\['\/api', '\/uploads'\], noStore\)/);
+  // v1.15.0: /uploads fiel aus dem noStore-Bergiff raus. Upload-Speichernamen
+  // sind Random-Hex und werden nie mutiert — secureFileServe setzt dafuer
+  // private+immutable und laesst ETag/304 zu. Ein versehentliches
+  // Zurueckrollen auf ['/api', '/uploads'] wuerde jedes Notizoeffnen wieder
+  // zu Voll-Downloads aller Bilder/PDFs machen.
+  assert.match(server, /app\.use\('\/api', noStore\);/);
+  assert.doesNotMatch(server, /noStore[^\n]*uploads|uploads[^\n]*noStore/);
+  const secureFileServe = fs.readFileSync(path.join(root, 'middleware/secureFileServe.js'), 'utf8');
+  assert.match(secureFileServe, /private, max-age=31536000, immutable/);
 });

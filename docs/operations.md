@@ -42,6 +42,17 @@ UI translates — the client keeps the recording for retry on `429` and drops
 it only on `413`. Counters are in memory, i.e. per server process, and reset
 on restart.
 
+## Memory budget: the MongoDB cache is capped
+
+MongoDB sizes its WiredTiger cache after **host RAM** by default (roughly
+50 % of it) — inside a container without a memory limit that means a big host
+hands mongod tens of GB that then compete with nginx, the API server, and
+Whisper for the actual host memory. KeepLocal caps the cache via
+`MONGO_CACHE_GB` (default `0.5`, valid range `0.1`–`64`; the entrypoint
+refuses to start on anything else). `0.5` GB is ample for the single-user,
+single-node usage this image targets; raise it only if you import tens of
+thousands of notes and see slow queries.
+
 ## Health endpoints
 
 - `/api/health/live` — process is up, no dependency checks.
@@ -51,6 +62,10 @@ on restart.
   are cached (`HEALTH_PROBE_TTL_MS`, default 30 s) so readiness stays cheap.
 - With `REQUIRE_AI_FOR_READY=true` an unreachable AI service fails readiness —
   useful when transcription is a hard requirement of your deployment.
+- All three endpoints report `version` — the release tag baked into the image
+  at build time (`dev` for local builds). The web UI shows the same value in
+  Settings → footer, so "which image is actually running" never needs
+  `docker inspect`.
 
 ## Preferences follow the account
 

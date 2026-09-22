@@ -8,7 +8,7 @@ const Note = require('../models/Note');
 const ApiKey = require('../models/ApiKey');
 const Settings = require('../models/Settings');
 const { errorMessages } = require('../constants');
-const { deleteNoteImages } = require('./notesService');
+const { deleteNoteImages, deleteNoteFiles } = require('./notesService');
 const { escapeRegex } = require('../utils/sanitize');
 
 /**
@@ -152,7 +152,9 @@ async function deleteUser(userId, currentUserId) {
   await Note.deleteMany({ userId });
   await User.findByIdAndDelete(userId);
 
-  await Promise.all(userNotes.map(note => deleteNoteImages(note)));
+  // v1.15.0: auch Dateianhaenge (files/, die v1.12.0-PDFs) — vorher blieben
+  // sie ohne optionalen Janitor fuer immer auf der Platte. Muster wie emptyTrash.
+  await Promise.all(userNotes.map(note => Promise.all([deleteNoteImages(note), deleteNoteFiles(note)])));
   return user;
 }
 

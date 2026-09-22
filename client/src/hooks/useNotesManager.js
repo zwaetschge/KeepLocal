@@ -56,6 +56,20 @@ const DEFAULT_COUNTS = { active: 0, archived: 0, trash: 0 };
 // ---------------------------------------------------------------------------
 
 /**
+ * Notizen nach Tag filtern — case-insensitiv wie der Server-Filter und die
+ * Tag-Cloud (Review v1.15.0): Die Chips kleben an der $toLower-Gruppierung,
+ * der Bestand kann alte Schreibweisen tragen. Array.includes(selectedTag)
+ * hätte jede Notiz mit abweichender Schreibweise aus der Ansicht gefeuert,
+ * obwohl der Server sie korrekt geliefert hatte.
+ */
+export function filterNotesByTag(notes, selectedTag) {
+  if (!selectedTag) return Array.isArray(notes) ? notes : [];
+  const wanted = String(selectedTag).toLowerCase();
+  return (Array.isArray(notes) ? notes : []).filter(item => Array.isArray(item?.tags)
+    && item.tags.some(tag => String(tag).toLowerCase() === wanted));
+}
+
+/**
  * Wendet eine Notiz-Mutation lokal auf eine Notizliste an (optimistisches Update
  * ohne Full-Refetch, P15). Das zurückgegebene Array ist nur bei Änderung neu.
  *
@@ -835,6 +849,12 @@ export function useNotesManager({
    * Führt eine Aktion für die gesamte Mehrfachauswahl sequenziell aus (keine
    * Batch-Endpoints serverseitig). Einzelfehler werden gezählt und geloggt, die
    * Auswahl räumt danach immer ab; ein Refresh zieht den Serverstand nach.
+   *
+   * v1.15.0: Die Auswahl überlebt Pagination und Filterwechsel — Notizen
+   * außerhalb des geladenen Fensters werden VOR der Aktion per getById
+   * nachgeladen statt mit `undefined` durchgereicht zu werden. BulkAddTag
+   * ersetzte einer solchen Note sonst den GESAMTEN Tag-Satz durch [neuerTag],
+   * und Pin/Archiv-Skips prüften gegen einen geratenen Zustand.
    */
   const runBulkAction = useCallback(async (action) => {
     const ids = Array.from(stateRef.current.selectedIds);
@@ -843,7 +863,14 @@ export function useNotesManager({
     try {
       // v1.10.1: 4er-Pool statt sequenzieller Schleife — s. runPool.
       const { done, failed } = await runPool(ids, {
-        worker: (id) => action(id, stateRef.current.notes.find(note => note._id === id))
+        worker: async (id) => {
+          const local = stateRef.current.notes.find(note => note._id === id);
+          if (local) return action(id, local);
+          // Off-window: IST-Stand vom Server holen. 404 (inzwischen gelöscht)
+          // und Netzfehler werden wie jeder andere Einzelfehler gezählt.
+          const fresh = await api.getById(id);
+          return action(id, fresh ?? null);
+        }
       });
       invalidateInFlightFetches();
       refreshInBackground(stateRef.current.searchTerm, 1, { silent: true });
@@ -853,60 +880,85 @@ export function useNotesManager({
       setSelectedIds(new Set());
       setOperationLoading(prev => withoutOperation(prev, 'bulk'));
     }
-  }, [invalidateInFlightFetches, refreshInBackground, refreshTree]);
+  }, [invalidateInFlightFetches, refreshInBackground, refreshTree, api]);
 
   /** Alle ausgewählten anheften (pin=true) oder abheften. */
   const bulkSetPinned = useCallback(async (pin) => {
-    // Nur zählen, was einen API-Call brauchte: runPool meldet auch Worker als
-    // done, die vorzeitig returnen — bereits gepinnte Notizen und IDs außer-
-    // halb des geladenen Fensters (Auswahl überlebt Pagination/Filter)
-    // wären sonst als Erfolg gemeldet worden, ohne dass etwas passierte.
+    // Nur zählen, was einen API-Call brauchte UND erfolgreich war: runPool
+    // meldet auch Worker als done, die vorzeitig returnen — bereits gepinnte
+    // Notizen wären sonst als Erfolg gemeldet worden, ohne dass etwas
+    // passierte. acted wächst erst NACH dem Update (Review v1.15.0): Ein
+    // fehlgeschlagener Request wurde vorher als Erfolg getoastet.
     let acted = 0;
-    await runBulkAction(async (id, note) => {
+    const { failed } = await runBulkAction(async (id, note) => {
       if (Boolean(note?.isPinned) === pin) return;
+      // Idempotentes SET statt Toggle (v1.15.0): Der Server-Toggle kehrt den
+      // gespeicherten Zustand um — für eine Note, deren IST-Stand der Client
+      // nicht kennt (frisch nachgeladen, parallel in einem anderen Tab
+      // geändert), hätte "anheften" sie ABGEHEFTET.
+      await api.update(id, { isPinned: pin });
       acted += 1;
-      await api.togglePin(id);
     });
     if (acted > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: acted }), 'success');
+    if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten archivieren. */
   const bulkArchive = useCallback(async () => {
     let acted = 0;
-    await runBulkAction(async (id, note) => {
+    const { failed } = await runBulkAction(async (id, note) => {
       if (note?.isArchived) return;
+      // Idempotentes SET statt Toggle (v1.15.0) — derselbe Grund wie beim Pin.
+      // updateNote nimmt isArchived seit v1.15.0 an (besitzer-geprüft).
+      await api.update(id, { isArchived: true });
       acted += 1;
-      await api.toggleArchive(id);
     });
     if (acted > 0) showToast(t('bulkArchived', { count: acted }), 'success');
+    if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten in den Papierkorb. */
   const bulkDelete = useCallback(async () => {
-    const { done } = await runBulkAction(async (id) => {
+    const { done, failed } = await runBulkAction(async (id) => {
       await api.delete(id);
     });
     if (done > 0) showToast(t('bulkDeleted', { count: done }), 'success');
+    if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
   }, [runBulkAction, api, showToast, t]);
 
   /** Ein Tag an alle ausgewählten Notizen anhängen (Duplikate überspringen). */
   const bulkAddTag = useCallback(async (tag) => {
     const trimmed = typeof tag === 'string' ? tag.trim() : '';
     if (!trimmed) return;
-    const { done } = await runBulkAction(async (id, note) => {
-      if (note?.tags?.includes(trimmed)) return;
+    // acted zaehlt wie beim Pinen nur tatsaechliche Updates: runPool meldet
+    // auch geskippte Duplikate als done — der Toast luege sonst ueber die
+    // Zahl der geaenderten Notizen (Review v1.15.0).
+    let acted = 0;
+    const { failed } = await runBulkAction(async (id, note) => {
+      // Case-insensitiver Skip (v1.15.0): Tag-Operationen im Backend matchen
+      // "Projekt" und "projekt" als denselben Tag — ein neuer Chip mit anderer
+      // Schreibweise wäre ein Duplikat in der (case-insensitiv gruppierenden)
+      // Tag-Cloud. note.tags kommt hier immer an: runBulkAction lädt off-window
+      // Notizen vorher nach (vorher ersetzte [...(note?.tags ?? [])] bei
+      // fensterfremden Notizen den gesamten Tag-Satz).
+      if ((note?.tags ?? []).some(existing => existing.toLowerCase() === trimmed.toLowerCase())) return;
       await api.update(id, { tags: [...(note?.tags ?? []), trimmed] });
+      acted += 1;
     });
-    if (done > 0) showToast(t('bulkTagged', { count: done, tag: trimmed }), 'success');
+    if (acted > 0) showToast(t('bulkTagged', { count: acted, tag: trimmed }), 'success');
+    if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten in einen Ordner verschieben (parentId null = Hauptebene). */
   const bulkMove = useCallback(async (parentId) => {
-    const { done } = await runBulkAction(async (id, note) => {
+    let acted = 0;
+    const { failed } = await runBulkAction(async (id, note) => {
       if (note?.parentId === parentId) return;
       await api.update(id, { parentId });
+      acted += 1;
     });
-    if (done > 0) showToast(t('bulkMoved', { count: done }), 'success');
+    if (acted > 0) showToast(t('bulkMoved', { count: acted }), 'success');
+    if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
   }, [runBulkAction, api, showToast, t]);
 
   /**
@@ -1081,10 +1133,7 @@ export function useNotesManager({
   // Ab ein paar hundert Notizen bestand jede Seite aus Kindern anderer Ordner
   // und die Ansicht lief leer, obwohl der Ordner voll war.
   const { pinnedNotes, otherNotes } = useMemo(() => {
-    let filtered = notes;
-    if (selectedTag) {
-      filtered = filtered.filter(item => item.tags && item.tags.includes(selectedTag));
-    }
+    const filtered = filterNotesByTag(notes, selectedTag);
     const byRecency = (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
     // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
     // sortiert hat, bleibt die gewohnte „zuletzt bearbeitet zuerst"-Ordnung.

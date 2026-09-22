@@ -134,7 +134,7 @@ function validateNoteFields(noteData) {
   if (noteData.color !== undefined && !NOTE_COLORS.has(noteData.color)) {
     throw clientError('Ungueltige Notizfarbe');
   }
-  for (const field of ['isPinned', 'isTodoList']) {
+  for (const field of ['isPinned', 'isTodoList', 'isArchived']) {
     if (noteData[field] !== undefined && typeof noteData[field] !== 'boolean') {
       throw clientError(`${field} muss ein Boolean sein`);
     }
@@ -535,8 +535,14 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     withMeta
       ? Note.aggregate([
         { $match: tagMatch },
+        // Nur das tags-Feld weiterreichen (v1.15.0): $unwind laeuft sonst
+        // ueber ganze Dokumente inklusive Volltext und Revisions-Historie.
+        { $project: { tags: 1 } },
         { $unwind: '$tags' },
-        { $group: { _id: '$tags', count: { $sum: 1 } } },
+        // Case-insensitiv gruppieren wie Tag-Filter und Tag-Operationen
+        // (v1.15.0): "Projekt"/"projekt" sind ein Chip mit ehrlicher Zahl,
+        // nicht zwei Chips mit widersprechenden Zaehlungen.
+        { $group: { _id: { $toLower: '$tags' }, count: { $sum: 1 } } },
         { $sort: { _id: 1 } },
         { $project: { _id: 0, name: '$_id', count: 1 } }
       ])
@@ -798,7 +804,7 @@ async function reorderNotes(userId, orderedIds) {
  */
 async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
-  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order, parentId, isCode } = noteData;
+  const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order, parentId, isCode, isArchived } = noteData;
 
   // Manuelle Reihenfolge: Vor diesem Fix wurde ein mitgeschicktes `order`
   // stillschweigend verworfen (nicht destrukturiert) — Sync-Scripts hatten
@@ -826,12 +832,22 @@ async function updateNote(noteId, noteData, userId) {
   const isOwner = String(note.userId) === String(userId);
   let effectiveParentId = parentId;
   let effectiveOrder = order;
+  let effectiveIsArchived = isArchived;
   if (!isOwner) {
     if (parentId !== undefined && (parentId ?? null) !== (note.parentId ?? null)) {
       throw clientError('Nur der Besitzer kann die Notiz im Baum verschieben');
     }
+    // Archivieren bleibt Besitzer-Sache (wie toggleArchiveNote, das ohne
+    // noteEditQuery laeuft): Ein Mitbearbeiter soll nicht entscheiden, dass
+    // die Notiz aus der aktiven Ansicht des Besitzers verschwindet. Ein
+    // mitgeschickter unveränderter Wert ist ein No-Op — Clients, die das
+    // komplette Objekt senden, kassieren deshalb keinen 403er.
+    if (isArchived !== undefined && isArchived !== Boolean(note.isArchived)) {
+      throw clientError('Nur der Besitzer kann die Notiz archivieren');
+    }
     effectiveParentId = undefined;
     effectiveOrder = undefined;
+    effectiveIsArchived = undefined;
   }
 
   // Baum: Verschieben nur auf eigene, nicht geloeschte Eltern ohne Zyklus.
@@ -904,6 +920,13 @@ async function updateNote(noteId, noteData, userId) {
   }
   if (isCode !== undefined) {
     $set.isCode = isCode;
+  }
+  // Idempotentes Archivieren per PUT (v1.15.0): Die Bulk-Auswahl des Clients
+  // kann den IST-Zustand fensterfremder Notizen nicht kennen — ein Toggle
+  // ($not) haette den vorhandenen Zustand UMGEKEHRT. Der Besitzer-Gate steht
+  // weiter oben.
+  if (effectiveIsArchived !== undefined) {
+    $set.isArchived = effectiveIsArchived;
   }
 
   // Nachvollziehbarkeit bei geteilten Notizen: Wer hat zuletzt geändert?
@@ -1091,6 +1114,10 @@ async function getNotesMeta(userId) {
   const ownerId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(String(userId)) : userId;
   const [row] = await Note.aggregate([
     { $match: { $or: [{ userId: ownerId }, { sharedWith: ownerId }] } },
+    // $project vor $group (v1.15.0): Ohne diese Stufe scannte die 60s-Sonde
+    // VOLLTEXT-Dokumente — content bis 10 KB, todoItems, bis zu 10 Revisions-
+    // Snapshots. Die Zaehlung braucht vier Felder, kein Dokument-Material.
+    { $project: { deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 } },
     { $group: {
       _id: null,
       active: { $sum: { $cond: [{ $and: [
@@ -1308,6 +1335,20 @@ function frontmatterDate(value) {
   if (value === null || value === undefined || value === '') return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * created/updated aus Fremd-Frontmatter auf jetzt clampen (v1.15.0). Ein
+ * `updated: 2999-…` ist immer Muell — aber ein giftiges: Der Android-Sync
+ * speichert max(updatedAt) als Cursor (SyncManager setSyncSince) und die
+ * Web-Meta-Sonde als Signatur-Bestandteil. Eine einzige Zukunfts-Notiz
+ * bedeutet, dass jede spaetere echte Aenderung "in der Vergangenheit" liegt
+ * und fuer immer unsichtbar bleibt. remindAt wird NICHT geclampt — Erinnerun-
+ * gen in der Zukunft sind der Normalfall.
+ */
+function clampImportedTimestamp(value, now = new Date()) {
+  if (!value) return value;
+  return value.getTime() > now.getTime() ? new Date(now.getTime()) : value;
 }
 
 /**
@@ -1579,6 +1620,15 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     }
 
     const color = NOTE_COLORS.has(String(meta.color)) ? String(meta.color) : '#ffffff';
+    // Zukunfts-Daten clampen (v1.15.0, siehe clampImportedTimestamp) und
+    // Monotonie herstellen: created darf nie nach updated liegen — Sortierung
+    // und Sync-Cursor verlassen sich auf beide.
+    const importNow = new Date();
+    let importedCreatedAt = clampImportedTimestamp(frontmatterDate(meta.created), importNow);
+    let importedUpdatedAt = clampImportedTimestamp(frontmatterDate(meta.updated), importNow);
+    if (importedCreatedAt && importedUpdatedAt && importedCreatedAt.getTime() > importedUpdatedAt.getTime()) {
+      importedCreatedAt = importedUpdatedAt;
+    }
     return {
       path,
       segments,
@@ -1593,8 +1643,8 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
       isCode: frontmatterFlag(meta.iscode) === true,
       color,
       remindAt: frontmatterDate(meta.remindat),
-      createdAt: frontmatterDate(meta.created),
-      updatedAt: frontmatterDate(meta.updated),
+      createdAt: importedCreatedAt,
+      updatedAt: importedUpdatedAt,
       attachedImages,
       attachedFiles
     };
@@ -1936,11 +1986,20 @@ async function applyTagOperation({ userId, action, from, to }) {
   if (sources.length === 0) return { action, modified: 0 };
 
   const editedAt = new Date();
+  // Case-Insensitivitaet (v1.15.0): Der Bestand kann gemischte Schreibweisen
+  // tragen ("Projekt" neben "projekt" — der Import lowercased seit jeher, der
+  // Web-/Android-Editor nicht). $in matcht case-sensitiv, deshalb trifft der
+  // Filter Regex-Varianten jedes Quell-Tags; TAG_PATTERN schliesst Regex-
+  // Metazeichen aus, ^…$/$i ist daher sicher. Dasselbe gilt im $filter der
+  // Pipeline: $toLower vergleicht gegen die lowercased Quellen, damit auch der
+  // Bestands-Eintrag "Projekt" beim Rename auf "projekt" erfasst und entfernt
+  // wird (vorher blieb er unberuehrt stehen — das bekannte v1.14.0-Loch).
+  const sourceMatchers = sources.map(tag => new RegExp(`^${tag}$`, 'i'));
   if (action === 'delete') {
     const result = await Note.updateMany(
-      { ...baseQuery, tags: { $in: sources } },
+      { ...baseQuery, tags: { $in: sourceMatchers } },
       [{ $set: {
-        tags: { $filter: { input: '$tags', cond: { $not: [{ $in: ['$$this', sources] }] } } },
+        tags: { $filter: { input: '$tags', cond: { $not: [{ $in: [{ $toLower: '$$this' }, sources] }] } } },
         updatedAt: editedAt,
         lastEditedBy: userId
       } }]
@@ -1951,10 +2010,10 @@ async function applyTagOperation({ userId, action, from, to }) {
   // rename/merge: Quell-Tags herausfiltern, Ziel per setUnion dazugeben —
   // eine Notiz mit zwei Quell-Tags endet mit genau einem Ziel-Tag.
   const result = await Note.updateMany(
-    { ...baseQuery, tags: { $in: sources } },
+    { ...baseQuery, tags: { $in: sourceMatchers } },
     [{ $set: {
       tags: { $setUnion: [
-        { $filter: { input: '$tags', cond: { $not: [{ $in: ['$$this', sources] }] } } },
+        { $filter: { input: '$tags', cond: { $not: [{ $in: [{ $toLower: '$$this' }, sources] }] } } },
         [target]
       ] },
       updatedAt: editedAt,

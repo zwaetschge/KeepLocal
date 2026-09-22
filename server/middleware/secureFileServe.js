@@ -72,7 +72,13 @@ const secureFileServe = async (req, res, next) => {
       return res.status(404).json({ error: 'Datei nicht auf dem Server gefunden' });
     }
 
-    res.setHeader('Cache-Control', 'private, no-store');
+    // Immutable statt no-store (v1.15.0): Der Speichername ist frisches
+    // Random-Hex aus dem Upload, der Content dahinter wird nie veraendert —
+    // geloescht ja, mutiert nein. `private` haelt ihn aus Shared Proxies, und
+    // sendFile liefert jetzt ETag/Last-Modified mit, womit If-None-Match auf
+    // 304 laufen kann. Vorher lud jedes Notizoeffnen alle Bilder + PDFs
+    // komplett neu, obwohl der Browser sie schon hatte.
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     // Bilder werden inline per sendFile ausgeliefert, dessen Content-Type von
     // der Endung kommt — nosniff (v1.14.0) verhindert, dass ein Browser einen
     // andersartigen Inhalt errät. Die Endungen selbst begrenzt der Upload.

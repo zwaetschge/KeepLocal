@@ -21,6 +21,16 @@ const EOCD_MIN_LENGTH = 22;
 const MAX_COMMENT_LENGTH = 0xffff;
 const ZIP64_MARKER = 0xffffffff;
 
+// Dekompressions-Bombe (v1.15.0): Die deklarierte uncompressedSize steht im
+// (manipulierbaren) Zentraleintrag — geprueft wurde sie bisher erst NACH dem
+// inflate. Zwei Netze: pro Entry ein maxOutputLength (0 MB Deklaration sind
+// 25 MB echte Entpackung), plus ein kumulatives Budget ueber das ganze Archiv
+// (60 entpackte Entries a 25 MB sind kein Import, das ist ein RAM-Angriff).
+// 25 MB pro Entry deckt den groessten legitimen Eintrag (PDF-Anhang-Limit),
+// 512 MB gesamt deckt den uploadZip-Multer-Limit eines Voll-Exports.
+const MAX_ENTRY_UNCOMPRESSED = 25 * 1024 * 1024;
+const MAX_TOTAL_UNCOMPRESSED = 512 * 1024 * 1024;
+
 // CRC32-Tabelle lazy — der Writer baut dieselbe, ein Reader ohne Lesefall
 // soll dafuer nichts kosten.
 let crcTable = null;
@@ -75,6 +85,7 @@ function readZipEntries(buffer) {
 
   const { entries: entryCount, centralOffset } = findEndOfCentralDirectory(buffer);
   const entries = new Map();
+  let totalUncompressed = 0;
 
   let offset = centralOffset;
   for (let index = 0; index < entryCount; index += 1) {
@@ -101,6 +112,26 @@ function readZipEntries(buffer) {
     // sind nur Metadaten, die wir aus den Dateipfaden rekonstruieren.
     if (name.endsWith('/')) continue;
 
+    // STORE-Eintraege (Kompressionsmethode 0) muessen beide Groessen gleich
+    // deklarieren — ohne Kompression IST die Datenlaenge die Inhaltslaenge.
+    // Eine luegende Deklaration (uncompressedSize=1, compressedSize≈Archiv)
+    // lief sonst durch beide Limits, bevor Buffer.from(rawData) die volle
+    // Datenmenge in den Speicher kopierte (Review v1.15.0).
+    if (method === METHOD_STORE && compressedSize !== uncompressedSize) {
+      throw new Error(`Gespeicherter Eintrag deklariert widersprüchliche Größen: ${name}`);
+    }
+
+    // VOR dem Entpacken: deklarierte Groesse gegen die Limits pruefen. Die
+    // Deklaration kann luegen (0 fuer "unbekannt" oder auf Boeses gesetzt) —
+    // inflateRawSync bekommt deshalb zusaetzlich maxOutputLength als harte
+    // Grenze, die auch eine kleine Deklaration nicht aufheben kann.
+    if (uncompressedSize > MAX_ENTRY_UNCOMPRESSED) {
+      throw new Error(`Eintrag zu gross nach Dekompression (${uncompressedSize} Bytes): ${name}`);
+    }
+    if (totalUncompressed + uncompressedSize > MAX_TOTAL_UNCOMPRESSED) {
+      throw new Error(`Archiv ueberschreitet das Gesamtbudget entpackter Daten: ${name}`);
+    }
+
     if (localOffset + 30 > buffer.length || buffer.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
       throw new Error(`Lokaler Header beschädigt: ${name}`);
     }
@@ -120,9 +151,12 @@ function readZipEntries(buffer) {
       content = Buffer.from(rawData);
     } else if (method === METHOD_DEFLATE) {
       try {
-        content = zlib.inflateRawSync(rawData);
+        // maxOutputLength als harte Deckelung INDEPENDENT von der Deklaration:
+        // zlib bricht mit RangeError ab, sobald die Entpackung das Limit
+        // ueberschreitet — GB-aus-20-MB-Bomben sterben hier, nicht im RAM.
+        content = zlib.inflateRawSync(rawData, { maxOutputLength: MAX_ENTRY_UNCOMPRESSED });
       } catch (error) {
-        throw new Error(`Eintrag liess sich nicht entpacken: ${name} (${error.message})`);
+        throw new Error(`Eintrag liess sich nicht entpacken (evtl. Dekompressions-Limit ${MAX_ENTRY_UNCOMPRESSED} Bytes ueberschritten): ${name} (${error.message})`);
       }
     } else {
       throw new Error(`Kompressionsverfahren ${method} nicht unterstuetzt: ${name}`);
@@ -135,6 +169,7 @@ function readZipEntries(buffer) {
       throw new Error(`Pruefsumme stimmt nicht — Archiv beschädigt: ${name}`);
     }
 
+    totalUncompressed += content.length;
     entries.set(name, content);
   }
 

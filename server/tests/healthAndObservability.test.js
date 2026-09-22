@@ -167,8 +167,24 @@ test('the server exposes live and ready endpoints next to the legacy one', () =>
   assert.match(server, /app\.get\('\/api\/health', async \(req, res\) => \{/);
   assert.match(server, /app\.get\('\/api\/health\/live'/);
   assert.match(server, /app\.get\('\/api\/health\/ready'/);
-  assert.match(server, /res\.status\(health\.ready \? 200 : 503\)\.json\(healthDetailsEnabled \? health : publicHealth\(health\)\)/);
+  // v1.15.0: Alle drei Health-Routen melden die APP_VERSION (aus der vom Build
+  // geschriebenen /app/server/VERSION) — der Betreiber soll sehen koennen,
+  // welches Image tatsaechlich laeuft.
+  assert.match(server, /const body = healthDetailsEnabled \? health : publicHealth\(health\);/);
+  assert.match(server, /res\.status\(health\.ready \? 200 : 503\)\.json\(\{ version: APP_VERSION, \.\.\.body \}\);/);
+  assert.match(server, /version: APP_VERSION, uptime: process\.uptime\(\)/);
+  assert.match(server, /status: health\.status,\n\s+version: APP_VERSION,/);
   assert.match(server, /app\.use\(requestId\);/);
+
+  // Review v1.15.0 (Versions-Kette): Die Routen melden APP_VERSION — gepinnt
+  // ist auch, WOHER sie stammt. Dockerfile.allinone schreibt das Build-Arg in
+  // /app/server/VERSION (s. deploymentSecurity-Tests); faellt dieses readFileSync
+  // einer Refaktorierung zum Opfer, bleibt der stille 'dev'-Fallback, und der
+  // Betreiber liest "dev" aus /api/health, während der Container längst 1.15.0
+  // fährt — genau der Blindflug, den das Ops-Paket beenden sollte.
+  assert.match(server,
+    /const APP_VERSION = \(\(\) => \{\s*\n\s*try \{\s*\n\s*return fs\.readFileSync\(path\.join\(__dirname, 'VERSION'\), 'utf8'\)\.trim\(\) \|\| 'dev';\s*\n\s*\} catch/s,
+    'APP_VERSION liest die vom Build geschriebene VERSION-Datei');
 
   for (const file of ['docker-compose.yml', 'docker-compose.npm.yml', 'docker-compose.allinone.yml', 'docker-compose.demo.yml']) {
     const compose = fs.readFileSync(path.join(__dirname, '../..', file), 'utf8');

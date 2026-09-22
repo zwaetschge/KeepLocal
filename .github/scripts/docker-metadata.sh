@@ -41,19 +41,27 @@ short_sha="${GITHUB_SHA:0:7}"
 created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 immutable_tag="${created%%T*}-${short_sha}"
 version="${immutable_tag}"
-tags=()
 
-add_tag() {
+# Test-then-Promote (v1.15.0): Der Build pushed NUR den immutablen Tag
+# (publish_tags); die beweglichen Kanaele (main/latest/semver) vergibt erst der
+# promote-Job, nachdem test-image beide Architekturen gerauchert hat. Vorher
+# war `latest` Sekunden nach dem Build oeffentlich — ein kaputter Start
+# (supervisord-Fehler, fehlende Datei im Image) stand dann bei allen Self-
+# Hostern, die automatisch pullen.
+publish_tags=("${image}:${immutable_tag}")
+promote_tags=()
+
+add_promote_tag() {
   local candidate="$1"
   local existing
 
-  for existing in "${tags[@]:-}"; do
+  for existing in "${promote_tags[@]:-}"; do
     if [[ "${existing}" == "${candidate}" ]]; then
       return
     fi
   done
 
-  tags+=("${candidate}")
+  promote_tags+=("${candidate}")
 }
 
 add_semver_tags() {
@@ -86,17 +94,15 @@ add_semver_tags() {
   fi
 
   version="${canonical_version}"
-  add_tag "${image}:${canonical_version}"
+  add_promote_tag "${image}:${canonical_version}"
 
   # Pre-release versions must not replace the stable major/minor channels.
   if [[ "${canonical_version}" != *-* ]]; then
-    add_tag "${image}:${major}.${minor}"
-    add_tag "${image}:${major}"
-    add_tag "${image}:latest"
+    add_promote_tag "${image}:${major}.${minor}"
+    add_promote_tag "${image}:${major}"
+    add_promote_tag "${image}:latest"
   fi
 }
-
-add_tag "${image}:${immutable_tag}"
 
 if [[ "${GITHUB_EVENT_NAME}" == 'workflow_dispatch' && "${INPUT_VERSION:-latest}" != 'latest' ]]; then
   if [[ "${GITHUB_REF_TYPE}" != 'branch' || "${GITHUB_REF_NAME}" != 'main' ]]; then
@@ -119,8 +125,8 @@ elif [[ "${GITHUB_REF_TYPE}" == 'branch' ]]; then
     fi
   else
     version='main'
-    add_tag "${image}:main"
-    add_tag "${image}:latest"
+    add_promote_tag "${image}:main"
+    add_promote_tag "${image}:latest"
   fi
 else
   echo "Unsupported Git ref type: ${GITHUB_REF_TYPE}" >&2
@@ -130,9 +136,16 @@ fi
 source_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
 
 {
-  echo 'tags<<__DOCKER_TAGS__'
-  printf '%s\n' "${tags[@]}"
+  echo 'publish-tags<<__DOCKER_TAGS__'
+  printf '%s\n' "${publish_tags[@]}"
   echo '__DOCKER_TAGS__'
+  if [[ ${#promote_tags[@]} -gt 0 ]]; then
+    echo 'promote-tags<<__DOCKER_PROMOTE_TAGS__'
+    printf '%s\n' "${promote_tags[@]}"
+    echo '__DOCKER_PROMOTE_TAGS__'
+  else
+    echo 'promote-tags='
+  fi
   echo 'labels<<__DOCKER_LABELS__'
   echo "org.opencontainers.image.created=${created}"
   echo 'org.opencontainers.image.description=Vibecoded Google Keep Clone'

@@ -38,6 +38,7 @@ const MESSAGE_TO_CODE = {
   'Tageslimit für Transkriptionen erreicht. Bitte morgen erneut versuchen.': 'TRANSCRIPTION_DAILY_LIMIT',
   'Tageslimit an Audio-Minuten erreicht. Bitte morgen erneut versuchen.': 'TRANSCRIPTION_MINUTE_LIMIT',
   'Der Transkriptionsdienst ist gerade ausgelastet. Bitte in einer halben Minute erneut versuchen.': 'TRANSCRIPTION_BUSY',
+  'Es läuft bereits ein ZIP-Import. Bitte in einer halben Minute erneut versuchen.': 'ZIP_IMPORT_BUSY',
   'Notizen koennen nur mit Freunden geteilt werden': 'SHARE_REQUIRES_FRIEND',
 
   // Files
