@@ -175,9 +175,12 @@ test('since scopes list and pagination total, counts stay global', async () => {
 
   await service.getAllNotes({ userId: 'user-id', since });
 
-  assert.equal(observed.finds[0].updatedAt.$gt instanceof Date, true, 'Liste auf Änderungen begrenzt');
-  assert.equal(observed.finds[0].updatedAt.$gt.toISOString(), since);
-  assert.equal(observed.counts[0].updatedAt.$gt instanceof Date, true, 'Pagination-Total zählt den Delta-Scope');
+  // $gte (Review v1.14.0): updatedAt hat ms-Auflösung, Bulk-Ops schreiben
+  // vielen Notizen denselben Timestamp — ein striktes $gt hätte eine im
+  // selben Tick wie der Cursor geänderte Notiz dauerhaft übersprungen.
+  assert.equal(observed.finds[0].updatedAt.$gte instanceof Date, true, 'Liste auf Änderungen begrenzt (inklusive Grenze)');
+  assert.equal(observed.finds[0].updatedAt.$gte.toISOString(), since);
+  assert.equal(observed.counts[0].updatedAt.$gte instanceof Date, true, 'Pagination-Total zählt den Delta-Scope');
   for (const globalQuery of observed.counts.slice(1)) {
     assert.equal('updatedAt' in globalQuery, false, 'active/archived/trash-Zähler bleiben global');
   }

@@ -337,6 +337,42 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `an edit queued mid-pull is honored by the live pending check`() = runTest {
+        storedSignature = ""
+        storedSince = "2026-09-22T09:00:00.000Z"
+        coEvery { api.getNotesMeta() } returns meta()
+        coEvery { api.getNoteTree() } returns Response.success(
+            listOf(NoteTreeNodeDto(id = "eeeeeeeeeeeeeeeeeeeeeeee"))
+        )
+        coEvery {
+            api.getNotes(any(), any(), eq(false), any(), any(), any(), any())
+        } returns Response.success(
+            NotesResponseDto(
+                notes = listOf(dto("eeeeeeeeeeeeeeeeeeeeeeee", "Server-Fassung", updatedAt = "2026-09-22T09:30:00.000Z")),
+                pages = 1
+            )
+        )
+        coEvery {
+            api.getNotes(any(), any(), eq(true), any(), any(), any(), any())
+        } returns emptyListPage()
+
+        noteDao.insertNote(entity("eeeeeeeeeeeeeeeeeeeeeeee", title = "Lokale Fassung"))
+        // Der Snapshot vor der Loop ist leer — die UPDATE taucht erst WÄHREND
+        // des Pulls auf (lateEditIds zählt nur im Live-Check, nicht in
+        // getAllOperations). Ohne den Live-Check hätte der REPLACE-Upsert die
+        // lokale Fassung mit der Server-Version überschrieben.
+        pendingDao.lateEditIds += "eeeeeeeeeeeeeeeeeeeeeeee"
+
+        assertEquals(0, syncManager.pullRemoteChanges())
+
+        assertEquals(
+            "mid-pull edit survives the REPLACE upsert",
+            "Lokale Fassung",
+            noteDao.getNoteById("eeeeeeeeeeeeeeeeeeeeeeee")?.title
+        )
+    }
+
+    @Test
     fun `a torn delta keeps the old signature for a full retry`() = runTest {
         storedSignature = ""
         coEvery { api.getNotesMeta() } returns meta()
@@ -494,6 +530,13 @@ private class FakePendingOperationDao : PendingOperationDao {
 
     override suspend fun getCountForNoteAndType(noteId: String, operationType: String): Int =
         ops.count { it.noteId == noteId && it.operationType == operationType }
+
+    /** Simuliert eine Operation, die NACH dem Snapshot der Pull-Loop enqueued
+     *  wurde — der Live-Check muss sie trotzdem respektieren (Review-Fix). */
+    val lateEditIds = mutableSetOf<String>()
+
+    override suspend fun getCountForNote(noteId: String): Int =
+        ops.count { it.noteId == noteId } + if (noteId in lateEditIds) 1 else 0
 
     override suspend fun deleteByNoteAndType(noteId: String, operationType: String) {
         ops.removeAll { it.noteId == noteId && it.operationType == operationType }

@@ -207,7 +207,16 @@ class SyncManager @Inject constructor(
                         for (dto in body.getNotesList()) {
                             val domain = dto.toDomain()
                             maxSeenUpdatedAt = newerIso(dto.updatedAt, maxSeenUpdatedAt)
-                            if (domain.id in pendingIds) continue
+                            // pendingIds is only the fast path from before the
+                            // pull started — an offline edit queued WHILE this
+                            // multi-second loop runs must also be honored, or
+                            // the REPLACE upsert below would wipe it and the
+                            // still-queued UPDATE would push the server content
+                            // back (silent loss, no conflict copy). Live check
+                            // per note (indexed COUNT, sub-millisecond).
+                            if (domain.id in pendingIds ||
+                                pendingOperationDao.getCountForNote(domain.id) > 0
+                            ) continue
                             noteDao.insertNote(domain.toEntity().copy(baseUpdatedAt = dto.updatedAt))
                             changed++
                         }

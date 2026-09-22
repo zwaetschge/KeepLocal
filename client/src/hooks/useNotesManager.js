@@ -857,20 +857,28 @@ export function useNotesManager({
 
   /** Alle ausgewählten anheften (pin=true) oder abheften. */
   const bulkSetPinned = useCallback(async (pin) => {
-    const { done } = await runBulkAction(async (id, note) => {
+    // Nur zählen, was einen API-Call brauchte: runPool meldet auch Worker als
+    // done, die vorzeitig returnen — bereits gepinnte Notizen und IDs außer-
+    // halb des geladenen Fensters (Auswahl überlebt Pagination/Filter)
+    // wären sonst als Erfolg gemeldet worden, ohne dass etwas passierte.
+    let acted = 0;
+    await runBulkAction(async (id, note) => {
       if (Boolean(note?.isPinned) === pin) return;
+      acted += 1;
       await api.togglePin(id);
     });
-    if (done > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: done }), 'success');
+    if (acted > 0) showToast(t(pin ? 'bulkPinned' : 'bulkUnpinned', { count: acted }), 'success');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten archivieren. */
   const bulkArchive = useCallback(async () => {
-    const { done } = await runBulkAction(async (id, note) => {
+    let acted = 0;
+    await runBulkAction(async (id, note) => {
       if (note?.isArchived) return;
+      acted += 1;
       await api.toggleArchive(id);
     });
-    if (done > 0) showToast(t('bulkArchived', { count: done }), 'success');
+    if (acted > 0) showToast(t('bulkArchived', { count: acted }), 'success');
   }, [runBulkAction, api, showToast, t]);
 
   /** Alle ausgewählten in den Papierkorb. */

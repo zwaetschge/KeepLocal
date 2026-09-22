@@ -232,7 +232,7 @@ interface KeepLocalApi {
     suspend fun getApiKeys(): Response<ApiKeysResponseDto>
 
     @POST("api/api-keys")
-    suspend fun createApiKey(@Body request: CreateApiKeyRequestDto): Response<ApiKeyDto>
+    suspend fun createApiKey(@Body request: CreateApiKeyRequestDto): Response<ApiKeyCreatedResponseDto>
 
     @DELETE("api/api-keys/{id}")
     suspend fun revokeApiKey(@Path("id") id: String): Response<Unit>

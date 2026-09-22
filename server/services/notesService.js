@@ -76,8 +76,17 @@ function throwNoteConflict(note) {
   const error = new Error(NOTE_CONFLICT_MESSAGE);
   error.statusCode = 409;
   // The stored note travels with the error so the route can return it in the
-  // same serialized form as a regular PUT response.
-  error.currentNote = note;
+  // same serialized form as a regular PUT response. Hat die Notiz Revisionen,
+  // reisen sie als Kopie ohne die Historie mit (review v1.14.0: sonst bis zu
+  // 10 Volltext-Snapshots pro 409-Antwort); ohne Revisionen bleibt die
+  // Referenz unverändert — als Null-Kosten-Fall.
+  if (note && Array.isArray(note.revisions) && note.revisions.length > 0) {
+    const plain = typeof note.toJSON === 'function' ? note.toJSON() : { ...note };
+    delete plain.revisions;
+    error.currentNote = plain;
+  } else {
+    error.currentNote = note;
+  }
   throw error;
 }
 
@@ -495,7 +504,13 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   if (sinceDate) {
-    query.updatedAt = { $gt: sinceDate };
+    // $gte statt $gt (Review v1.14.0): updatedAt hat Millisekunden-Aufloesung
+    // und Bulk-Operationen (z. B. Tag-Rename) schreiben HUNDERTEN Notizen
+    // denselben Zeitstempel. Ein striktes $gt ueberspringt eine Notiz, die im
+    // selben Millisekunden-Tick wie der Cursor geaendert wurde, dauerhaft —
+    // der Client-Upsert ist idempotent, Redelivery der Grenz-Zeilen ist
+    // daher billiger als ihr stiller Verlust.
+    query.updatedAt = { $gte: sinceDate };
   }
 
   const searchTerm = typeof search === 'string' ? search.trim() : '';
@@ -934,7 +949,7 @@ async function updateNote(noteId, noteData, userId) {
       ...(updatedAtPrecondition && { updatedAt: updatedAtPrecondition })
     },
     $pushRevision ? { $set, $push: $pushRevision } : { $set },
-    { new: true, runValidators: true }
+    { new: true, projection: { revisions: 0 }, runValidators: true }
   );
 
   if (!updatedNote) {
@@ -963,7 +978,7 @@ async function deleteNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, deletedAt: null },
     { $set: { deletedAt: new Date() } },
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -989,7 +1004,7 @@ async function restoreNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, deletedAt: { $ne: null } },
     { $set: { deletedAt: null } },
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   ).populate('userId', 'username email')
     .populate('sharedWith', 'username email');
 
@@ -1198,7 +1213,8 @@ async function getNoteTree(userId, since) {
   const notes = await Note.find({
     $or: [{ userId }, { sharedWith: userId }],
     deletedAt: null,
-    ...(sinceDate ? { updatedAt: { $gt: sinceDate } } : {})
+    // $gte aus demselben Grund wie im Listing (s. dort): Bulk-Timestamps.
+    ...(sinceDate ? { updatedAt: { $gte: sinceDate } } : {})
   })
     .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt userId')
     .sort({ isPinned: -1, order: -1, updatedAt: -1 })
@@ -1809,6 +1825,11 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         if (!(await validateImageFile(filepath))) {
           throw clientError(`Anhang ${name}: Inhalt entspricht keinem bekannten Bildformat (Magic-Bytes-Prüfung)`);
         }
+        // Dritte Pruefung des Multipart-Pfads (Review v1.14.0): Endung + Magic
+        // Bytes reichen nicht — eine 20000x20000-PNG ist komprimiert wenige MB
+        // gross, dekodiert aber ~1,6 GB im Client. Der Multipart-Upload lehnt
+        // sie ab (>40 MP), der ZIP-Import muss dasselbe tun.
+        await validateImageDimensions([filepath]);
         let thumbnailFilename = '';
         try {
           thumbnailFilename = await generateThumbnail(filename, filepath);
@@ -1961,7 +1982,7 @@ async function togglePinNote(noteId, userId) {
   const note = await Note.findOneAndUpdate(
     noteEditQuery(noteId, userId),
     [{ $set: { isPinned: { $not: ['$isPinned'] }, lastEditedBy } }],
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -1992,7 +2013,7 @@ async function toggleArchiveNote(noteId, userId) {
       deletedAt: null
     },
     [{ $set: { isArchived: { $not: ['$isArchived'] }, lastEditedBy } }],
-    { new: true }
+    { new: true, projection: { revisions: 0 } }
   );
 
   if (!note) {
@@ -2044,7 +2065,7 @@ async function shareNote(noteId, userId, targetUserId) {
       $addToSet: { sharedWith: targetUserId }
     },
     {
-      new: true, // Return updated document
+      new: true, projection: { revisions: 0 }, // Return updated document
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2078,7 +2099,7 @@ async function unshareNote(noteId, userId, targetUserId) {
       $pull: { sharedWith: targetUserId }
     },
     {
-      new: true, // Return updated document
+      new: true, projection: { revisions: 0 }, // Return updated document
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2146,7 +2167,7 @@ async function addImages(noteId, userId, imageData) {
       $push: { images: { $each: imageData } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2182,7 +2203,7 @@ async function removeImage(noteId, userId, filename) {
       $pull: { images: { filename: filename } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2221,7 +2242,7 @@ async function addFiles(noteId, userId, fileData) {
       $push: { files: { $each: fileData } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')
@@ -2251,7 +2272,7 @@ async function removeFile(noteId, userId, filename) {
       $pull: { files: { filename: filename } }
     },
     {
-      new: true,
+      new: true, projection: { revisions: 0 },
       runValidators: true
     }
   ).populate('userId', 'username email')

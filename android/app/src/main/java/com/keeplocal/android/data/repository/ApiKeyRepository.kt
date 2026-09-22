@@ -41,7 +41,10 @@ class ApiKeyRepository @Inject constructor(
         val scopes = if (allowWrite) listOf("read", "write") else listOf("read")
         val response = api.createApiKey(CreateApiKeyRequestDto(name, expiresIn, scopes))
         if (response.isSuccessful) {
-            response.body() ?: throw Exception("No API key data in response")
+            // The server wraps the created key in {success, data, message} —
+            // without unwrapping, the one-time plaintext key parses as null
+            // (review v1.14.0) and is lost for good.
+            response.body()?.data ?: throw Exception("No API key data in response")
         } else {
             throw apiErrorException("POST /api/api-keys", response)
         }

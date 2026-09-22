@@ -58,12 +58,21 @@ function NoteHistory({ noteId, onRestored }) {
   }, [revisions, listError, loadRevisions]);
 
   const handleSelect = useCallback(async (savedAt) => {
-    if (preview?.savedAt && String(preview.savedAt) === String(savedAt)) return;
+    if (preview?.savedAt && String(preview.savedAt) === String(savedAt)) {
+      // Dieselbe Fassung erneut angetippt: Das „wiederhergestellt"-Banner
+      // blockiert den Restore-Button sonst bis zum Schließen der Modal —
+      // ein zweiter Restore derselben Fassung war so unmöglich.
+      setRestoredSavedAt(null);
+      return;
+    }
     setPreview(null);
     setPreviewError(null);
     setBusy(true);
     try {
       const revision = await notesAPI.getRevision(noteId, savedAt);
+      // Ein Restore-Status gehört zur VORHERIGEN Vorschau — beim Wechsel auf
+      // eine andere Fassung wäre ein stehen bleibendes Banner gelogen.
+      setRestoredSavedAt(null);
       setPreview(revision);
     } catch (error) {
       setPreviewError(resolveApiErrorMessage(error, t, 'noteHistoryPreviewFailed'));

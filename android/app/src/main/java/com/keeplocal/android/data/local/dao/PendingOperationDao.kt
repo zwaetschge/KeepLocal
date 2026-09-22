@@ -44,4 +44,13 @@ interface PendingOperationDao {
 
     @Query("SELECT COUNT(*) FROM pending_operations WHERE noteId = :noteId AND operationType = :operationType")
     suspend fun getCountForNoteAndType(noteId: String, operationType: String): Int
+
+    /**
+     * Live check per note id — the delta pull upserts over seconds, and a
+     * snapshot of pending ids taken before the loop would miss an offline
+     * edit queued mid-pull (its Room row would be overwritten by the server
+     * version: silent data loss instead of a 409 conflict copy).
+     */
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE noteId = :noteId")
+    suspend fun getCountForNote(noteId: String): Int
 }

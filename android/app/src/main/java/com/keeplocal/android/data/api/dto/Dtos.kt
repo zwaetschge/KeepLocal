@@ -404,6 +404,19 @@ data class ApiKeysResponseDto(
 )
 
 /**
+ * Body of POST /api/api-keys: the server wraps the created key in
+ * {success, data, message} — same convention as the list endpoint. Parsing
+ * the wrapper as a bare ApiKeyDto silently produced an all-null key
+ * (review v1.14.0), hiding the one-time plaintext key for good.
+ */
+@JsonClass(generateAdapter = true)
+data class ApiKeyCreatedResponseDto(
+    @Json(name = "success") val success: Boolean? = null,
+    @Json(name = "data") val data: ApiKeyDto? = null,
+    @Json(name = "message") val message: String? = null
+)
+
+/**
  * Body for POST /api/api-keys. The server expects expiresIn as '30d'/'90d'/
  * '365d'/'never' (v1.14.0 fix: the app used to send expiresInDays as a bare
  * number, which the server rejects with 400). Scopes: ['read'] is the
