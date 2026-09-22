@@ -3,12 +3,16 @@ package com.keeplocal.android.data.local
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.keeplocal.android.data.api.KeepLocalApi
 import com.keeplocal.android.data.api.dto.NoteDto
+import com.keeplocal.android.data.api.dto.NoteTreeNodeDto
+import com.keeplocal.android.data.api.dto.NotesMetaDto
+import com.keeplocal.android.data.api.dto.NotesResponseDto
 import com.keeplocal.android.data.local.dao.NoteDao
 import com.keeplocal.android.data.local.dao.PendingOperationDao
 import com.keeplocal.android.data.local.entity.NoteEntity
 import com.keeplocal.android.data.local.entity.OperationType
 import com.keeplocal.android.data.local.entity.PendingOperationEntity
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.flow.Flow
@@ -31,15 +35,26 @@ class SyncManagerTest {
     private lateinit var pendingDao: FakePendingOperationDao
     private lateinit var syncManager: SyncManager
 
+    // v1.14.0 Nr. 6: DataStore stand-in with readable/writable state so the
+    // pull tests can assert what got persisted (signature + since).
+    private lateinit var settings: SettingsDataStore
+    private var storedSignature = ""
+    private var storedSince = ""
+
     @Before
     fun setup() {
         api = mockk(relaxed = true)
         noteDao = FakeNoteDao()
         pendingDao = FakePendingOperationDao()
+        settings = mockk(relaxed = true)
+        every { settings.syncSignature } returns flow { emit(storedSignature) }
+        every { settings.syncSince } returns flow { emit(storedSince) }
+        coEvery { settings.setSyncSignature(any()) } answers { storedSignature = firstArg() }
+        coEvery { settings.setSyncSince(any()) } answers { storedSince = firstArg() }
         // The cache-clear queries read the pending table; the fakes share state
         // through this provider so "deleteSyncedNotes keeps queued ids" holds.
         noteDao.pendingNoteIdsProvider = { pendingDao.ops.mapTo(mutableSetOf()) { it.noteId } }
-        syncManager = SyncManager(api, noteDao, pendingDao)
+        syncManager = SyncManager(api, noteDao, pendingDao, settings)
     }
 
     // --- helpers ------------------------------------------------------
@@ -233,6 +248,117 @@ class SyncManagerTest {
         assertEquals(1, result.synced)
         assertTrue(pendingDao.ops.isEmpty())
     }
+
+    // --- pullRemoteChanges (v1.14.0 Nr. 6) ---------------------------
+
+    private fun meta(
+        active: Int = 1,
+        archived: Int = 0,
+        trash: Int = 0,
+        maxUpdatedAt: String? = "2026-09-22T10:00:00.000Z"
+    ): Response<NotesMetaDto> = Response.success(NotesMetaDto(active, archived, trash, maxUpdatedAt))
+
+    private fun emptyListPage(): Response<NotesResponseDto> =
+        Response.success(NotesResponseDto(notes = emptyList(), pages = 1))
+
+    @Test
+    fun `unchanged signature skips the pull entirely`() = runTest {
+        storedSignature = "1/0/0/2026-09-22T10:00:00.000Z"
+        coEvery { api.getNotesMeta() } returns meta()
+
+        assertEquals(0, syncManager.pullRemoteChanges())
+        coVerify(exactly = 0) { api.getNoteTree() }
+        coVerify(exactly = 0) {
+            api.getNotes(any(), any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `server-deleted notes are cleaned up, offline and pending ids survive`() = runTest {
+        storedSignature = ""
+        coEvery { api.getNotesMeta() } returns meta(active = 2)
+        coEvery { api.getNoteTree() } returns Response.success(
+            listOf(
+                NoteTreeNodeDto(id = "aaaaaaaaaaaaaaaaaaaaaaaa"),
+                NoteTreeNodeDto(id = "bbbbbbbbbbbbbbbbbbbbbbbb")
+            )
+        )
+        coEvery {
+            api.getNotes(any(), any(), any(), any(), any(), any(), any())
+        } returns emptyListPage()
+
+        noteDao.insertNote(entity("aaaaaaaaaaaaaaaaaaaaaaaa")) // still on server
+        noteDao.insertNote(entity("cccccccccccccccccccccccc")) // deleted server-side
+        noteDao.insertNote(entity("offline_1")) // local id, never in the tree
+        noteDao.insertNote(entity("dddddddddddddddddddddddd")) // deleted but queued
+        enqueue(OperationType.UPDATE, "dddddddddddddddddddddddd")
+
+        assertEquals(1, syncManager.pullRemoteChanges())
+
+        assertNotNull(noteDao.getNoteById("aaaaaaaaaaaaaaaaaaaaaaaa"))
+        assertNull("deleted server-side and not queued -> removed", noteDao.getNoteById("cccccccccccccccccccccccc"))
+        assertNotNull("offline ids are not server notes", noteDao.getNoteById("offline_1"))
+        assertNotNull("queued notes wait for their op", noteDao.getNoteById("dddddddddddddddddddddddd"))
+        assertEquals("2/0/0/2026-09-22T10:00:00.000Z", storedSignature)
+    }
+
+    @Test
+    fun `delta upserts changed notes but never overwrites queued edits`() = runTest {
+        storedSignature = ""
+        storedSince = "2026-09-22T09:00:00.000Z"
+        coEvery { api.getNotesMeta() } returns meta()
+        coEvery { api.getNoteTree() } returns Response.success(
+            listOf(NoteTreeNodeDto(id = "eeeeeeeeeeeeeeeeeeeeeeee"), NoteTreeNodeDto(id = "ffffffffffffffffffffffff"))
+        )
+        coEvery {
+            api.getNotes(any(), any(), eq(false), any(), any(), any(), any())
+        } returns Response.success(
+            NotesResponseDto(
+                notes = listOf(
+                    dto("eeeeeeeeeeeeeeeeeeeeeeee", "Geändert", updatedAt = "2026-09-22T09:30:00.000Z"),
+                    dto("ffffffffffffffffffffffff", "Server-Fassung", updatedAt = "2026-09-22T09:45:00.000Z")
+                ),
+                pages = 1
+            )
+        )
+        coEvery {
+            api.getNotes(any(), any(), eq(true), any(), any(), any(), any())
+        } returns emptyListPage()
+
+        noteDao.insertNote(entity("ffffffffffffffffffffffff", title = "Lokale Fassung"))
+        enqueue(OperationType.UPDATE, "ffffffffffffffffffffffff")
+
+        assertEquals(1, syncManager.pullRemoteChanges())
+
+        assertEquals("Geändert", noteDao.getNoteById("eeeeeeeeeeeeeeeeeeeeeeee")?.title)
+        assertEquals("queued note keeps its local row", "Lokale Fassung", noteDao.getNoteById("ffffffffffffffffffffffff")?.title)
+        // Next delta starts after the newest change actually seen.
+        assertEquals("2026-09-22T09:45:00.000Z", storedSince)
+    }
+
+    @Test
+    fun `a torn delta keeps the old signature for a full retry`() = runTest {
+        storedSignature = ""
+        coEvery { api.getNotesMeta() } returns meta()
+        coEvery { api.getNoteTree() } returns Response.success(emptyList())
+        coEvery {
+            api.getNotes(any(), any(), any(), any(), any(), any(), any())
+        } returns Response.error(500, "".toResponseBody("text/plain".toMediaType()))
+
+        syncManager.pullRemoteChanges()
+
+        assertEquals("signature stays stale -> next period retries", "", storedSignature)
+    }
+
+    @Test
+    fun `expired session aborts the pull without persisting`() = runTest {
+        storedSignature = ""
+        coEvery { api.getNotesMeta() } returns Response.error(401, "".toResponseBody("text/plain".toMediaType()))
+
+        assertEquals(0, syncManager.pullRemoteChanges())
+        assertEquals("", storedSignature)
+        assertEquals("", storedSince)
+    }
 }
 
 /** In-memory NoteDao — only the suspend accessors matter for the sync flow. */
@@ -317,6 +443,9 @@ private class FakeNoteDao : NoteDao {
 
     override suspend fun getAllLiveNotesSync(): List<NoteEntity> =
         notes.values.filter { !it.isArchived }
+
+    override suspend fun getAllArchivedNotesSync(): List<NoteEntity> =
+        notes.values.filter { it.isArchived }
 
     override suspend fun findByExactTitle(title: String): List<NoteEntity> =
         notes.values.filter { it.title.equals(title, ignoreCase = true) && !it.isArchived }

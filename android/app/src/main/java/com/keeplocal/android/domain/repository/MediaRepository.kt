@@ -2,6 +2,7 @@ package com.keeplocal.android.domain.repository
 
 import android.net.Uri
 import com.keeplocal.android.domain.model.Note
+import com.keeplocal.android.domain.model.NoteFile
 import com.keeplocal.android.util.Result
 import java.io.File
 
@@ -26,6 +27,23 @@ interface MediaRepository {
 
     /** Deletes one image attachment and returns the updated note. */
     suspend fun deleteImage(noteId: String, filename: String): Result<Note>
+
+    /**
+     * Uploads the picked PDFs to the note and returns the updated note
+     * (v1.14.0 Nr. 5). Chunks to the server's 5-per-request limit; rejects
+     * non-PDF picks client-side before wasting an upload.
+     */
+    suspend fun uploadFiles(noteId: String, uris: List<Uri>): Result<Note>
+
+    /** Deletes one PDF attachment and returns the updated note. */
+    suspend fun deleteFile(noteId: String, filename: String): Result<Note>
+
+    /**
+     * Downloads a PDF attachment into the cache dir so it can be opened in a
+     * viewer — the files route sits behind the session cookie, so an external
+     * viewer cannot fetch the URL itself (same lesson as the image viewer).
+     */
+    suspend fun downloadFileToCache(file: NoteFile): Result<File>
 
     /**
      * Uploads the recorded audio file (M4A/AAC) and returns the transcription.
@@ -68,6 +86,12 @@ object MediaLimits {
     /** Server accepts at most 5 images per single upload request. */
     const val MAX_IMAGES_PER_REQUEST: Int = 5
 
+    /** Server accepts at most 5 PDF attachments per single upload request. */
+    const val MAX_FILES_PER_REQUEST: Int = 5
+
+    /** Server accepts at most 25 PDF attachments per note in total. */
+    const val MAX_FILES_PER_NOTE: Int = 25
+
     /** Server accepts at most 25 images per note in total. */
     const val MAX_IMAGES_PER_NOTE: Int = 25
 
@@ -80,6 +104,17 @@ object MediaLimits {
     fun allowedPickCount(currentCount: Int, picked: Int): Int {
         if (currentCount < 0 || picked < 0) return 0
         val remaining = (MAX_IMAGES_PER_NOTE - currentCount).coerceAtLeast(0)
+        return picked.coerceAtMost(remaining)
+    }
+
+    /**
+     * Same budget logic for PDF attachments (v1.14.0 Nr. 5): how many of
+     * [picked] files may still be attached to a note that already has
+     * [currentCount] attachments.
+     */
+    fun allowedFilePickCount(currentCount: Int, picked: Int): Int {
+        if (currentCount < 0 || picked < 0) return 0
+        val remaining = (MAX_FILES_PER_NOTE - currentCount).coerceAtLeast(0)
         return picked.coerceAtMost(remaining)
     }
 }

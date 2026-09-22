@@ -89,6 +89,11 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isArchived = 0 ORDER BY title COLLATE NOCASE ASC")
     suspend fun getAllLiveNotesSync(): List<NoteEntity>
 
+    /** v1.14.0: synchroner Archiv-Lesezugriff — Tag-Spiegel und Sync-Aufräum-
+     *  Schritt laufen in suspend-Kontexten ohne Flow-Observer. */
+    @Query("SELECT * FROM notes WHERE isArchived = 1 ORDER BY updatedAt DESC")
+    suspend fun getAllArchivedNotesSync(): List<NoteEntity>
+
     /** Wiki-link resolution: [[Title]] targets a note by (case-insensitive)
      *  exact title. Several notes may share a title — the picker decides. */
     @Query("SELECT * FROM notes WHERE title = :title COLLATE NOCASE AND isArchived = 0 ORDER BY updatedAt DESC")

@@ -56,6 +56,15 @@ interface NoteRepository {
     suspend fun purgeNote(id: String): Result<Unit>
     /** Empties the whole trash; returns how many notes were purged. */
     suspend fun emptyTrash(): Result<Int>
+    /**
+     * Tag-Pflefe über alle sichtbaren Notizen (v1.14.0 Nr. 4): rename/merge/
+     * delete als EIN serverseitiges updateMany (PATCH /api/notes/tags, seit
+     * Server v1.11.0) statt einem updateNote pro betroffener Notiz. [from]
+     * erlaubt mehrere Quell-Tags (merge), [to] ist das Ziel (null bei delete).
+     * Netzwerkfehler fallen intern auf den alten Einzel-Notiz-Pfad zurück, der
+     * offline queued — HTTP-Fehler werden als [Result.Error] gemeldet.
+     */
+    suspend fun applyTagOperation(action: String, from: List<String>, to: String?): Result<Int>
     suspend fun togglePin(id: String): Result<Note>
     suspend fun toggleArchive(id: String): Result<Note>
     /**

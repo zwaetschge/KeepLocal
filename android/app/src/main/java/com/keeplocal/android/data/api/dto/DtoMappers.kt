@@ -16,6 +16,7 @@ fun NoteDto.toDomain(): Note = Note(
     tags = tags ?: emptyList(),
     sharedWith = sharedWith?.map { it.toDomain() } ?: emptyList(),
     images = images?.map { it.toDomain() } ?: emptyList(),
+    files = files?.map { it.toDomain() } ?: emptyList(),
     owner = owner,
     position = position,
     createdAt = createdAt?.let { parseInstant(it) } ?: Instant.now(),
@@ -43,6 +44,15 @@ fun NoteImageDto.toDomain(): NoteImage = NoteImage(
     url = url,
     thumbnailUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
     originalName = originalName
+)
+
+fun NoteFileDto.toDomain(): NoteFile = NoteFile(
+    filename = filename,
+    url = url,
+    originalName = originalName,
+    mimeType = mimetype,
+    sizeBytes = size,
+    uploadedAt = uploadedAt?.let { parseInstantOrNull(it) }
 )
 
 fun UserDto.toDomain(): User = User(

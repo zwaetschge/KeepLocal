@@ -1,17 +1,17 @@
 package com.keeplocal.android.domain.usecase.tags
 
-import com.keeplocal.android.domain.model.Note
 import com.keeplocal.android.domain.repository.NoteRepository
 import com.keeplocal.android.util.Result
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /**
- * Tag management (v1.9.0 Nr. 3): overview, rename, merge, delete. Tags live
- * on the notes — there is no separate tag entity on the server — so every
- * operation rewrites the tag list of each affected note through the normal
- * updateNote path. That gives offline behaviour for free: a failing update
- * lands in the offline queue and syncs later.
+ * Tag management (v1.9.0 Nr. 3; v1.14.0 Nr. 4): overview, rename, merge,
+ * delete. Tags live on the notes — there is no separate tag entity on the
+ * server. Seit Server v1.11.0 gibt es PATCH /api/notes/tags: eine Operation
+ * über alle Notizen statt einem Request pro Notiz (100 Notizen = 1 statt 100
+ * Requests). Offline fällt das Repository auf den alten updateNote-Pfad
+ * zurück, der weiterhin offline queued.
  */
 data class TagOverview(val tag: String, val noteCount: Int)
 
@@ -36,9 +36,9 @@ class GetTagsUseCase @Inject constructor(
 }
 
 /**
- * Renames a tag on every note carrying it. Renaming onto an existing tag
- * keeps a single tag per note (distinct) — which is exactly the merge
- * outcome, no special case needed.
+ * Renames a tag on every note carrying it — one server-side updateMany.
+ * Renaming onto an existing tag keeps a single tag per note (setUnion auf
+ * dem Server), no special case needed.
  */
 class RenameTagUseCase @Inject constructor(
     private val noteRepository: NoteRepository
@@ -49,57 +49,24 @@ class RenameTagUseCase @Inject constructor(
         if (oldTag.isEmpty()) return Result.Error("Der alte Tag darf nicht leer sein")
         if (newTag.isEmpty()) return Result.Error("Der neue Tag darf nicht leer sein")
         if (oldTag == newTag) return Result.Error("Alter und neuer Tag sind identisch")
-        return rewriteTag(from = oldTag, to = newTag)
+        return noteRepository.applyTagOperation(action = "rename", from = listOf(oldTag), to = newTag)
     }
-
-    private suspend fun rewriteTag(from: String, to: String): Result<Int> {
-        val notes = notesWithTag(from)
-            ?: return Result.Error("Notizen für „$from“ konnten nicht geladen werden")
-        var updated = 0
-        for (note in notes) {
-            val result = noteRepository.updateNote(note.copy(tags = (note.tags - from + to).distinct()))
-            if (result is Result.Success) updated++
-        }
-        return Result.Success(updated)
-    }
-
-    /** Server-side tag search with the offline cache as fallback. */
-    private suspend fun notesWithTag(tag: String): List<Note>? =
-        (noteRepository.getNotes(tag = tag).first() as? Result.Success)?.data
 }
 
 /**
  * Collapses several tags into one — the cleanup path for „einkauf“ /
- * „Einkauf“ / „shopping“. The target may itself be among the sources.
+ * „Einkauf“ / „shopping“. Der Server nimmt ALLE Quell-Tags in einem Request
+ * (setUnion + filter), das Ziel darf selbst unter den Quellen sein.
  */
 class MergeTagsUseCase @Inject constructor(
     private val noteRepository: NoteRepository
 ) {
     suspend operator fun invoke(sources: List<String>, target: String): Result<Int> {
         val toTag = target.trim()
-        val fromTags = sources.map { it.trim() }.filter { it.isNotEmpty() && it != toTag }.distinct()
+        val fromTags = sources.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (toTag.isEmpty()) return Result.Error("Der Ziel-Tag darf nicht leer sein")
         if (fromTags.isEmpty()) return Result.Error("Keine Tags zum Zusammenführen übrig")
-
-        // Collect affected notes across all source tags before writing, so
-        // a note carrying two source tags ends up with exactly one target
-        // tag no matter in which order the notes arrive.
-        val affected = LinkedHashMap<String, Note>()
-        for (tag in fromTags) {
-            (noteRepository.getNotes(tag = tag).first() as? Result.Success)?.data?.forEach { note ->
-                if (tag in note.tags) affected[note.id] = note
-            }
-        }
-        if (affected.isEmpty()) return Result.Error("Keine Notizen mit diesen Tags gefunden")
-
-        var updated = 0
-        for (note in affected.values) {
-            val newTags = (note.tags - fromTags.toSet() + toTag).distinct()
-            if (newTags == note.tags) continue
-            val result = noteRepository.updateNote(note.copy(tags = newTags))
-            if (result is Result.Success) updated++
-        }
-        return Result.Success(updated)
+        return noteRepository.applyTagOperation(action = "merge", from = fromTags, to = toTag)
     }
 }
 
@@ -110,14 +77,6 @@ class DeleteTagUseCase @Inject constructor(
     suspend operator fun invoke(tag: String): Result<Int> {
         val cleanTag = tag.trim()
         if (cleanTag.isEmpty()) return Result.Error("Der Tag darf nicht leer sein")
-        val notes = (noteRepository.getNotes(tag = cleanTag).first() as? Result.Success)?.data
-            ?: return Result.Error("Notizen für „$cleanTag“ konnten nicht geladen werden")
-        var updated = 0
-        for (note in notes) {
-            if (cleanTag !in note.tags) continue
-            val result = noteRepository.updateNote(note.copy(tags = note.tags - cleanTag))
-            if (result is Result.Success) updated++
-        }
-        return Result.Success(updated)
+        return noteRepository.applyTagOperation(action = "delete", from = listOf(cleanTag), to = null)
     }
 }

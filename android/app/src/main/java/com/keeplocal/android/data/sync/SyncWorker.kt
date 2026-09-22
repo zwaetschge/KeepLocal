@@ -38,16 +38,21 @@ class SyncWorker @AssistedInject constructor(
         if (!settingsDataStore.backgroundSync.first()) return Result.success()
         return try {
             val result = syncManager.syncPendingOperations()
+            // Pull half (v1.14.0 Nr. 6): server-side changes land in Room even
+            // while the app stays in the background. Meta probe gatet — ohne
+            // Änderung kostet der Pull hier keinen einzigen List-Request.
+            val pulled = runCatching { syncManager.pullRemoteChanges() }.getOrDefault(0)
             fileLogger.log(
                 "SyncWorker",
-                "background sync: synced=${result.synced} failed=${result.failed} skipped=${result.skipped}"
+                "background sync: synced=${result.synced} failed=${result.failed} " +
+                    "skipped=${result.skipped} pulled=$pulled"
             )
             settingsDataStore.setLastSyncAt(System.currentTimeMillis())
             // Pinned notes/single-note widgets may show stale data now — refresh.
             runCatching { PinnedNotesWidget.refreshAll(applicationContext) }
             runCatching { NoteWidget.refreshAll(applicationContext) }
-            // Synced updates may have changed reminders — re-plan the alarms.
-            if (result.synced > 0) {
+            // Synced or pulled updates may have changed reminders — re-plan alarms.
+            if (result.synced > 0 || pulled > 0) {
                 runCatching { reminderScheduler.rescheduleAll() }
             }
             Result.success()

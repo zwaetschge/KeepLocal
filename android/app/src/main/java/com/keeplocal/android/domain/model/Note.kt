@@ -35,7 +35,12 @@ data class Note(
     // would need a join table on both ends.
     val parentId: String? = null,
     // Code note (v1.10.0): render content monospaced instead of the paper font.
-    val isCode: Boolean = false
+    val isCode: Boolean = false,
+    // PDF attachments (v1.14.0 Nr. 5): server-managed like [images]; the
+    // editor uploads/deletes them through their own endpoints. Until this
+    // release the field was not even parsed — attachments were invisible on
+    // Android even though the server had them since v1.12.0.
+    val files: List<NoteFile> = emptyList()
 )
 
 /**
@@ -51,6 +56,24 @@ data class NoteImage(
 ) {
     /** Preferred URL for display: the lightweight thumbnail when present. */
     fun bestUrl(): String = if (!thumbnailUrl.isNullOrBlank()) thumbnailUrl else url
+}
+
+/**
+ * One PDF attachment of a note (v1.14.0 Nr. 5). [url] is a server-relative
+ * path like "/uploads/files/x.pdf" served behind the session — resolve it
+ * via MediaRepository and download through the authenticated client before
+ * handing it to a viewer (see downloadImageToCache for the pattern).
+ */
+data class NoteFile(
+    val filename: String,
+    val url: String,
+    val originalName: String? = null,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+    val uploadedAt: Instant? = null
+) {
+    /** Download/share name: the user's original, not the server hash. */
+    fun displayName(): String = originalName?.takeIf { it.isNotBlank() } ?: filename
 }
 
 data class TodoItem(

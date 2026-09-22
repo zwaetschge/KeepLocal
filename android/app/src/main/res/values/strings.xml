@@ -250,6 +250,12 @@
     <string name="sync_banner_retry">Try again</string>
     <string name="sync_conflict_snackbar">Conflict on \'%1$s\' — local version saved as a copy</string>
     <string name="editor_add_image">Add image</string>
+    <string name="editor_add_file">Attach PDF</string>
+    <string name="file_open_failed">Could not open the PDF</string>
+    <string name="api_key_scope_read">Read only</string>
+    <string name="api_key_scope_legacy">Full access (legacy key)</string>
+    <string name="api_key_scope_write">Read + write</string>
+    <string name="api_key_scopes_label">Scopes</string>
     <string name="editor_remove_image">Remove image</string>
     <string name="editor_start_recording">Dictate</string>
     <string name="editor_stop_recording">Stop recording</string>

@@ -238,6 +238,12 @@
     <string name="sync_banner_retry">Erneut versuchen</string>
     <string name="sync_conflict_snackbar">Konflikt bei \'%1$s\' — lokale Version als Kopie gesichert</string>
     <string name="editor_add_image">Bild hinzufügen</string>
+    <string name="editor_add_file">PDF anhängen</string>
+    <string name="file_open_failed">PDF konnte nicht geöffnet werden</string>
+    <string name="api_key_scope_read">Nur lesen</string>
+    <string name="api_key_scope_legacy">Voller Zugriff (alter Key)</string>
+    <string name="api_key_scope_write">Lesen + schreiben</string>
+    <string name="api_key_scopes_label">Berechtigungen</string>
     <string name="editor_remove_image">Bild entfernen</string>
     <string name="editor_start_recording">Diktieren</string>
     <string name="editor_stop_recording">Aufnahme beenden</string>

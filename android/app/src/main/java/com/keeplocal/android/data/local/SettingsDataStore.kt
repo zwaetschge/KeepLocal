@@ -79,6 +79,16 @@ class SettingsDataStore @Inject constructor(
     /** Wall-clock millis of the last successful server sync (0 = never). */
     val lastSyncAt: Flow<Long> = dataStore.data.map { it[KEY_LAST_SYNC_AT] ?: 0L }
 
+    // v1.14.0 Nr. 6: Pull-Hälfte des Hintergrund-Syncs. Die Signatur der
+    // letzten Meta-Sonde ("active/archived/trash/maxUpdatedAt") entscheidet,
+    // ob sich serverseitig überhaupt etwas tat; `since` ist der ISO-Zeitpunkt
+    // des letzten erfolgreichen Delta-Pulls.
+    /** Meta-Signatur des letzten erfolgreichen Pulls ("" = noch nie gezogen). */
+    val syncSignature: Flow<String> = dataStore.data.map { it[KEY_SYNC_SIGNATURE] ?: "" }
+
+    /** ISO-8601 des letzten Delta-Pulls ("" = noch kein Delta, nächster Pull komplett). */
+    val syncSince: Flow<String> = dataStore.data.map { it[KEY_SYNC_SINCE] ?: "" }
+
     /** Automatic backup interval in hours; 0 = off. */
     val backupIntervalHours: Flow<Int> = dataStore.data.map { it[KEY_BACKUP_INTERVAL_HOURS] ?: 0 }
 
@@ -209,6 +219,14 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { it[KEY_LAST_SYNC_AT] = epochMs }
     }
 
+    suspend fun setSyncSignature(signature: String) {
+        dataStore.edit { it[KEY_SYNC_SIGNATURE] = signature }
+    }
+
+    suspend fun setSyncSince(sinceIso: String) {
+        dataStore.edit { it[KEY_SYNC_SINCE] = sinceIso }
+    }
+
     suspend fun setBackupIntervalHours(hours: Int) {
         dataStore.edit { it[KEY_BACKUP_INTERVAL_HOURS] = hours }
     }
@@ -277,6 +295,8 @@ class SettingsDataStore @Inject constructor(
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         private val KEY_SORT_MODE = stringPreferencesKey("sort_mode")
         private val KEY_LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        private val KEY_SYNC_SIGNATURE = stringPreferencesKey("sync_signature")
+        private val KEY_SYNC_SINCE = stringPreferencesKey("sync_since")
         private val KEY_BACKUP_INTERVAL_HOURS = intPreferencesKey("backup_interval_hours")
         private val KEY_BACKUP_TREE_URI = stringPreferencesKey("backup_tree_uri")
         private val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")

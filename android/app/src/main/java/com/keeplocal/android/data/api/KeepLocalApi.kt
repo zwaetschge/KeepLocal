@@ -57,8 +57,17 @@ interface KeepLocalApi {
         @Query("archived") archived: Boolean? = null,
         @Query("deleted") deleted: Boolean? = null,
         @Query("page") page: Int? = null,
-        @Query("limit") limit: Int? = null
+        @Query("limit") limit: Int? = null,
+        // Delta-Sync (v1.14.0 Nr. 6): ISO-8601 — only notes with
+        // updatedAt > since come back (list AND pagination total).
+        @Query("since") since: String? = null
     ): Response<NotesResponseDto>
+
+    // Change probe (v1.14.0 Nr. 6): counts + max(updatedAt) in one
+    // aggregation. The background sync compares the signature and skips
+    // pulling entirely when nothing changed since the last pass.
+    @GET("api/notes/meta")
+    suspend fun getNotesMeta(): Response<NotesMetaDto>
 
     // Tree (v1.10.0): light sidebar projection; the client nests the flat
     // list itself. Registered before /{id} on the server, so no escaping
@@ -112,6 +121,11 @@ interface KeepLocalApi {
     @PATCH("api/notes/reorder")
     suspend fun reorderNotes(@Body request: ReorderNotesDto): Response<Unit>
 
+    // Tag management (v1.14.0 Nr. 4): rename/merge/delete as ONE server-side
+    // updateMany over all affected notes instead of one PUT per note.
+    @PATCH("api/notes/tags")
+    suspend fun tagOperation(@Body request: TagOperationRequestDto): Response<TagOperationResponseDto>
+
     @POST("api/notes/{id}/share")
     suspend fun shareNote(@Path("id") id: String, @Body request: ShareNoteDto): Response<Unit>
 
@@ -129,6 +143,22 @@ interface KeepLocalApi {
 
     @DELETE("api/notes/{id}/images/{filename}")
     suspend fun deleteImage(
+        @Path("id") id: String,
+        @Path("filename") filename: String
+    ): Response<NoteDto>
+
+    // PDF attachments (v1.14.0 Nr. 5): multipart field name "files", max 5
+    // per request / 25 per note / 25 MB each; the response returns the
+    // updated note like the image upload does.
+    @Multipart
+    @POST("api/notes/{id}/files")
+    suspend fun uploadFiles(
+        @Path("id") id: String,
+        @Part files: List<MultipartBody.Part>
+    ): Response<NoteDto>
+
+    @DELETE("api/notes/{id}/files/{filename}")
+    suspend fun deleteFile(
         @Path("id") id: String,
         @Path("filename") filename: String
     ): Response<NoteDto>
@@ -196,13 +226,14 @@ interface KeepLocalApi {
     @POST("api/notes/link-preview")
     suspend fun getLinkPreview(@Body request: LinkPreviewRequestDto): Response<LinkPreviewDto>
 
-    // API Keys
-    @GET("api/keys")
+    // API Keys — the server mounts /api/api-keys (server.js); the previous
+    // api/keys paths 404'd, so the whole Android key screen never worked.
+    @GET("api/api-keys")
     suspend fun getApiKeys(): Response<ApiKeysResponseDto>
 
-    @POST("api/keys")
+    @POST("api/api-keys")
     suspend fun createApiKey(@Body request: CreateApiKeyRequestDto): Response<ApiKeyDto>
 
-    @DELETE("api/keys/{id}")
+    @DELETE("api/api-keys/{id}")
     suspend fun revokeApiKey(@Path("id") id: String): Response<Unit>
 }

@@ -359,6 +359,17 @@ fun SettingsScreen(
                                             ?: stringResource(R.string.api_key_never_expires)
                                     )
                                 )
+                                // Scopes (v1.14.0 Nr. 10): null = legacy key
+                                // with full access from before scopes existed.
+                                Text(
+                                    stringResource(
+                                        when {
+                                            key.scopes?.contains("write") == true -> R.string.api_key_scope_write
+                                            key.scopes == null -> R.string.api_key_scope_legacy
+                                            else -> R.string.api_key_scope_read
+                                        }
+                                    )
+                                )
                             }
                         },
                         leadingContent = { Icon(Icons.Default.VpnKey, contentDescription = null) },
@@ -692,8 +703,8 @@ fun SettingsScreen(
     // API key creation dialog
     if (showCreateKeyDialog) {
         CreateApiKeyDialog(
-            onCreate = { name, expiresInDays ->
-                viewModel.createApiKey(name, expiresInDays)
+            onCreate = { name, expiresInDays, allowWrite ->
+                viewModel.createApiKey(name, expiresInDays, allowWrite)
                 showCreateKeyDialog = false
             },
             onDismiss = { showCreateKeyDialog = false }
@@ -973,12 +984,14 @@ fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateApiKeyDialog(
-    onCreate: (name: String, expiresInDays: Int?) -> Unit,
+    onCreate: (name: String, expiresInDays: Int?, allowWrite: Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var keyName by remember { mutableStateOf("") }
     // null mirrors the API's "no expiry" default.
     var expiresInDays by remember { mutableStateOf<Int?>(null) }
+    // Read is always granted; write must be chosen explicitly.
+    var allowWrite by remember { mutableStateOf(false) }
     val expiryOptions = listOf(
         30 to R.string.api_key_expiry_30,
         90 to R.string.api_key_expiry_90,
@@ -1016,10 +1029,31 @@ private fun CreateApiKeyDialog(
                         )
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.api_key_scopes_label),
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = !allowWrite,
+                        onClick = { allowWrite = false },
+                        label = { Text(stringResource(R.string.api_key_scope_read)) }
+                    )
+                    FilterChip(
+                        selected = allowWrite,
+                        onClick = { allowWrite = true },
+                        label = { Text(stringResource(R.string.api_key_scope_write)) }
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(keyName, expiresInDays) }) {
+            TextButton(onClick = { onCreate(keyName, expiresInDays, allowWrite) }) {
                 Text(stringResource(R.string.api_key_create))
             }
         },
