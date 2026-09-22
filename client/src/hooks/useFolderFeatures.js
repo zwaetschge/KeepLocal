@@ -12,7 +12,6 @@ import notesAPI from '../services/api/notesAPI';
  * - Titel-Index für Wiki-Links `[[Titel]]` (aus der Baum-Projektion, nicht dem
  *   geladenen Fenster — der Baum kennt jede Notiz)
  * - Tag-Union (Fenster-Tags + Baum-Tags) für die Vervollständigung
- * - Backlinks („Erwähnt in") für die geöffnete Notiz, rein clientseitig
  * - Journal „Heute", gespeicherte Suchen, Notiz-in-Ordner-Verschiebung
  */
 export function useFolderFeatures({
@@ -124,18 +123,6 @@ export function useFolderFeatures({
     return Array.from(names).sort();
   }, [allTags, treeNodes]);
 
-  /** Backlinks („Erwähnt in") für die geöffnete Notiz — exakt das `[[Titel]]`,
-   *  das der Editor schreibt, über das geladene Fenster. */
-  const backlinks = useMemo(() => {
-    const title = noteModal.note?.title?.trim();
-    if (!noteModal.isOpen || !title) return [];
-    const needle = `[[${title}]]`;
-    return notes
-      .filter(item => item._id !== noteModal.note._id && !item.isArchived
-        && (item.content || '').includes(needle))
-      .map(item => ({ id: item._id, title: item.title || t('untitledNote') }));
-  }, [noteModal, notes, t]);
-
   /** Nach Markdown-Import (Settings): Liste und Baum nachziehen. */
   const handleDataImported = useCallback(() => {
     fetchNotes(searchTerm, 1, { background: true, silent: true });
@@ -146,7 +133,6 @@ export function useFolderFeatures({
     folderOptions,
     wikiNotes,
     allKnownTags,
-    backlinks,
     handleOpenNoteById,
     handleOpenToday,
     handleRunSavedSearch,

@@ -50,7 +50,7 @@ function isNoteConflictError(error) {
   );
 }
 
-function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], backlinks = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
+function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -98,6 +98,24 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   // loaded) — sent as baseUpdatedAt on every non-forced PUT.
   const baseUpdatedAtRef = useRef(note?.updatedAt || null);
   const contentTextareaRef = useRef(null);
+  // Backlinks (v1.16.0): „Erwähnt in“ kommt vom Server — das geladene 50er-
+  // Fenster rechnete die Liste lokal aus und zeigte sie bei vollem Bestand
+  // leer oder falsch. Key ist der GEÖFFNETE Stand (note-Prop), nicht der
+  // Entwurf: Der Titel im Entwurf ändert sich pro Tastenanschlag, die
+  // Erwähnten ändern sich pro gespeichertem Titel. Fehler bleiben still —
+  // leer ist ehrlicher als das Fenster-Lügengergebnis von vorher.
+  const [backlinks, setBacklinks] = useState([]);
+  const backlinkNoteId = note?._id ?? null;
+  const backlinkTitle = typeof note?.title === 'string' ? note.title.trim() : '';
+  useEffect(() => {
+    let cancelled = false;
+    setBacklinks([]);
+    if (!backlinkNoteId || !backlinkTitle) return undefined;
+    notesAPI.getBacklinks(backlinkNoteId)
+      .then((list) => { if (!cancelled && Array.isArray(list)) setBacklinks(list); })
+      .catch(() => { /* still: nächste Öffnung versucht es erneut */ });
+    return () => { cancelled = true; };
+  }, [backlinkNoteId, backlinkTitle]);
   const fileInputRef = useRef(null);
   const pdfInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);

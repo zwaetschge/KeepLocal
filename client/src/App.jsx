@@ -166,7 +166,7 @@ function AppContent() {
   // Ableitungen und Handler leben im eigenen Hook, damit App.jsx Verdrahtung
   // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js).
   const {
-    folderOptions, wikiNotes, allKnownTags, backlinks,
+    folderOptions, wikiNotes, allKnownTags,
     handleOpenNoteById, handleOpenToday, handleRunSavedSearch, handleSaveCurrentSearch,
     handleDeleteSavedSearch, handleFolderDrop, handleDataImported,
   } = useFolderFeatures({
@@ -470,7 +470,6 @@ function AppContent() {
             onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
             availableTags={allKnownTags}
             wikiNotes={wikiNotes}
-            backlinks={backlinks}
             onOpenNote={handleOpenNoteById}
             folders={folderOptions}
             defaultParentId={folderScope && folderScope !== 'root' ? folderScope : null}

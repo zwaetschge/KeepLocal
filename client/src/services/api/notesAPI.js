@@ -86,6 +86,15 @@ const notesAPI = {
   },
 
   /**
+   * „Erwähnt in“ (v1.16.0): Notizen, die die angegebene per [[Titel]] erwähnen.
+   * Läuft serverseitig über das echte Korpus — das geladene 50er-Fenster
+   * zeigte bei vollem Bestand eine leere oder falsche Liste.
+   * @returns {Promise<Array>} [{ id, title, updatedAt }]
+   */
+  getBacklinks: (id, options = {}) =>
+    fetchWithAuth(API_ENDPOINTS.NOTES.BACKLINKS(id), { signal: options.signal }),
+
+  /**
    * Markdown ZIP export (v1.10.0): the whole tree as folders of .md files.
    * Blob download — the browser saves it like any other export.
    * @returns {Promise<Blob>} ZIP blob

@@ -323,6 +323,26 @@ router.get('/', noteValidation.search, async (req, res, next) => {
 // -------------------------------------------------------------------------
 
 /**
+ * GET /api/notes/:id/backlinks - Notizen, die diese per `[[Titel]]` erwähnen
+ * (v1.16.0). Muss VOR /:id registriert sein. Liefert [{id, title, updatedAt}],
+ * neueste zuerst, maximal 50.
+ */
+router.get('/:id/backlinks', noteValidation.getOne, async (req, res, next) => {
+  try {
+    const backlinks = await notesService.getNoteBacklinks(req.params.id, req.user._id);
+    res.json(backlinks);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(httpStatus.NOT_FOUND).json({ error: 'Notiz nicht gefunden' });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
  * GET /api/notes/:id/revisions - Revisionsliste (Metadaten) oder mit ?at=ISO
  * den Volltext einer Fassung. Muss VOR /:id registriert sein.
  */

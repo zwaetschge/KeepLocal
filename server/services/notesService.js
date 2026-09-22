@@ -1270,6 +1270,57 @@ async function getNoteTree(userId, since) {
   }));
 }
 
+// Backlinks (v1.16.0): Cap für „Erwähnt in“ — die Liste ist eine Navigations-
+// Hilfe im Modal, keine Volltextrecherche. 50 wie überall.
+const BACKLINKS_LIMIT = 50;
+
+/**
+ * Notizen, die diese Notiz per Wiki-Link `[[Titel]]` erwähnen (v1.16.0).
+ *
+ * Bis v1.15 rechnete der Web-Client das im geladenen 50er-Fenster aus — bei
+ * vollem Korpus (Trilium-Import: hunderte Notizen) zeigte „Erwähnt in“ fast
+ * immer eine leere oder falsche Liste. Der Server sucht über das echte Korpus:
+ * eigene + geteilte, nicht gelöschte, nicht archivierte Notizen, deren Inhalt
+ * den Titel in Doppelklammern trägt — case-insensitiv, weil importierte
+ * Bestände gemischte Schreibweisen tragen (der Link-Resolver im Editor ist
+ * exakt, die Erwähnung ist aber trotzdem eine).
+ *
+ * @param {string} noteId - die erwähnte Notiz
+ * @param {string} userId - Caller (Sichtbarkeit: eigene + geteilte Notizen)
+ * @returns {Promise<Array>} [{ id, title, updatedAt }] — neueste zuerst, max. 50
+ */
+async function getNoteBacklinks(noteId, userId) {
+  const note = await Note.findOne(noteEditQuery(noteId, userId)).select('title').lean();
+  if (!note) {
+    throw notFoundError();
+  }
+  const title = (note.title || '').trim();
+  if (!title) return [];
+
+  const mentioned = await Note.find({
+    $or: [{ userId }, { sharedWith: userId }],
+    deletedAt: null,
+    isArchived: false,
+    _id: { $ne: noteId },
+    content: { $regex: new RegExp(`\\[\\[${escapeRegexLiteral(title)}\\]\\]`, 'i') }
+  })
+    .select('title updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(BACKLINKS_LIMIT)
+    .lean();
+
+  return mentioned.map((source) => ({
+    id: source._id,
+    title: source.title || '',
+    updatedAt: source.updatedAt ?? null
+  }));
+}
+
+/** Titel als Regex-Literal — auch Titel können Regex-Metazeichen tragen. */
+function escapeRegexLiteral(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** YAML-Skalar: Strings mit Sonderlagen in Anfuehrungszeichen, Rest roh. */
 function yamlScalar(value) {
   if (value === null || value === undefined) return 'null';
@@ -2385,6 +2436,7 @@ module.exports = {
   revokeSharedNotesBetween,
   getNoteTree,
   getNotesMeta,
+  getNoteBacklinks,
   getNoteRevisions,
   getNoteRevision,
   restoreNoteRevision,
