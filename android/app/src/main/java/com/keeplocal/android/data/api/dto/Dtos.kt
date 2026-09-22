@@ -318,6 +318,13 @@ data class AdminSettingsDto(
     @Json(name = "registrationEnabled") val registrationEnabled: Boolean = false
 )
 
+// POST /api/notes/link-preview — die URL reist im JSON-Body, nicht mehr als
+// Query-Parameter (lange URLs sprengten Server-Logzeilen und Proxys).
+@JsonClass(generateAdapter = true)
+data class LinkPreviewRequestDto(
+    @Json(name = "url") val url: String
+)
+
 @JsonClass(generateAdapter = true)
 data class LinkPreviewDto(
     @Json(name = "url") val url: String,
