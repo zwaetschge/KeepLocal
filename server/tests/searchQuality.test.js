@@ -127,6 +127,7 @@ function loadService() {
   const seen = { aggregates: [], projections: [], sorts: [] };
   const chain = {
     populate() { return this; },
+    select() { return this; },
     sort(value) { seen.sorts.push(value); return this; },
     skip() { return this; },
     limit() { return Promise.resolve([]); }

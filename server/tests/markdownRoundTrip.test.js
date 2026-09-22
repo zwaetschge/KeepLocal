@@ -241,3 +241,56 @@ test('Route und Upload-Middleware melden den ZIP-Import an', () => {
   assert.match(upload, /Nur ZIP-Archive sind erlaubt/);
   assert.match(upload, /512 \* 1024 \* 1024/);
 });
+
+// ---------------------------------------------------------------------------
+// v1.14.0 Nr. 2 — ZIP-Import-Härtung (Stored XSS): Bild-Eintraege bekamen ihre
+// Endung vom Archiv-Autor gewaehlt und wurden ohne Magic-Byte-Pruefung nach
+// uploads/images geschrieben; secureFileServe stellt per sendFile nach Endung
+// aus — ein .html/.svg-Eintrag lief im Browserkontext des Nutzers.
+// ---------------------------------------------------------------------------
+
+test('ZIP-Import lehnt Bild-Anhänge mit verbotener Endung komplett ab', async () => {
+  const root = setupUploads();
+  try {
+    const inserted = [];
+    const service = loadService(modelOver({ inserted }));
+    const { ZipWriter } = require('../utils/zipWriter');
+    const zip = new ZipWriter();
+    zip.add('assets/images/boese.html', Buffer.from('<script>alert(document.domain)</script>'));
+    zip.add('notiz.md', Buffer.from('# Hallo\n\nText'));
+
+    await assert.rejects(
+      () => service.importMarkdownZip(USER, zip.finish()),
+      /keine erlaubte Bild-Endung/
+    );
+    assert.equal(fs.readdirSync(path.join(root, 'images')).length, 0, 'keine Datei bleibt zurück');
+    assert.equal(fs.readdirSync(path.join(root, 'files')).length, 0, 'auch files/ bleibt leer');
+    assert.equal(inserted.length, 0, 'angelegt wurde nichts — alles oder nichts');
+  } finally {
+    teardownUploads();
+  }
+});
+
+test('ZIP-Import prüft Magic Bytes: .png mit HTML-Inhalt fliegt raus', async () => {
+  const root = setupUploads();
+  try {
+    const inserted = [];
+    const service = loadService(modelOver({ inserted }));
+    const { ZipWriter } = require('../utils/zipWriter');
+    const zip = new ZipWriter();
+    // Erlaubte Endung, aber der Inhalt ist kein Bild — genau der Fall, den der
+    // Multipart-Upload schon abwehrt (validateImageFiles) und der ZIP-Import
+    // bis v1.13.0 durchliess.
+    zip.add('assets/images/fake.png', Buffer.from('<!DOCTYPE html><html><body>kein PNG</body></html>'));
+    zip.add('notiz.md', Buffer.from('# Hallo\n\nText'));
+
+    await assert.rejects(
+      () => service.importMarkdownZip(USER, zip.finish()),
+      /Magic-Bytes/
+    );
+    assert.equal(fs.readdirSync(path.join(root, 'images')).length, 0, 'die abgelehnte Datei wird wieder entfernt');
+    assert.equal(inserted.length, 0);
+  } finally {
+    teardownUploads();
+  }
+});

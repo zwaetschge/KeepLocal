@@ -158,6 +158,7 @@ test('the note list is ordered by manual order, then the recency key the client 
   const seen = {};
   const chain = {
     populate() { return this; },
+    select() { return this; },
     sort(value) { seen.sort = value; return this; },
     skip() { return this; },
     limit() { return Promise.resolve([]); }
@@ -234,6 +235,7 @@ test('the list and single-note responses populate the last editor', async () => 
   const populatedFields = [];
   const chain = {
     populate(field) { populatedFields.push(field); return this; },
+    select() { return this; },
     sort() { return this; },
     skip() { return this; },
     limit() { return Promise.resolve([]); }

@@ -35,6 +35,13 @@ const apiKeySchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Scopes (v1.14.0): ['read'] = nur GET, ['read', 'write'] = alles. Keys ohne
+  // das Feld (vor v1.14.0 angelegt) behalten Vollzugriff — die Middleware
+  // interpretiert "fehlt" als Legacy-Vollzugriff, kein silently-downgrade.
+  scopes: {
+    type: [String],
+    enum: ['read', 'write']
   }
 }, {
   timestamps: true

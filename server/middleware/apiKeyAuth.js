@@ -56,4 +56,20 @@ const authenticateApiKey = async (req, res, next) => {
   }
 };
 
-module.exports = { authenticateApiKey };
+/**
+ * Write guard for v1 API keys (v1.14.0). A key with explicit scopes needs
+ * 'write' for mutating routes; keys without a scopes field predate the feature
+ * and keep full access. Reads are never gated (a read-only key stays useful).
+ */
+const requireApiKeyWrite = (req, res, next) => {
+  const scopes = req.apiKey?.scopes;
+  if (Array.isArray(scopes) && !scopes.includes('write')) {
+    return res.status(403).json({
+      success: false,
+      error: 'API-Key ist schreibgeschützt (nur scope: read)'
+    });
+  }
+  next();
+};
+
+module.exports = { authenticateApiKey, requireApiKeyWrite };

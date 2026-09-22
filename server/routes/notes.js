@@ -276,7 +276,9 @@ router.get('/', noteValidation.search, async (req, res, next) => {
       archived,
       deleted,
       folderId,
-      since
+      since,
+      // v1.14.0: Folgeseiten (und nur diese) verzichten auf Counts/Tag-Cloud.
+      includeMeta: req.query.includeMeta
     });
 
     res.json(result);

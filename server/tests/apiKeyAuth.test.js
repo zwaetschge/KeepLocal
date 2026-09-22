@@ -138,3 +138,43 @@ test('the API key middleware is the single gate in front of /api/v1', () => {
     assert.ok(index.indexOf(mount) > gatePosition, `${mount} must sit behind the API key gate`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// v1.14.0 Nr. 10 — Scopes: Ein Key, der nur Lesen soll, darf nicht löschen
+// können. requireApiKeyWrite sitzt auf allen neun mutierenden v1-Routen;
+// Legacy-Keys ohne scopes-Feld behalten Vollzugriff (kein silent Downgrade).
+// ---------------------------------------------------------------------------
+
+test('requireApiKeyWrite: read-only Key bekommt 403, write und Legacy kommen durch', async () => {
+  for (const modulePath of [middlewarePath]) delete require.cache[modulePath];
+  const { requireApiKeyWrite } = require(middlewarePath);
+
+  const run = (apiKeyDoc) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('guard neither answered nor continued')), 2000);
+    const res = {
+      status(code) { clearTimeout(timer); resolve({ blocked: true, code }); return this; },
+      json() { return this; }
+    };
+    requireApiKeyWrite({ apiKey: apiKeyDoc }, res, () => { clearTimeout(timer); resolve({ blocked: false }); });
+  });
+
+  const readOnly = await run({ scopes: ['read'] });
+  assert.deepEqual(readOnly, { blocked: true, code: 403 }, 'read-only Key wird abgewiesen');
+
+  const readWrite = await run({ scopes: ['read', 'write'] });
+  assert.equal(readWrite.blocked, false, 'write-Scope kommt durch');
+
+  const legacy = await run({ name: 'alter Key', prefix: 'kl_abc' });
+  assert.equal(legacy.blocked, false, 'Key ohne scopes-Feld (vor v1.14.0) behält Vollzugriff');
+});
+
+test('Scopes am Modell und in der Key-Erstellung: Default read, write nur auf Anfrage', () => {
+  const modelSource = fs.readFileSync(path.join(__dirname, '../models/ApiKey.js'), 'utf8');
+  assert.match(modelSource, /scopes:\s*\{\s*type: \[String\],\s*enum: \['read', 'write'\]/, 'Feld mit fester Enum');
+
+  const routeSource = fs.readFileSync(path.join(__dirname, '../routes/apiKeys.js'), 'utf8');
+  assert.match(routeSource, /let requestedScopes = \['read'\]/, 'neue Keys sind per Default read-only');
+  assert.match(routeSource, /scopes muss ein Array aus "read" und\/oder "write" sein/, 'ungültige Werte sind 400');
+  assert.match(routeSource, /unique\.includes\('write'\) \? \['read', 'write'\] : \['read'\]/, 'write impliziert read');
+  assert.match(routeSource, /scopes: apiKey\.scopes/, 'die Antwort nennt die Scopes');
+});

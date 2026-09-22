@@ -72,6 +72,7 @@ test('note pagination clamps invalid public API values', async () => {
   const observed = {};
   const query = {
     populate() { return this; },
+    select() { return this; },
     sort() { return this; },
     skip(value) { observed.skip = value; return this; },
     limit(value) { observed.limit = value; return Promise.resolve([]); }
@@ -102,6 +103,7 @@ function makeScopeMock() {
   const observed = { counts: [], finds: [], aggregate: null };
   const query = {
     populate() { return this; },
+    select() { return this; },
     sort() { return this; },
     skip(value) { observed.skip = value; return this; },
     limit(value) { observed.limit = value; return Promise.resolve([]); }
@@ -224,5 +226,74 @@ test('die meta-Route ist vor /:id registriert und reicht since durch', () => {
   assert.ok(metaAt > -1 && metaAt < singleAt, '/meta muss vor /:id registriert sein');
   assert.ok(treeAt < singleAt);
   assert.match(routes, /getNoteTree\(req\.user\._id, req\.query\.since\)/);
-  assert.match(routes, /folderId,\s*\n\s*since\s*\n\s*\}\);/);
+  // v1.14.0: includeMeta kam dazu (Folgeseiten sparen sich Counts + Tag-Cloud).
+  assert.match(routes, /folderId,\s*\n\s*since,\s*\n\s*\/\/ v1\.14\.0[^\n]*\n\s*includeMeta: req\.query\.includeMeta\s*\n\s*\}\);/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.14.0 Nr. 3 + Nr. 8 — revisions[] reist nicht mehr in Liste/Detail, und
+// includeMeta=false lässt die globalen Counts + Tag-Aggregation weg.
+// ---------------------------------------------------------------------------
+
+test('Liste und Detail projizieren revisions weg (v1.14.0)', async () => {
+  const selects = [];
+  const chain = {
+    populate: () => chain,
+    select(arg) { selects.push(arg); return chain; },
+    sort: () => chain,
+    skip: () => chain,
+    limit: async () => []
+  };
+  const service = loadService({
+    countDocuments: async () => 0,
+    aggregate: async () => [],
+    find: () => chain,
+    findOne: () => chain
+  });
+
+  await service.getAllNotes({ userId: 'u1', page: 1, limit: 10, archived: 'false' });
+  await service.getNoteById('507f191e810c19729de860ea', 'u1').catch(() => {});
+  assert.ok(selects.includes('-revisions'), 'beide Pfade schneiden revisions aus der Projektion');
+});
+
+test('includeMeta=false spart Counts und Tag-Aggregation ein', async () => {
+  const seen = { counts: 0, aggregates: 0 };
+  const chain = {
+    populate: () => chain,
+    select: () => chain,
+    sort: () => chain,
+    skip: () => chain,
+    limit: async () => []
+  };
+  const service = loadService({
+    countDocuments: async () => 0,
+    aggregate: async () => { seen.aggregates += 1; return []; },
+    find: () => chain
+  });
+  Object.defineProperty(seen, 'counts', { value: 0, writable: true });
+  const countingService = loadService({
+    countDocuments: async () => { seen.counts += 1; return 0; },
+    aggregate: async () => { seen.aggregates += 1; return []; },
+    find: () => chain
+  });
+
+  const lean = await countingService.getAllNotes({ userId: 'u1', page: 2, limit: 50, archived: 'false', includeMeta: false });
+  // Genau EIN countDocuments bleibt: das Pagination-Total der Seite.
+  assert.equal(seen.counts, 1, 'nur das Listen-Total wird noch gezählt');
+  assert.equal(seen.aggregates, 0, 'die Tag-Aggregation fällt weg');
+  assert.equal('counts' in lean, false, 'Antwort ohne counts-Schlüssel');
+  assert.equal('tags' in lean, false, 'Antwort ohne tags-Schlüssel');
+  assert.ok(lean.pagination, 'Pagination bleibt (pages braucht das Total)');
+
+  // Der Query-Param kommt als String 'false' — auch der muss sparen.
+  seen.counts = 0;
+  await countingService.getAllNotes({ userId: 'u1', page: 2, archived: 'false', includeMeta: 'false' });
+  assert.equal(seen.counts, 1, "includeMeta='false' (String) spart genauso");
+
+  // Default: alles wie vorher — Seite 1 füttert die Sidebar.
+  seen.counts = 0;
+  const full = await countingService.getAllNotes({ userId: 'u1', page: 1, archived: 'false' });
+  assert.equal(seen.counts, 4, 'ohne includeMeta laufen die vier Counts (total+3 global)');
+  assert.equal(seen.aggregates, 1, 'die Tag-Cloud läuft');
+  assert.deepEqual(full.counts, { active: 0, archived: 0, trash: 0 });
 });

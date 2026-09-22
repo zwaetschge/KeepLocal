@@ -86,7 +86,17 @@ function decode(value) {
   return value;
 }
 
-const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+// Streaming-Hash statt readFileSync (v1.14.0): Der Backup-Scheduler läuft seit
+// v1.13.0 im Serverprozess — der alte Hash lud jede Datei komplett in den
+// Speicher und blockierte dabei den Event-Loop; bei hunderten MB Uploads
+// answered der Server während des gesamten Backups keine Requests mehr.
+const sha256File = (file) => new Promise((resolve, reject) => {
+  const hash = crypto.createHash('sha256');
+  fs.createReadStream(file)
+    .on('error', reject)
+    .on('data', chunk => hash.update(chunk))
+    .on('end', () => resolve(hash.digest('hex')));
+});
 
 function timestamp() {
   const now = new Date();
@@ -155,7 +165,7 @@ async function createBackup(keep) {
       count += 1;
     }
     await new Promise(resolve => stream.end(resolve));
-    manifest.collections.push({ name, count, file: path.relative(target, file), sha256: sha256File(file) });
+    manifest.collections.push({ name, count, file: path.relative(target, file), sha256: await sha256File(file) });
     console.log(`  ${name}: ${count} documents`);
   }
 
@@ -176,11 +186,14 @@ async function createBackup(keep) {
       const source = path.join(sourceDir, entry);
       if (!fs.statSync(source).isFile()) continue;
       const destination = path.join(targetDir, entry);
-      fs.copyFileSync(source, destination);
+      // Async I/O für den heissen Pfad (v1.14.0): copyFileSync + zwei statSync
+      // + Full-File-Hash pro Datei hielten den Event-Loop pro Datei fest.
+      await fs.promises.copyFile(source, destination);
+      const stats = await fs.promises.stat(destination);
       copied.add(entry);
       manifest.uploads.files += 1;
-      manifest.uploads.bytes += fs.statSync(destination).size;
-      manifest.uploads.entries.push({ name: entry, dir: subdir, size: fs.statSync(destination).size, sha256: sha256File(destination) });
+      manifest.uploads.bytes += stats.size;
+      manifest.uploads.entries.push({ name: entry, dir: subdir, size: stats.size, sha256: await sha256File(destination) });
     }
   }
 
@@ -252,7 +265,7 @@ function readManifest(target) {
  * checksums and document counts, upload files with size and checksum, and (for
  * format >= 2) that every image the database references is present.
  */
-function verifyBackup(dir) {
+async function verifyBackup(dir) {
   const target = resolveBackupDir(dir);
   const manifest = readManifest(target);
   const report = { target, format: manifest.format || 1, collections: 0, documents: 0, uploads: 0, warnings: [] };
@@ -260,7 +273,7 @@ function verifyBackup(dir) {
   for (const entry of manifest.collections) {
     const file = path.join(target, entry.file);
     if (!fs.existsSync(file)) throw new Error(`Collection-Datei fehlt: ${entry.file}`);
-    const checksum = sha256File(file);
+    const checksum = await sha256File(file);
     if (checksum !== entry.sha256) {
       throw new Error(`Prüfsumme stimmt nicht für ${entry.file} (erwartet ${entry.sha256}, gefunden ${checksum})`);
     }
@@ -286,7 +299,7 @@ function verifyBackup(dir) {
       if (stats.size !== entry.size) {
         throw new Error(`Upload-Größe stimmt nicht für ${entry.name} (erwartet ${entry.size}, gefunden ${stats.size})`);
       }
-      const checksum = sha256File(file);
+      const checksum = await sha256File(file);
       if (checksum !== entry.sha256) {
         throw new Error(`Prüfsumme stimmt nicht für Upload ${entry.name} (erwartet ${entry.sha256}, gefunden ${checksum})`);
       }
@@ -316,7 +329,7 @@ async function restoreBackup(dir) {
   const target = resolveBackupDir(dir);
   // Alles prüfen, BEVOR das erste deleteMany läuft: ein halbleer restaurierter
   // Zustand ist schlechter als gar keiner.
-  const report = verifyBackup(target);
+  const report = await verifyBackup(target);
   const manifest = readManifest(target);
   for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
 
@@ -362,11 +375,11 @@ async function restoreBackup(dir) {
       const source = path.join(uploadsSource, entry);
       if (!fs.statSync(source).isFile()) continue;
       const destination = path.join(destinationDir, entry);
-      fs.copyFileSync(source, destination);
+      await fs.promises.copyFile(source, destination);
       // Auch die Kopie prüfen: eine abgeschnittene Datei wäre sonst ein
       // stilles Loch im Restore.
       const expected = manifest.uploads?.entries?.find(item => item.name === entry);
-      if (expected && sha256File(destination) !== expected.sha256) {
+      if (expected && await sha256File(destination) !== expected.sha256) {
         throw new Error(`Prüfsumme stimmt nicht für wiederhergestellte Datei ${entry}`);
       }
       restoredUploads += 1;
@@ -403,7 +416,7 @@ async function main() {
 
   // --verify und --list brauchen keine Datenbank.
   if (args.verify) {
-    const report = verifyBackup(args.verify);
+    const report = await verifyBackup(args.verify);
     for (const warning of report.warnings) console.warn(`  Warnung: ${warning}`);
     console.log(`Recovery Point OK: ${report.target}`);
     console.log(`  ${report.collections} Collections, ${report.documents} Dokumente, ${report.uploads} Uploads (Format ${report.format})`);
