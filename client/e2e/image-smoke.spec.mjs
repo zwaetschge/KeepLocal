@@ -123,7 +123,12 @@ test.describe.serial('published all-in-one image', () => {
       await card.locator('.note-image-preview img').first().getAttribute('src')
     );
     expect(response.status(), 'the uploaded image must be served').toBe(200);
-    expect(response.headers()['cache-control']).toContain('no-store');
+    // v1.15.0: Uploads sind private+immutable (Random-Hex-Namen, nie mutiert)
+    // — der Header kommt vom Backend, nginx setzt keins mehr. no-store lud
+    // jede Notiz-Ansicht alle Bilder erneut, obwohl sie byte-identisch sind.
+    const cacheControl = response.headers()['cache-control'] || '';
+    expect(cacheControl).toContain('private');
+    expect(cacheControl).toContain('immutable');
   });
 
   test('search and trash work in the image', async () => {
