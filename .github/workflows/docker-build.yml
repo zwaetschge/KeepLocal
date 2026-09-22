@@ -40,7 +40,11 @@ concurrency:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Multi-Arch (QEMU-arm64) mit frischem npm-ci-Layer braucht je nach Runner-
+    # Auslastung deutlich laenger als 45 min — der v1.13.0-Tag-Build starb am
+    # 2026-09-22 im Timeout, kurz vor dem Push. 150 min deckt den Worst-Case
+    # ab, ohne dem Job ein unbegrenztes Fenster zu geben.
+    timeout-minutes: 150
     # Nur veroeffentlichen, wenn die CI desselben Commits erfolgreich war.
     # `workflow_run.event == 'push'` schliesst PR-Laeufe aus, deren head_branch
     # zufaellig main heisst (z. B. Forks).
