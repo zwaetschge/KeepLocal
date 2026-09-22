@@ -634,3 +634,37 @@ test('getMeta und importMarkdownZip sind im notesAPI verdrahtet', () => {
   assert.match(endpoints, /IMPORT_MARKDOWN_ZIP: '\/api\/notes\/import\/markdown-zip'/);
   assert.match(endpoints, /BACKUPS: '\/api\/admin\/backups'/);
 });
+
+
+// v1.14.0 Nr. 8: Folgeseiten im Vordergrund sparen sich Counts + Tag-Cloud
+// (vier Queries weniger pro Blättern). Hintergrund-Refreshes laufen nur nach
+// geänderter Meta-Signatur — dort können sich Counts geändert haben.
+test('fetchNotes requests includeMeta=false only for foreground pages > 1', () => {
+  const source = readClientFile('src/hooks/useNotesManager.js');
+  assert.match(source, /const skipMeta = !background && page > 1;/);
+  assert.match(source, /if \(skipMeta\) params\.includeMeta = false;/);
+  assert.match(source, /applyServerState\(normalizeNotesPayload\(response\), \{ merge: background, keepAbsentMeta: skipMeta \}\);/);
+
+  // Substitution nur bei angeforderter Meta-Abstinenz — Trash-Antworten
+  // (nie tags) wischen die Tag-Liste weiter, wie vorher.
+  const apply = source.split('const applyServerState')[1].split('const fetchNotes')[0];
+  assert.match(apply, /keepAbsentMeta && normalized\.hasCounts === false/);
+  assert.match(apply, /keepAbsentMeta && normalized\.hasTags === false/);
+});
+
+
+// v1.14.0 Nr. 1: Der Nr.-26-Refactor hat NoteList auf einen festen Prop-Satz
+// reduziert — selectedIds/onToggleSelect/tagColors wurden verworfen, obwohl
+// App.jsx sie liefert und Note.jsx sie rendert. Bulk-Auswahl und Tag-Farb-
+// punkte waren damit unerreichbar. Pin: die drei Props kommen wieder durch.
+test('NoteList forwards selection and tag-color props to every Note', () => {
+  const list = readClientFile('src/components/NoteList.jsx');
+  const noteProps = list.split('<Note')[1].split('/>')[0];
+  for (const prop of ['selectedIds={selectedIds}', 'onToggleSelect={onToggleSelect}', 'tagColors={tagColors}']) {
+    assert.ok(noteProps.includes(prop), `NoteList muss ${prop} durchreichen`);
+  }
+  const signature = list.split('function NoteList(')[1].split(') {')[0];
+  for (const prop of ['selectedIds', 'onToggleSelect', 'tagColors']) {
+    assert.ok(signature.includes(prop), `NoteList-Signatur muss ${prop} destrukturieren`);
+  }
+});

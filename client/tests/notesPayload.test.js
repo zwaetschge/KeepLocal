@@ -56,7 +56,11 @@ test('notes payload normalization supplies a safe empty response', async () => {
     notes: [],
     pagination: { page: 1, limit: 50, total: 0, pages: 0 },
     counts: { active: 0, archived: 0, trash: 0 },
-    tags: []
+    tags: [],
+    // v1.14.0: Flags markieren die ABWESENHEIT von counts/tags (siehe Test
+    // unten) — Substitution in applyServerState nur bei keepAbsentMeta.
+    hasCounts: false,
+    hasTags: false
   });
 });
 
@@ -70,4 +74,34 @@ test('normalizeNote keeps parentId (string or null) and isCode', async () => {
   assert.equal(normalizeNote({ _id: 'a' }).isCode, false);
   assert.equal(normalizeNote({ _id: 'a', isCode: true }).isCode, true);
   assert.equal(normalizeNote({ _id: 'a', isCode: 'yes' }).isCode, true);
+});
+
+// v1.14.0 Nr. 8: Folgeseiten fragen includeMeta=false an — die Antwort kommt
+// ohne counts/tags. normalizeNotesPayload muss das markieren (statt still auf
+// 0 zu fallen), applyServerState hält dann den bestehenden Sidebar-Stand.
+test('normalizeNotesPayload flags absent counts and tags instead of silently zeroing', async () => {
+  const { normalizeNotesPayload } = await import(moduleUrl);
+
+  const lean = normalizeNotesPayload({ notes: [], pagination: { page: 2, limit: 50, total: 9, pages: 1 } });
+  assert.equal(lean.hasCounts, false, 'kein counts-Schlüssel in der Antwort');
+  assert.equal(lean.hasTags, false, 'kein tags-Schlüssel in der Antwort');
+  // Die Defaults bleiben bestehen (Backward-kompatibel fürAufrufer ohne Flags):
+  assert.deepEqual(lean.counts, { active: 0, archived: 0, trash: 0 });
+  assert.deepEqual(lean.tags, []);
+
+  const full = normalizeNotesPayload({
+    notes: [],
+    pagination: { page: 1 },
+    counts: { active: 3, archived: 1, trash: 0 },
+    tags: [{ name: 'x', count: 1 }]
+  });
+  assert.equal(full.hasCounts, true);
+  assert.equal(full.hasTags, true);
+
+  // Die Flags beschreiben nur die Antwort, nicht die Absicht: Bei
+  // null (Total-Ausfall) ist hasCounts ebenfalls false — die Substitution
+  // greift aber nur, wenn der Aufrufer keepAbsentMeta gesetzt hat (er hat
+  // includeMeta=false angefordert). Ein ungefragter Ausfall fällt weiter
+  // auf 0, wie vorher.
+  assert.equal(normalizeNotesPayload(null).hasCounts, false);
 });

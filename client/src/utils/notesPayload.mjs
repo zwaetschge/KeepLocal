@@ -113,8 +113,15 @@ export function normalizeNotesPayload(payload) {
   const source = isRecord(payload) ? payload : {};
   const pagination = isRecord(source.pagination) ? source.pagination : {};
   const counts = isRecord(source.counts) ? source.counts : {};
+  // v1.14.0 Nr. 8: includeMeta=false-Antworten (Folgeseiten) kommen ohne
+  // counts/tags. Die Flags merken das — applyServerState hält dann den
+  // bestehenden Sidebar-Stand, statt ihn auf 0 fallen zu lassen.
+  const hasCounts = isRecord(source.counts);
+  const hasTags = Array.isArray(source.tags);
 
   return {
+    hasCounts,
+    hasTags,
     notes: Array.isArray(source.notes)
       ? source.notes.map(normalizeNote).filter(Boolean)
       : [],

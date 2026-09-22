@@ -12,11 +12,13 @@ export async function getApiKeys() {
  * Create a new API key
  * @param {string} name - Descriptive name
  * @param {string} expiresIn - '30d', '90d', '365d', or 'never'
+ * @param {string[]} [scopes] - v1.14.0: ['read'] (default) or ['read','write'];
+ *   the server rejects anything else. Write access must be an explicit choice.
  */
-export async function createApiKey(name, expiresIn = 'never') {
+export async function createApiKey(name, expiresIn = 'never', scopes = ['read']) {
   return fetchWithAuth(API_ENDPOINTS.API_KEYS.BASE, {
     method: 'POST',
-    body: JSON.stringify({ name, expiresIn }),
+    body: JSON.stringify({ name, expiresIn, scopes }),
   });
 }
 
