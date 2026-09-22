@@ -275,7 +275,8 @@ test('published all-in-one image is smoke-tested on every built architecture', (
   const buildJob = workflow.match(/\n  build-and-push:\n([\s\S]*?)\n  test-image:\n/)?.[1] || '';
   const testJob = workflow.match(/\n  test-image:\n([\s\S]*)/)?.[1] || '';
   assert.match(workflow, /concurrency:\n\s+group: docker-publish-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/);
-  assert.match(buildJob, /timeout-minutes: 45/);
+  // 150 min seit 2026-09-22: QEMU-arm64 mit frischem npm-ci-Layer schaffte 45 min nicht.
+  assert.match(buildJob, /timeout-minutes: 150/);
   assert.match(buildJob, /run: \.github\/scripts\/docker-metadata\.sh/);
   assert.doesNotMatch(buildJob, /docker\/metadata-action/);
   assert.match(buildJob, /outputs:\n\s+test-tag: \$\{\{ steps\.meta\.outputs\.test-tag \}\}/);
