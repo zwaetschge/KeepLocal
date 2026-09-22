@@ -374,9 +374,11 @@ jobs:
         run: |
           set -eu
           echo "Promoting ${IMAGE}:${IMMUTABLE_TAG}:"
+          # PROMOTE_TAGS enthaelt BARE Tags (docker-metadata.sh): Job-Outputs
+          # mit dem Username-Secret drin verwirft GitHub beim Job-Uebergang.
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
-            echo "  -> ${tag}"
-            docker buildx imagetools create -t "$tag" "${IMAGE}:${IMMUTABLE_TAG}"
+            echo "  -> ${IMAGE}:${tag}"
+            docker buildx imagetools create -t "${IMAGE}:${tag}" "${IMAGE}:${IMMUTABLE_TAG}"
           done <<< "$PROMOTE_TAGS"
           echo "All channel tags now point at the tested image."
