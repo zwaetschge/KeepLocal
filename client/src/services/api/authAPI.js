@@ -224,6 +224,14 @@ const authAPI = {
   },
 
   /**
+   * Storage-Nutzung + Quota-Budget des Accounts (v1.17.0). Der Server antwortet
+   * mit { usedBytes, limitBytes, enforced } — enforced=false heißt unlimitiert
+   * (UPLOAD_QUOTA_MB=0), dann zeigt die UI nur die Nutzung.
+   * @returns {Promise<{usedBytes: number, limitBytes: number, enforced: boolean}>}
+   */
+  getStorageUsage: async () => fetchWithAuth(API_ENDPOINTS.AUTH.STORAGE),
+
+  /**
    * Get current authenticated user data
    * @returns {Promise<Object>} Current user data
    * @throws {Error} If not authenticated or request fails

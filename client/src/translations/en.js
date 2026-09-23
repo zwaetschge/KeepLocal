@@ -708,4 +708,15 @@ export const en = {
   importMarkdownProgress: 'Importing: {done}/{total} notes',
   journalFolderLabel: 'Journal folder',
   journalFolderHint: '"Today" puts the daily note into this folder.',
+  // v1.17.0 (W3/W5): reminders + friend-request badge
+  reminderLabel: 'Reminder',
+  reminderClear: 'Clear reminder',
+  reminderAt: 'Reminder on {date}',
+  upcomingReminders: 'Upcoming reminders',
+  pendingFriendRequests: '{count} pending friend request(s)',
+  // v1.17.0 (W4): storage usage + quota
+  storageSection: 'Storage',
+  storageUsed: 'Used',
+  storageLimitHint: 'Images and PDF attachments count towards the limit.',
+  storageNearLimit: 'Almost at the limit — the server rejects uploads with 413 once it is exceeded.',
 };

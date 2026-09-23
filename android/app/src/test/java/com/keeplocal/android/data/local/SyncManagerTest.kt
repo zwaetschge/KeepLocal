@@ -16,6 +16,9 @@ import java.io.IOException
 import io.mockk.every
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
@@ -349,6 +352,77 @@ class SyncManagerTest {
         assertEquals("401 is not a server rejection", 0, pendingDao.ops.single().attemptCount)
     }
 
+    // --- Abbruch + Single-Flight (v1.17.0) ----------------------------
+
+    /**
+     * assertFailsWith-Ersatz (v1.17.0): kotlin.test ist nicht im Tree, und
+     * JUnits assertThrows nimmt keine suspend-Lambdas. Der Abbruch muss durch
+     * den kompletten Sync-Pfad durchreichen — genau das prüft der Helper.
+     */
+    private suspend fun assertPropagatesCancellation(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (expected: CancellationException) {
+            return
+        }
+        throw AssertionError("expected a CancellationException to propagate")
+    }
+
+    @Test
+    fun `cancellation mid-drain propagates instead of poisoning the queue`() = runTest {
+        noteDao.insertNote(entity("offline_a"))
+        noteDao.insertNote(entity("offline_b"))
+        enqueue(OperationType.CREATE, "offline_a")
+        enqueue(OperationType.CREATE, "offline_b")
+        // Erster Aufruf: der Worker wird mitten in der ersten Op gestoppt.
+        coEvery { api.createNote(any()) } throws CancellationException("workmanager stop") andThen
+            Response.success(dto("srv1", "T1")) andThen Response.success(dto("srv2", "T2"))
+
+        assertPropagatesCancellation { syncManager.syncPendingOperations() }
+
+        // Der Abbruch darf weder fressen noch zählen: Queue komplett da,
+        // kein Versuch verbraucht, kein „läuft“-Banner-Kleber.
+        assertEquals("queue survives the aborted drain", 2, pendingDao.ops.size)
+        assertEquals("cancellation must not eat the attempt budget", 0, pendingDao.ops[0].attemptCount)
+        assertEquals(false, syncManager.syncStatus.value.isSyncing)
+
+        // Die Mutex ist nach dem Abbruch frei — der nächste Drain synced alles.
+        val retry = syncManager.syncPendingOperations()
+        assertEquals(2, retry.synced)
+        assertTrue(pendingDao.ops.isEmpty())
+        assertNotNull(noteDao.notes["srv1"])
+        assertNotNull(noteDao.notes["srv2"])
+    }
+
+    @Test
+    fun `a second drain while one is running returns immediately`() = runTest {
+        noteDao.insertNote(entity("offline_1"))
+        enqueue(OperationType.CREATE, "offline_1")
+        // Gate im API-Call: der erste Drain hält die Mutex, bis wir sie
+        // freigeben — deterministisch, nicht über Scheduler-Timing.
+        val enteredApi = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        coEvery { api.createNote(any()) } coAnswers {
+            enteredApi.complete(Unit)
+            release.await()
+            Response.success(dto("srv1", "Title"))
+        }
+
+        val first = async { syncManager.syncPendingOperations() }
+        enteredApi.await() // erster Drain sitzt definitiv im API-Call
+        val second = async { syncManager.syncPendingOperations() }
+        val secondResult = second.await()
+
+        // Single-Flight: kein Anstehen, kein Doppel-Drain — Nullergebnis.
+        assertEquals(0, secondResult.synced)
+        assertEquals(0, secondResult.failed)
+
+        release.complete(Unit)
+        assertEquals("the running drain covers the queue", 1, first.await().synced)
+        coVerify(exactly = 1) { api.createNote(any()) }
+        assertTrue(pendingDao.ops.isEmpty())
+    }
+
     // --- pullRemoteChanges (v1.14.0 Nr. 6) ---------------------------
 
     private fun meta(
@@ -494,6 +568,15 @@ class SyncManagerTest {
         assertEquals(0, syncManager.pullRemoteChanges())
         assertEquals("", storedSignature)
         assertEquals("", storedSince)
+    }
+
+    @Test
+    fun `cancellation during the pull propagates instead of returning 0`() = runTest {
+        storedSignature = ""
+        coEvery { api.getNotesMeta() } throws CancellationException("worker stopped")
+
+        assertPropagatesCancellation { syncManager.pullRemoteChanges() }
+        assertEquals("signature stays stale -> the next period retries", "", storedSignature)
     }
 }
 

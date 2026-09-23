@@ -85,17 +85,30 @@ async function purgeExpiredTrash({ now = Date.now(), retentionDays = TRASH_RETEN
     return { notes: 0, files: 0 };
   }
 
+  // v1.17.0: Dokument ZUERST bedingt löschen, dann die Dateien. Die alte
+  // Reihenfolge (Dateien in der Schleife, deleteMany erst am Ende) verlor den
+  // Restore-Race: Wer eine Notiz genau im Purge-Fenster wiederherstellte,
+  // bekam sie zurück — ohne Anhänge, weil deleteNoteImages schon gelaufen
+  // war, das deleteMany-Predikat sie aber nicht mehr traf. findOneAndDelete
+  // mit demselben Predikat entscheidet atomar: Restore vorher → Notiz (und
+  // ihre Dateien) bleiben komplett; Notiz weg → Dateien sind ohnehin Waisen.
+  let notes = 0;
   let files = 0;
   for (const note of expired) {
-    for (const image of note.images || []) {
+    const still = await Note.findOneAndDelete(
+      { _id: note._id, ...predicate },
+      { projection: { images: 1, files: 1 } }
+    ).lean();
+    if (!still) continue;
+    notes += 1;
+    for (const image of still.images || []) {
       files += image?.thumbnailFilename ? 2 : 1;
     }
-    files += (note.files || []).length;
-    await deleteNoteImages(note);
-    await deleteNoteFiles(note);
+    files += (still.files || []).length;
+    await deleteNoteImages(still);
+    await deleteNoteFiles(still);
   }
-  const deleted = await Note.deleteMany({ _id: { $in: expired.map((note) => note._id) }, ...predicate });
-  return { notes: deleted.deletedCount || 0, files };
+  return { notes, files };
 }
 
 /**

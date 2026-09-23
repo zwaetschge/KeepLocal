@@ -2,18 +2,6 @@
 const logger = require('../utils/logger');
 
 function errorHandler(err, req, res, next) {
-  logger.error('request failed', {
-    requestId: req.id,
-    method: req.method,
-    path: req.originalUrl,
-    status: Number(err.statusCode || err.status) || 500,
-    name: err.name,
-    message: err.message,
-    code: err.code,
-    // Only unexpected errors keep a stack trace; a validation failure is noise.
-    stack: Number(err.statusCode || err.status) >= 500 ? err.stack : undefined
-  });
-
   let statusCode = Number(err.statusCode || err.status) || 500;
   let message = err.message || 'Ein Serverfehler ist aufgetreten';
 
@@ -42,6 +30,24 @@ function errorHandler(err, req, res, next) {
   if (statusCode >= 500 && process.env.NODE_ENV !== 'development') {
     message = 'Ein Serverfehler ist aufgetreten';
   }
+
+  // v1.17.0: 4xx ist Routine, kein Alarm — kaputte Client-Payloads, falsche
+  // IDs, volle Quota, Sync-Konflikte. Jede auf ERROR stehende 4xx-Zeile macht
+  // Alarmierung auf Log-Level error unbrauchbar (Basisrate zu hoch). Erst
+  // Serverfehler (5xx) bleiben ERROR. Die Klassifizierung steht darüber,
+  // damit ein CastError auch als das geloggte 400 wandert, nicht als 500.
+  const log = statusCode >= 500 ? logger.error : logger.warn;
+  log('request failed', {
+    requestId: req.id,
+    method: req.method,
+    path: req.originalUrl,
+    status: statusCode,
+    name: err.name,
+    message: err.message,
+    code: err.code,
+    // Only unexpected errors keep a stack trace; a validation failure is noise.
+    stack: statusCode >= 500 ? err.stack : undefined
+  });
 
   const requestId = req.id;
 

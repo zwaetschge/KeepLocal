@@ -17,10 +17,11 @@ const loggerPath = require.resolve('../utils/logger');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
-function loadJanitor({ notes = [], failFind = false } = {}) {
+function loadJanitor({ notes = [], failFind = false, restoredIds = [] } = {}) {
   const deletedImageCalls = [];
   const deletedFileCalls = [];
   const deleteManyCalls = [];
+  const findOneAndDeleteCalls = [];
 
   const chain = (rows) => ({ select: () => ({ lean: async () => rows }) });
   const NoteMock = {
@@ -31,6 +32,21 @@ function loadJanitor({ notes = [], failFind = false } = {}) {
         return chain(notes.filter((note) => note.deletedAt && note.deletedAt.getTime() <= cutoff));
       }
       return chain(notes);
+    },
+    // v1.17.0: purgeExpiredTrash entscheidet pro Notiz mit einem bedingten
+    // findOneAndDelete. restoredIds simuliert den Restore-Race: find() sah
+    // die Notiz noch als abgelaufen, bis zum bedingten Löschen wurde sie
+    // wiederhergestellt (deletedAt: null) — das Prädikat verfehlt dann.
+    findOneAndDelete: (query) => {
+      findOneAndDeleteCalls.push(query);
+      const id = String(query._id);
+      const cutoff = query.deletedAt?.$lte instanceof Date ? query.deletedAt.$lte.getTime() : null;
+      const stillExpired = notes.find((note) =>
+        String(note._id) === id
+        && !restoredIds.includes(id)
+        && note.deletedAt
+        && (cutoff === null || note.deletedAt.getTime() <= cutoff));
+      return { lean: async () => (stillExpired ? { ...stillExpired } : null) };
     },
     deleteMany: async (query) => {
       deleteManyCalls.push(query);
@@ -53,7 +69,7 @@ function loadJanitor({ notes = [], failFind = false } = {}) {
     exports: { info() {}, warn() {}, error() {}, debug() {} }
   };
 
-  return { janitor: require(janitorPath), deletedImageCalls, deletedFileCalls, deleteManyCalls };
+  return { janitor: require(janitorPath), deletedImageCalls, deletedFileCalls, deleteManyCalls, findOneAndDeleteCalls };
 }
 
 function tempDir() {
@@ -68,32 +84,58 @@ function writeFile(dir, name, ageMs, size = 8) {
   return filePath;
 }
 
-test('expired trash is purged: files first, then documents', async () => {
+test('expired trash is purged: document first (atomar bedingt), then its files', async () => {
   const old = {
     _id: 'old', deletedAt: new Date(now - 40 * DAY_MS),
     images: [{ filename: 'a.png', thumbnailFilename: 'a-thumb.webp' }],
     files: [{ filename: 'b.pdf' }, { filename: 'c.pdf' }]
   };
   const young = { _id: 'young', deletedAt: new Date(now - 5 * DAY_MS), images: [], files: [] };
-  const { janitor, deletedImageCalls, deletedFileCalls, deleteManyCalls } = loadJanitor({ notes: [old, young] });
+  const { janitor, deletedImageCalls, deletedFileCalls, deleteManyCalls, findOneAndDeleteCalls } =
+    loadJanitor({ notes: [old, young] });
 
   const result = await janitor.purgeExpiredTrash({ now, retentionDays: 30 });
 
   assert.equal(result.notes, 1, 'only the expired note is removed');
   assert.equal(result.files, 4, 'original, thumbnail and both attachments are counted');
-  assert.deepEqual(deletedImageCalls, ['old'], 'the files go before the document');
+  assert.deepEqual(deletedImageCalls, ['old'], 'files only go after the document is gone');
   assert.deepEqual(deletedFileCalls, ['old'], 'attachments are cleaned with the images');
-  assert.equal(deleteManyCalls.length, 1);
-  assert.deepEqual(deleteManyCalls[0]._id.$in.map(String), ['old']);
-  assert.ok(deleteManyCalls[0].deletedAt?.$lte instanceof Date, 'the retention predicate is repeated on delete');
+  assert.equal(deleteManyCalls.length, 0, 'the per-note findOneAndDelete replaces the final deleteMany');
+  assert.equal(findOneAndDeleteCalls.length, 1);
+  assert.equal(String(findOneAndDeleteCalls[0]._id), 'old');
+  assert.ok(findOneAndDeleteCalls[0].deletedAt?.$lte instanceof Date,
+    'the retention predicate is repeated on the conditional delete');
+});
+
+test('restore race: a note recovered mid-purge keeps its attachments', async () => {
+  const old = {
+    _id: 'old', deletedAt: new Date(now - 40 * DAY_MS),
+    images: [{ filename: 'a.png', thumbnailFilename: 'a-thumb.webp' }],
+    files: [{ filename: 'b.pdf' }]
+  };
+  // Simuliert den Restore ZWISCHEN find und Löschung (restoredIds): find()
+  // sah die Notiz noch als abgelaufen, das bedingte findOneAndDelete trifft
+  // auf den wiederhergestellten Zustand — Löschung verfehlt.
+  const { janitor, deletedImageCalls, deletedFileCalls, findOneAndDeleteCalls } =
+    loadJanitor({ notes: [old], restoredIds: ['old'] });
+
+  const result = await janitor.purgeExpiredTrash({ now, retentionDays: 30 });
+
+  // Der find()-Schritt sah die Notiz noch als abgelaufen …
+  assert.equal(findOneAndDeleteCalls.length, 1, 'the purge attempts the conditional delete');
+  // … aber weder Dokument noch Dateien werden angetastet: kein Datenverlust.
+  assert.deepEqual(result, { notes: 0, files: 0 });
+  assert.equal(deletedImageCalls.length, 0, 'restored note keeps its images');
+  assert.equal(deletedFileCalls.length, 0, 'restored note keeps its attachments');
 });
 
 test('an empty trash costs nothing', async () => {
-  const { janitor, deletedImageCalls, deleteManyCalls } = loadJanitor({ notes: [] });
+  const { janitor, deletedImageCalls, deleteManyCalls, findOneAndDeleteCalls } = loadJanitor({ notes: [] });
   const result = await janitor.purgeExpiredTrash({ now });
   assert.deepEqual(result, { notes: 0, files: 0 });
   assert.equal(deletedImageCalls.length, 0);
   assert.equal(deleteManyCalls.length, 0, 'no deleteMany without expired notes');
+  assert.equal(findOneAndDeleteCalls.length, 0, 'no conditional deletes without expired notes');
 });
 
 test('orphaned images go, referenced and young files stay', async () => {

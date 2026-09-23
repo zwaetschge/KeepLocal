@@ -1159,3 +1159,23 @@ button.note-tag:focus-visible {
   margin-right: 4px;
   vertical-align: middle;
 }
+
+/* v1.17.0 (W3): Erinnerungs-Chip auf der Karte — Glocke + Datum, „due“
+   (gefeuert/fällig) trägt die Akzentfarbe. */
+.note-reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  margin-top: var(--space-1, 4px);
+  padding: 2px var(--space-2, 8px);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  background: var(--accent-soft, rgba(25, 118, 210, 0.08));
+  border-radius: var(--radius-full, 999px);
+  width: fit-content;
+}
+
+.note-reminder-chip.due {
+  color: var(--accent-text, var(--accent-color));
+  background: var(--accent-light, rgba(25, 118, 210, 0.16));
+}

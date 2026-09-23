@@ -16,6 +16,7 @@ import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 import { buildMarkdownImportItems, chunkImportItems, IMPORT_CHUNK_SIZE } from '../utils/markdownImport.mjs';
+import { formatStorageBytes, storagePercent } from '../utils/storageFormat.mjs';
 
 function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported }) {
   const { t, language } = useLanguage();
@@ -50,6 +51,18 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
         if (!cancelled && health?.version) setServerVersion(health.version);
       })
       .catch(() => { /* Footer zeigt schlicht keine Version */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // v1.17.0 (W4): Speicher-Nutzung + Quota — der Server erzwingt UPLOAD_QUOTA_MB
+  // seit v1.16.0, aber kein Client zeigte den Stand: Man fand sein Limit erst
+  // am 413. Lädt einmal beim Öffnen; enforced=false heißt unlimitiert.
+  const [storage, setStorage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    authAPI.getStorageUsage()
+      .then(usage => { if (!cancelled) setStorage(usage); })
+      .catch(() => { /* ohne Stand keine Anzeige, kein Fehler-Toast im Settings-Dialog */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -641,6 +654,52 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
               <p className="settings-input-hint">{t('journalFolderHint')}</p>
             </div>
           </section>
+
+          {/* v1.17.0 (W4): Speicher-Nutzung — der Server erzwingt die Quota
+              (413), der Client zeigte sie vorher nirgends. Unlimitierte
+              Konten sehen nur die Nutzung, ohne Balken. */}
+          {storage && (
+            <section className="settings-section">
+              <h3 className="settings-section-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                  <ellipse cx="12" cy="5" rx="9" ry="3" />
+                  <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                  <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                </svg>
+                {t('storageSection')}
+              </h3>
+              <div className="settings-storage">
+                <div className="settings-storage-line">
+                  <span>{t('storageUsed')}: <strong>{formatStorageBytes(storage.usedBytes)}</strong></span>
+                  {storage.enforced && (
+                    <span className="settings-storage-limit">/ {formatStorageBytes(storage.limitBytes)}</span>
+                  )}
+                </div>
+                {storage.enforced && (
+                  <div
+                    className={`settings-storage-bar ${storagePercent(storage.usedBytes, storage.limitBytes) >= 90 ? 'near-limit' : ''}`}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={storagePercent(storage.usedBytes, storage.limitBytes) ?? 0}
+                    aria-label={t('storageUsed')}
+                  >
+                    <div
+                      className="settings-storage-fill"
+                      style={{ width: `${storagePercent(storage.usedBytes, storage.limitBytes) ?? 0}%` }}
+                    />
+                  </div>
+                )}
+                {storage.enforced && (
+                  <p className="settings-input-hint">
+                    {storagePercent(storage.usedBytes, storage.limitBytes) >= 90
+                      ? t('storageNearLimit')
+                      : t('storageLimitHint')}
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* AI Features Section */}
           <section className="settings-section">

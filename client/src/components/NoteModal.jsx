@@ -50,6 +50,24 @@ function isNoteConflictError(error) {
   );
 }
 
+// v1.17.0 (W3): Erinnerung — der Server speichert/validiert remindAt seit
+// v1.8.0 und Android plant sie lokal per AlarmManager, im Web fehlte bislang
+// jede Möglichkeit, sie zu setzen. datetime-local will 'YYYY-MM-DDTHH:mm' in
+// der Lokalzeit; remindAt reist als ISO-UTC. '' = keine Erinnerung.
+function isoToLocalInput(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function localInputToIso(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -72,6 +90,8 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const [parentId, setParentId] = useState(
     typeof note?.parentId === 'string' ? note.parentId : (defaultParentId || null)
   );
+  // v1.17.0 (W3): Erinnerungszeitpunkt als datetime-local-String ('' = keine).
+  const [remindAt, setRemindAt] = useState(isoToLocalInput(note?.remindAt));
   const [images, setImages] = useState(note?.images || []);
   // v1.12.0: PDF-Anhänge — eigene Liste, eigener Upload-Pfad (/files).
   const [noteFiles, setNoteFiles] = useState(note?.files || []);
@@ -273,6 +293,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     setIsPinned(source.isPinned || false);
     setIsCode(Boolean(source.isCode));
     setParentId(typeof source.parentId === 'string' ? source.parentId : null);
+    setRemindAt(isoToLocalInput(source.remindAt));
     setTodoItems(source.todoItems || []);
     setLinkPreviews(source.linkPreviews || []);
     setImages(source.images || []);
@@ -401,6 +422,8 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     // bei neuen Notizen setzt der Editor den aktuell gewählten Ordner-Scope.
     if (canManage) {
       noteData.parentId = parentId || null;
+      // W3: Erinnerung — null löscht eine bestehende (leeres Feld im Editor).
+      noteData.remindAt = localInputToIso(remindAt);
     }
 
     // Optimistic locking (edits only — creates have no server version yet).
@@ -1347,6 +1370,40 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+            {/* v1.17.0 (W3): Erinnerung setzen — Parität zur Android-App, die
+                remindAt per AlarmManager plant; der Web-Client konnte den
+                serverseitig längst validierten Wert vorher nicht mal setzen.
+                Leeres Feld löscht die Erinnerung (remindAt: null). */}
+            {canManage && (
+              <div className="note-modal-folder-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <input
+                  type="datetime-local"
+                  className="note-modal-reminder-input"
+                  value={remindAt}
+                  onChange={(e) => setRemindAt(e.target.value)}
+                  aria-label={t('reminderLabel')}
+                  title={t('reminderLabel')}
+                />
+                {remindAt && (
+                  <button
+                    type="button"
+                    className="note-modal-reminder-clear"
+                    onClick={() => setRemindAt('')}
+                    aria-label={t('reminderClear')}
+                    title={t('reminderClear')}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
               </div>
             )}
             {tags.length > 0 && (

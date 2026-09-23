@@ -436,6 +436,21 @@ router.get('/me', authenticateToken, async (req, res) => {
   });
 });
 
+// GET /api/auth/storage (v1.17.0) — eigenes Quota-Budget abfragen. Bisher
+// erfährt der Owner seine Belegung erst per 413, wenn der Upload schon
+// abgelehnt wird; die Admin-Console war der einzige Ort, der usedBytes/limit
+// zeigte. Read-only, deshalb auch für den Demo-Account erlaubt.
+router.get('/storage', authenticateToken, async (req, res, next) => {
+  try {
+    const { getStorageUsage, quotaLimitBytes } = require('../utils/storageQuota');
+    const limitBytes = quotaLimitBytes();
+    const usedBytes = await getStorageUsage(req.user._id);
+    res.json({ usedBytes, limitBytes, enforced: limitBytes > 0 });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // PUT /api/auth/preferences - Konto-weite Voreinstellungen speichern.
 // Nur whitelist-Felder werden übernommen; unbekannte Schlüssel fallen weg, damit
 // ein Client nicht beliebige Dokumentteile schreiben kann.

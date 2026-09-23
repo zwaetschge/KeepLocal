@@ -77,6 +77,9 @@ services:
       - AI_SERVICE_URL=http://ai:5000  # AI service endpoint
       - AI_SERVICE_TOKEN=${AI_SERVICE_TOKEN:-}  # muss zum Token des ai-Services passen
       - BACKUP_DIR=/app/backups
+      # BACKUP_MIN_FREE_MB (v1.16.0): Backup-Lauf verweigert, wenn unter dem
+      # Schwellenwert Freiplatz bleibt — seit v1.17.0 auch im Compose-Vertrag.
+      - BACKUP_MIN_FREE_MB=${BACKUP_MIN_FREE_MB:-}
       # Betriebs-Variablen (leer = Default der App): Logs, Readiness, Budgets,
       # Papierkorb/Janitor. Dokumentiert in README und .env.example.
       - LOG_LEVEL=${LOG_LEVEL:-}
@@ -84,6 +87,8 @@ services:
       - REQUIRE_AI_FOR_READY=${REQUIRE_AI_FOR_READY:-}
       - HEALTH_DETAILS=${HEALTH_DETAILS:-}
       - HEALTH_PROBE_TTL_MS=${HEALTH_PROBE_TTL_MS:-}
+      - HEALTH_MIN_FREE_MB=${HEALTH_MIN_FREE_MB:-}
+      - HEALTH_DISK_FATAL=${HEALTH_DISK_FATAL:-}
       - AI_HEALTH_TIMEOUT_MS=${AI_HEALTH_TIMEOUT_MS:-}
       - LINK_PREVIEW_LIMIT_PER_MINUTE=${LINK_PREVIEW_LIMIT_PER_MINUTE:-}
       - TRANSCRIPTION_LIMIT_PER_HOUR=${TRANSCRIPTION_LIMIT_PER_HOUR:-}
@@ -93,6 +98,8 @@ services:
       - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-}
       - STORAGE_JANITOR_INTERVAL_HOURS=${STORAGE_JANITOR_INTERVAL_HOURS:-}
       - UPLOADS_DIR=/app/uploads
+      # UPLOAD_QUOTA_MB (v1.16.0): Speicher-Budget pro Konto; 0 = unlimitiert.
+      - UPLOAD_QUOTA_MB=${UPLOAD_QUOTA_MB:-}
       # OAuth (optional — leave empty to disable)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

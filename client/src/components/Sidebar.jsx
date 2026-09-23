@@ -255,6 +255,11 @@ function Sidebar({
   // Server-Bulk-Endpoint; tagManageBusy zeigt den laufenden Zustand in der Zeile.
   onTagManage,
   tagManageBusy = false,
+  // v1.17.0: offene Freundschaftsanfragen (Badge aus der Meta-Sonde) und
+  // anstehende Erinnerungen (Übersicht aus der Baum-Projektion).
+  pendingFriendRequests = 0,
+  upcomingReminders = [],
+  onOpenReminder,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { t } = useLanguage();
@@ -486,7 +491,45 @@ function Sidebar({
               <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
             </svg>
             <span>{t('friends')}</span>
+            {/* v1.17.0 (W5): Offene Anfragen als Zähler — vorher musste man das
+                Freunde-Fenster öffnen, um sie zu entdecken. Die Sonde liefert
+                die Zahl mit jedem 60s-Tick. */}
+            {pendingFriendRequests > 0 && (
+              <span className="count pending-friends-badge" aria-label={t('pendingFriendRequests', { count: pendingFriendRequests })}>
+                {pendingFriendRequests}
+              </span>
+            )}
           </button>
+        )}
+
+        {/* v1.17.0 (W3): Anstehende Erinnerungen — Top 5 aus der Baum-Projektion
+            (der komplette Bestand reist im 60s-Poll), künftig zuerst, Klick
+            öffnet die Notiz. */}
+        {upcomingReminders.length > 0 && onOpenReminder && (
+          <div className="sidebar-reminders" aria-label={t('upcomingReminders')}>
+            <div className="sidebar-section-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              <span>{t('upcomingReminders')}</span>
+            </div>
+            {upcomingReminders.map((reminder) => (
+              <button
+                key={reminder.id}
+                type="button"
+                className="sidebar-reminder-item"
+                onClick={() => {
+                  onOpenReminder(reminder.id);
+                  onMobileClose();
+                }}
+                title={reminder.title || t('untitledNote')}
+              >
+                <span className="sidebar-reminder-title">{reminder.title || t('untitledNote')}</span>
+                <span className="sidebar-reminder-date">{reminder.label}</span>
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Ordner-Baum (v1.10.0): Jede Notiz mit Kindern ist ein Ordner. Der

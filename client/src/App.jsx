@@ -86,13 +86,13 @@ function AppContent() {
   const {
     notes, loading, refreshing, pagination, noteCounts, allTags, operationLoading,
     pinnedNotes, otherNotes, emptyStateReason, fetchNotes,
-    createNote, updateNote, deleteNote, restoreNote, purgeNote, emptyTrash,
+    createNote, updateNote, updateNoteInline, deleteNote, restoreNote, purgeNote, emptyTrash,
     togglePinNote, toggleArchiveNote, handleNoteShared,
     handleDragStart, handleDragEnd, handleDragOver, handleDrop,
     // v1.10.0: Baum, Ordner-Scope, Mehrfachauswahl, Journal
     noteTree, treeNodes, folderScope, selectedIds, selectFolder, refreshTree, moveNote,
     toggleNoteSelection, clearSelection, bulkSetPinned, bulkArchive, bulkDelete, bulkAddTag, bulkMove,
-    manageTag, findOrCreateTodayNote, draggedNoteId,
+    manageTag, findOrCreateTodayNote, draggedNoteId, pendingFriendRequests,
   } = useNotesManager({
     api: notesAPI, isLoggedIn, authLoading, showToast, t,
     showArchived, showTrash, selectedTag, searchTerm,
@@ -158,7 +158,7 @@ function AppContent() {
   // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js). Seit v1.16.0 auch
   // die Tag-Pflege inkl. Mitnahme von Tag-Farben und gespeicherten Suchen.
   const {
-    folderOptions, wikiNotes, allKnownTags,
+    folderOptions, wikiNotes, allKnownTags, upcomingReminders,
     handleOpenNoteById, handleOpenToday, handleRunSavedSearch, handleSaveCurrentSearch,
     handleDeleteSavedSearch, handleTagManage, handleFolderDrop, handleDataImported,
   } = useFolderFeatures({
@@ -180,7 +180,7 @@ function AppContent() {
       operationLoading, inTrash: true,
     }
     : {
-      onDeleteNote: deleteNote, onUpdateNote: updateNote,
+      onDeleteNote: deleteNote, onUpdateNote: updateNote, onUpdateInline: updateNoteInline,
       onTogglePin: togglePinNote, onToggleArchive: toggleArchiveNote,
       onOpenCollaborate: user?.isDemo ? undefined : openCollaborateModal,
       onOpenModal: openNoteModal,
@@ -194,7 +194,7 @@ function AppContent() {
       tagColors: settings.tagColors,
       highlight: searchTerm,
       operationLoading,
-    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, handleTagSelect, settings.tagColors, searchTerm]);
+    }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, updateNoteInline, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, handleTagSelect, settings.tagColors, searchTerm]);
 
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
@@ -371,6 +371,7 @@ function AppContent() {
           tagColors={settings.tagColors}
           onTagColorSelect={setTagColor}
           onTagManage={handleTagManage} tagManageBusy={Boolean(operationLoading.bulk)}
+          pendingFriendRequests={pendingFriendRequests} upcomingReminders={upcomingReminders} onOpenReminder={handleOpenNoteById}
         />
 
         {/* tabIndex=-1 (Skip-Link-Standard): Fragment-Ziel sonst ohne echten Fokus. */}

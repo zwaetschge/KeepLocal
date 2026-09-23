@@ -16,6 +16,7 @@ import com.keeplocal.android.data.local.entity.toEntity
 import com.keeplocal.android.util.ServerContract
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import okhttp3.ResponseBody
@@ -71,102 +73,138 @@ class SyncManager @Inject constructor(
     private val _authRequired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val authRequired: SharedFlow<Unit> = _authRequired.asSharedFlow()
 
+    /**
+     * Single-Flight für den Drain (v1.17.0): SyncWorker (15-min-Takt),
+     * Repository (getNotes/Export/Import) und UI (retrySync) können alle
+     * gleichzeitig einen Drain anstoßen — zwei parallele Drains spielten
+     * dieselbe Op-Liste zweimal ab (Doppel-TOGGLE, Rennen um die id-Rewrites).
+     * Der unterlegene Aufruf kehrt sofort mit Null zurück; der laufende
+     * Drain deckt seine Ops ohnehin ab.
+     */
+    private val drainMutex = Mutex()
+
     /** Called by the repository whenever it queues another offline operation. */
     suspend fun onPendingOperationQueued() {
         _syncStatus.value = _syncStatus.value.copy(pendingCount = pendingOperationDao.getCount())
     }
 
     suspend fun syncPendingOperations(): SyncResult = withContext(Dispatchers.IO) {
+        // Single-Flight (v1.17.0): siehe drainMutex. tryLock statt withLock —
+        // der unterlegene Aufruf soll nicht anstehen (der laufende Drain
+        // erledigt seine Ops ohnehin), sondern sofort ein Nullergebnis
+        // zurückmelden.
+        if (!drainMutex.tryLock()) return@withContext SyncResult(0, 0)
+        try {
+            return@withContext drainQueue()
+        } finally {
+            drainMutex.unlock()
+        }
+    }
+
+    private suspend fun drainQueue(): SyncResult {
         // v1.16.0: poisoned ops never replay — a permanently rejected op
         // (validation, deleted shared note, …) used to retry every drain
         // forever. They stay in the table for the sync-queue view.
         val operations = pendingOperationDao.getActiveOperations()
         if (operations.isEmpty()) {
             _syncStatus.value = SyncStatus(pendingCount = pendingOperationDao.getCount(), poisonedCount = pendingOperationDao.getPoisonedCount())
-            return@withContext SyncResult(0, 0, poisoned = pendingOperationDao.getPoisonedCount())
+            return SyncResult(0, 0, poisoned = pendingOperationDao.getPoisonedCount())
         }
 
         _syncStatus.value = _syncStatus.value.copy(isSyncing = true)
 
-        var synced = 0
-        var failed = 0
-        var skipped = 0
-        var poisoned = 0
-        var authRequired = false
-        val conflicts = mutableListOf<String>()
-        // A successful CREATE replaces the temporary offline id with the server
-        // id; later operations of the same note still carry the stale offline
-        // id inside this snapshot and are resolved through this map.
-        val idRewrites = mutableMapOf<String, String>()
+        try {
+            var synced = 0
+            var failed = 0
+            var skipped = 0
+            var poisoned = 0
+            var authRequired = false
+            val conflicts = mutableListOf<String>()
+            // A successful CREATE replaces the temporary offline id with the server
+            // id; later operations of the same note still carry the stale offline
+            // id inside this snapshot and are resolved through this map.
+            val idRewrites = mutableMapOf<String, String>()
 
-        for (op in operations) {
-            if (authRequired) break // every further call would bounce off the expired session
-            val noteId = idRewrites[op.noteId] ?: op.noteId
-            try {
-                when (syncOne(op, noteId, idRewrites, conflicts)) {
-                    OpOutcome.SYNCED -> {
-                        // syncOne only deletes ops it drops (skip cases); a
-                        // completed op leaves the queue here. For CREATE this
-                        // runs after reassignNoteId, and delete() matches by
-                        // primary key, so the rewritten noteId is irrelevant.
-                        pendingOperationDao.delete(op)
-                        synced++
-                    }
-                    OpOutcome.SKIPPED -> skipped++
-                    OpOutcome.FAILED -> {
-                        failed++
-                        // Poison cap (v1.16.0): only server rejections count —
-                        // this branch is unreachable for IOException (the catch
-                        // below intercepts transport errors first).
-                        pendingOperationDao.incrementAttempts(op.id)
-                        if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
-                            pendingOperationDao.markPoisoned(op.id)
-                            poisoned++
+            for (op in operations) {
+                if (authRequired) break // every further call would bounce off the expired session
+                val noteId = idRewrites[op.noteId] ?: op.noteId
+                try {
+                    when (syncOne(op, noteId, idRewrites, conflicts)) {
+                        OpOutcome.SYNCED -> {
+                            // syncOne only deletes ops it drops (skip cases); a
+                            // completed op leaves the queue here. For CREATE this
+                            // runs after reassignNoteId, and delete() matches by
+                            // primary key, so the rewritten noteId is irrelevant.
+                            pendingOperationDao.delete(op)
+                            synced++
+                        }
+                        OpOutcome.SKIPPED -> skipped++
+                        OpOutcome.FAILED -> {
+                            failed++
+                            // Poison cap (v1.16.0): only server rejections count —
+                            // this branch is unreachable for IOException (the catch
+                            // below intercepts transport errors first).
+                            pendingOperationDao.incrementAttempts(op.id)
+                            if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
+                                pendingOperationDao.markPoisoned(op.id)
+                                poisoned++
+                            }
+                        }
+                        OpOutcome.AUTH_REQUIRED -> {
+                            authRequired = true
+                            failed++
                         }
                     }
-                    OpOutcome.AUTH_REQUIRED -> {
-                        authRequired = true
-                        failed++
+                } catch (e: IOException) {
+                    // Netz weg mitten im Drain (v1.16.0): abbrechen statt durch die
+                    // Rest-Queue zu hungern — jede weitere Op liefe bis zum
+                    // Timeout. Kein failed-, kein Versuch-Zähler: der nächste
+                    // Drain (wieder online) setzt unverändert fort.
+                    break
+                } catch (e: CancellationException) {
+                    // Abbruch ist kein Fehler (v1.17.0): Der Worker wurde gestoppt
+                    // oder der Scope geschlossen. Ohne Rethrow liefe die Loop als
+                    // Zombie weiter — jede weitere Suspension wirft erneut, am
+                    // Ende stünde die halbe Queue als failed mit Versuch-Zählern.
+                    throw e
+                } catch (e: Exception) {
+                    // Unerwartete Fehler (Serialisierung, Storage-Defekt …) zählen
+                    // genauso zum Gift-Cap wie Server-Ablehnungen — sonst lebt
+                    // eine dauerhaft kaputte Op für immer in jedem Drain mit.
+                    // IOException steht darüber und bricht ohne Zähler ab.
+                    failed++
+                    pendingOperationDao.incrementAttempts(op.id)
+                    if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
+                        pendingOperationDao.markPoisoned(op.id)
+                        poisoned++
                     }
                 }
-            } catch (e: IOException) {
-                // Netz weg mitten im Drain (v1.16.0): abbrechen statt durch die
-                // Rest-Queue zu hungern — jede weitere Op liefe bis zum
-                // Timeout. Kein failed-, kein Versuch-Zähler: der nächste
-                // Drain (wieder online) setzt unverändert fort.
-                break
-            } catch (e: Exception) {
-                // Unerwartete Fehler (Serialisierung, Storage-Defekt …) zählen
-                // genauso zum Gift-Cap wie Server-Ablehnungen — sonst lebt
-                // eine dauerhaft kaputte Op für immer in jedem Drain mit.
-                // IOException steht darüber und bricht ohne Zähler ab.
-                failed++
-                pendingOperationDao.incrementAttempts(op.id)
-                if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
-                    pendingOperationDao.markPoisoned(op.id)
-                    poisoned++
-                }
             }
-        }
 
-        val result = SyncResult(
-            synced = synced,
-            failed = failed,
-            skipped = skipped,
-            poisoned = poisoned,
-            authRequired = authRequired,
-            conflicts = conflicts
-        )
-        _syncStatus.value = SyncStatus(
-            pendingCount = pendingOperationDao.getCount(),
-            failedCount = failed,
-            skippedCount = skipped,
-            poisonedCount = pendingOperationDao.getPoisonedCount(),
-            authRequired = authRequired,
-            conflicts = conflicts
-        )
-        if (authRequired) _authRequired.tryEmit(Unit)
-        result
+            val result = SyncResult(
+                synced = synced,
+                failed = failed,
+                skipped = skipped,
+                poisoned = poisoned,
+                authRequired = authRequired,
+                conflicts = conflicts
+            )
+            _syncStatus.value = SyncStatus(
+                pendingCount = pendingOperationDao.getCount(),
+                failedCount = failed,
+                skippedCount = skipped,
+                poisonedCount = pendingOperationDao.getPoisonedCount(),
+                authRequired = authRequired,
+                conflicts = conflicts
+            )
+            if (authRequired) _authRequired.tryEmit(Unit)
+            return result
+        } finally {
+            // Auch bei Abbruch (v1.17.0): isSyncing darf nicht kleben bleiben —
+            // sonst zeigt das Sync-Banner nach einem gestoppten Worker für
+            // immer „läuft“.
+            _syncStatus.value = _syncStatus.value.copy(isSyncing = false)
+        }
     }
 
     suspend fun hasPendingOperations(): Boolean = pendingOperationDao.getCount() > 0
@@ -203,6 +241,8 @@ class SyncManager @Inject constructor(
                 val tree = api.getNoteTree()
                 if (!tree.isSuccessful) null
                 else tree.body().orEmpty().map { it.id }.toSet()
+            } catch (e: CancellationException) {
+                throw e // v1.17.0: Abbruch ist kein Best-Effort-Fehler
             } catch (_: Exception) {
                 null
             }
@@ -231,6 +271,8 @@ class SyncManager @Inject constructor(
                     while (page <= pages) {
                         val response = try {
                             api.getNotes(archived = archived, page = page, limit = PULL_PAGE_LIMIT, since = since)
+                        } catch (e: CancellationException) {
+                            throw e // v1.17.0: Abbruch darf nicht als „Seite leer“ durchgehen
                         } catch (_: Exception) {
                             pullClean = false
                             break
@@ -276,6 +318,11 @@ class SyncManager @Inject constructor(
                 if (newSince != null) settingsDataStore.setSyncSince(newSince)
             }
             changed
+        } catch (e: CancellationException) {
+            // Ein Abbruch (Worker gestoppt, Scope zu) ist kein Best-Effort-
+            // Fehler: geschluckt würde die Coroutine cancelled weiterlaufen
+            // und der Aufrufer den Abbruch als „Pull fertig 0“ feiern (v1.17.0).
+            throw e
         } catch (_: Exception) {
             // Pull is best-effort: a crashing pull must never take the
             // queue drain (its caller) down with it.
@@ -338,6 +385,8 @@ class SyncManager @Inject constructor(
                         val response = api.getNote(noteId)
                         if (response.code() == 401) return OpOutcome.AUTH_REQUIRED
                         if (response.isSuccessful) response.body()?.let { insertServerNote(it) }
+                    } catch (e: CancellationException) {
+                        throw e // v1.17.0: Abbruch darf eine gedroppte Op nicht „überspringen“
                     } catch (_: Exception) {
                         // A network hiccup must not resurrect an op we dropped.
                     }
@@ -429,6 +478,8 @@ class SyncManager @Inject constructor(
         if (serverDto == null) {
             val fallback = try {
                 api.getNote(noteId)
+            } catch (e: CancellationException) {
+                throw e // v1.17.0: Abbruch ist kein „Fallback unavailable“
             } catch (_: Exception) {
                 null
             }
@@ -442,6 +493,8 @@ class SyncManager @Inject constructor(
             api.createNote(
                 localEntity.entityToDomain().copy(title = copyTitle).toCreateDto()
             )
+        } catch (e: CancellationException) {
+            throw e // v1.17.0: Abbruch darf die Konflikt-Kopie nicht als FAILED zählen
         } catch (_: Exception) {
             null
         }

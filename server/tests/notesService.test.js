@@ -203,10 +203,16 @@ test('getNotesMeta: eine Aggregation, Bucket-Semantik wie getAllNotes', async ()
       return [{ _id: null, active: 676, archived: 3, trash: 2, maxUpdatedAt }];
     }
   };
-  const service = loadService(NoteMock);
+  const service = loadService(NoteMock, {
+    // v1.17.0: Die Sonde liefert zusätzlich die Zahl offener Freundschafts-
+    // anfragen (Sidebar-Badge) — eine kleine User-Query neben der Aggregation.
+    findById: () => ({
+      select: () => ({ lean: async () => ({ friendRequests: [{ status: 'pending' }, { status: 'accepted' }] }) })
+    })
+  });
 
   const meta = await service.getNotesMeta(userId);
-  assert.deepEqual(meta, { active: 676, archived: 3, trash: 2, maxUpdatedAt });
+  assert.deepEqual(meta, { active: 676, archived: 3, trash: 2, maxUpdatedAt, pendingFriendRequests: 1 });
 
   const match = observed.pipeline[0].$match;
   assert.equal(String(match.$or[0].userId), userId, 'eigene Notizen');
@@ -223,8 +229,11 @@ test('getNotesMeta: eine Aggregation, Bucket-Semantik wie getAllNotes', async ()
   assert.equal(activeCond[1].$eq[0].$ifNull[0], '$isArchived', 'fehlendes isArchived zählt als aktiv');
   assert.ok(group.maxUpdatedAt, 'max(updatedAt) ist der Änderungs-Taktgeber');
 
-  const empty = await loadService({ aggregate: async () => [] }).getNotesMeta(userId);
-  assert.deepEqual(empty, { active: 0, archived: 0, trash: 0, maxUpdatedAt: null });
+  const empty = await loadService(
+    { aggregate: async () => [] },
+    { findById: () => ({ select: () => ({ lean: async () => null }) }) }
+  ).getNotesMeta(userId);
+  assert.deepEqual(empty, { active: 0, archived: 0, trash: 0, maxUpdatedAt: null, pendingFriendRequests: 0 });
 });
 
 test('die meta-Route ist vor /:id registriert und reicht since durch', () => {

@@ -272,7 +272,12 @@ async function generateThumbnail(filename, filepath) {
     const thumbnailFilename = `${nameWithoutExt}-thumb.webp`;
     const thumbnailPath = path.join(path.dirname(filepath), thumbnailFilename);
 
+    // v1.17.0: .rotate() ohne Argument liest die EXIF-Orientation und dreht
+    // die Pixel VOR dem Resize — Handyfotos erschienen vorher seitlich gekippt
+    // in der Übersicht, weil das Thumbnail den Orientation-Tag nicht erbt
+    // (WebP-Output streift EXIF grundsätzlich).
     await sharp(filepath, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' })
+      .rotate()
       .resize(300, 300, {
         fit: 'inside',
         withoutEnlargement: true
@@ -285,6 +290,48 @@ async function generateThumbnail(filename, filepath) {
     console.error(`Error generating thumbnail for ${filename}:`, error);
     // Return empty string if thumbnail generation fails - we'll use original
     return '';
+  }
+}
+
+/**
+ * Entfernt EXIF (inkl. GPS, Kamera-Seriennummer, Aufnahmezeitpunkt) aus dem
+ * AUSGELIEFERTEN Original (v1.17.0). Nur Thumbnails waren metadatenfrei —
+ * Lightbox und Markdown-Export lieferten weiterhin die vollen Kamera-Metadaten
+ * an jeden Mitbearbeiter und API-Key-Nutzer.
+ *
+ * Der Re-Encode mit .rotate() baut die Orientation in die Pixel ein (statt
+ * sie mit dem EXIF zu verwerfen) und schreibt das Ergebnis formattreu neben
+ * das Original; bei Erfolg ersetzt es die Datei und die neue Byte-Größe wird
+ * geliefert. Ohne EXIF (null) und bei nicht-re-encodierbaren Formaten bleibt
+ * die Datei byte-identisch. Ein fehlgeschlagener Re-Encode lässt das Original
+ * stehen: Metadaten-Leak ist schlimm, aber ein VERLORENES Bild ist schlimmer.
+ *
+ * @param {string} filepath Datei im ausgelieferten Verzeichnis (in place)
+ * @returns {Promise<number|null>} neue Größe in Bytes, oder null wenn unverändert
+ */
+async function stripImageMetadata(filepath) {
+  const cleanPath = `${filepath}.clean`;
+  try {
+    const meta = await sharp(filepath, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' }).metadata();
+    if (!meta.exif) return null;
+    const format = meta.format;
+    // GIF (Animation) und Exoten: Re-Encode-Kollateral wiegt schwerer als EXIF
+    // (GIF trägt ohnehin kein EXIF). Diese Dateien bleiben byte-identisch.
+    if (!['jpeg', 'png', 'webp'].includes(format)) return null;
+
+    let pipeline = sharp(filepath, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' }).rotate();
+    if (format === 'jpeg') pipeline = pipeline.jpeg({ quality: 95, mozjpeg: true });
+    else if (format === 'png') pipeline = pipeline.png({ compressionLevel: 9 });
+    else pipeline = pipeline.webp({ quality: 95 });
+
+    await pipeline.toFile(cleanPath);
+    const stats = await fs.promises.stat(cleanPath);
+    await fs.promises.rename(cleanPath, filepath);
+    return stats.size;
+  } catch (error) {
+    console.error(`[IMAGE STRIP] Re-Encode fehlgeschlagen (${filepath}), Original bleibt stehen:`, error.message);
+    try { await fs.promises.rm(cleanPath, { force: true }); } catch { /* Best effort */ }
+    return null;
   }
 }
 
@@ -1153,8 +1200,23 @@ async function getNotesMeta(userId) {
     active: row?.active ?? 0,
     archived: row?.archived ?? 0,
     trash: row?.trash ?? 0,
-    maxUpdatedAt: row?.maxUpdatedAt ?? null
+    maxUpdatedAt: row?.maxUpdatedAt ?? null,
+    // v1.17.0: Eingehende Freundschaftsanfragen waren unsichtbar, bis der
+    // Empfänger zufällig das Friends-Modal öffnete — der Absender wartet auf
+    // eine Annahme, die nie ankommt. Der Badge in der Sidebar läuft über die
+    // 60s-Sonde mit (eine kleine User-Query); die Notiz-Signatur auf dem
+    // Client liest dieses Feld bewusst NICHT — Anfragen sollen keine
+    // Notizen-Refetches auslösen.
+    ...(await countPendingFriendRequests(ownerId))
   };
+}
+
+/** Pending-Freundschaftsanfragen des Nutzers als Metadaten-Feld der Sonde. */
+async function countPendingFriendRequests(ownerId) {
+  const owner = await User.findById(ownerId).select('friendRequests.status').lean();
+  const pendingFriendRequests = (owner?.friendRequests || [])
+    .filter((request) => request?.status === 'pending').length;
+  return { pendingFriendRequests };
 }
 
 /**
@@ -1991,6 +2053,9 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         // gross, dekodiert aber ~1,6 GB im Client. Der Multipart-Upload lehnt
         // sie ab (>40 MP), der ZIP-Import muss dasselbe tun.
         await validateImageDimensions([filepath]);
+        // v1.17.0: EXIF/GPS-Strip wie im Multipart-Pfad — auch aus dem ZIP
+        // stammende Originale werden ausgeliefert, nicht nur ihre Thumbnails.
+        const strippedSize = await stripImageMetadata(filepath);
         let thumbnailFilename = '';
         try {
           thumbnailFilename = await generateThumbnail(filename, filepath);
@@ -2001,9 +2066,21 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         assetMap.set(name, {
           kind, filename, url: `/uploads/images/${filename}`,
           thumbnailFilename, thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
-          size: bytes.length
+          size: strippedSize ?? bytes.length
         });
       } else {
+        // v1.17.0: Der Multipart-Pfad erzwingt Endung .pdf UND %PDF- Magic
+        // Bytes — der ZIP-Import nahm dagegen jeden assets/files/-Eintrag mit
+        // beliebiger (vom ZIP-Autor gewählter) Endung und Inhalt an. Ein
+        // „.html“/„.exe“ lag danach unter /uploads/files; secureFileServe
+        // stellt per sendFile nach Endung aus. Jetzt dieselben Regeln wie
+        // beim direkten Upload: nur PDFs, Magic Bytes inklusive.
+        if (extension !== '.pdf') {
+          throw clientError(`Anhang ${name}: im ZIP sind nur PDF-Dateien erlaubt (.pdf)`);
+        }
+        if (bytes.length < 5 || bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
+          throw clientError(`Anhang ${name}: Inhalt ist kein gültiges PDF (Magic-Bytes-Prüfung)`);
+        }
         const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
         fs.writeFileSync(path.join(filesDir(), filename), bytes);
         written.push(path.join(filesDir(), filename));
@@ -2012,7 +2089,7 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
           originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
             ? meta.originalName.slice(0, 255)
             : path.basename(name),
-          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : guessAssetMimetype(name),
+          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : 'application/pdf',
           size: bytes.length
         });
       }
@@ -2226,11 +2303,17 @@ async function shareNote(noteId, userId, targetUserId) {
   }
 
   // Use atomic operation to prevent race conditions
-  // $addToSet ensures no duplicates even with concurrent requests
+  // $addToSet ensures no duplicates even with concurrent requests.
+  // v1.17.0: deletedAt:null gehört ins Match — eine aus dem Papierkorb
+  // geteilte Notiz sieht der Freund in keiner Sicht (alle collaborator-Zugänge
+  // filtern deletedAt), aber seine ID stünde schon in sharedWith: eine dormante
+  // Freigabe, die beim Restore kommentarlos „auftaucht“, ohne dass der Empfänger
+  // je zustimmen konnte. Teilen geht nur aus dem aktiven Bestand.
   const note = await Note.findOneAndUpdate(
     {
       _id: noteId,
-      userId: userId
+      userId: userId,
+      deletedAt: null
     },
     {
       $addToSet: { sharedWith: targetUserId }
@@ -2492,6 +2575,7 @@ module.exports = {
   removeFile,
   deleteNoteFiles,
   generateThumbnail, // Export for use in routes
+  stripImageMetadata, // v1.17.0: EXIF/GPS-Strip der ausgelieferten Originale
   validateImageDimensions,
   deleteNoteImages, // Export for use in adminService
   buildNotesQuery, // Export for testing

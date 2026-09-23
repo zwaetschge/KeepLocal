@@ -2035,3 +2035,36 @@
 }
 
 .note-history-restore:disabled { opacity: 0.6; cursor: default; }
+
+/* v1.17.0 (W3): Erinnerungs-Zeile im Editor — datetime-local + Löschen. */
+.note-modal-reminder-input {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 240px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, inherit);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.note-modal-reminder-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.note-modal-reminder-clear:hover {
+  background: var(--error-soft, rgba(211, 47, 47, 0.12));
+  color: var(--error-color, #d32f2f);
+}

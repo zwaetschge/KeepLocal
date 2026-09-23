@@ -708,4 +708,15 @@ export const de = {
   importMarkdownProgress: 'Import läuft: {done}/{total} Notizen',
   journalFolderLabel: 'Journal-Ordner',
   journalFolderHint: '„Heute" legt die Tages-Notiz in diesem Ordner ab.',
+  // v1.17.0 (W3/W5): Erinnerungen + Freundschaftsanfragen-Badge
+  reminderLabel: 'Erinnerung',
+  reminderClear: 'Erinnerung löschen',
+  reminderAt: 'Erinnerung am {date}',
+  upcomingReminders: 'Anstehende Erinnerungen',
+  pendingFriendRequests: '{count} offene Freundschaftsanfrage(n)',
+  // v1.17.0 (W4): Speicher-Nutzung + Quota
+  storageSection: 'Speicher',
+  storageUsed: 'Belegt',
+  storageLimitHint: 'Bilder und PDF-Anhänge zählen in das Limit.',
+  storageNearLimit: 'Fast am Limit — der Server lehnt Uploads mit 413 ab, wenn es überschritten ist.',
 };

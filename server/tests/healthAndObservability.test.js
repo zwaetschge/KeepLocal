@@ -319,7 +319,7 @@ test('error responses carry the request id for support', () => {
 
 test('the AI service call forwards the request id', () => {
   const source = fs.readFileSync(path.join(__dirname, '../services/aiService.js'), 'utf8');
-  assert.match(source, /async function transcribeAudio\(filePath, language = null, requestId = null\)/);
+  assert.match(source, /async function transcribeAudio\(filePath, language = null, requestId = null, signal = undefined\)/);
   assert.match(source, /'X-Request-Id': requestId/);
 
   const python = fs.readFileSync(path.join(__dirname, '../../ai/app.py'), 'utf8');

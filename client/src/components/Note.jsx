@@ -10,7 +10,17 @@ import { sanitizeAndLinkify } from '../utils/sanitize';
 import { getColorVar } from '../utils/colorMapper';
 import { useMarkdownHtml } from '../hooks/useMarkdown';
 
-function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
+// v1.17.0 (W3): Kompakte Erinnerungs-Darstellung in der Browser-Locale —
+// Tag.Monat + Uhrzeit reicht für den Chip, der Tooltip trägt das volle Datum.
+function formatReminderDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -109,6 +119,19 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
     // Check if we're dropping a tag from the sidebar
     const tagName = e.dataTransfer.getData('application/keeplocal-tag');
     if (tagName) {
+      // v1.17.0 (W1): Der Drop ist eine Inline-Editierung — der Duplikat-Check
+      // und das neue Array laufen über onUpdateInline gegen den Serverstand
+      // (bei 409 frisch geladen), und baseUpdatedAt fängt parallele Edits ab,
+      // statt sie still zu überschreiben. Ein No-Op (Tag schon vorhanden)
+      // sendet gar keinen Request.
+      if (onUpdateInline) {
+        onUpdateInline(note._id, (fresh) => {
+          const freshTags = fresh?.tags || [];
+          const isDuplicate = freshTags.some(existing => existing.toLowerCase() === tagName.toLowerCase());
+          return isDuplicate ? {} : { tags: [...freshTags, tagName] };
+        });
+        return false;
+      }
       // Check if the note already has this tag
       const currentTags = note.tags || [];
       if (!currentTags.includes(tagName)) {
@@ -125,16 +148,21 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
   };
 
   const handleTodoItemToggle = (itemIndex) => {
-    if (!note.todoItems || !onUpdate) return;
+    if (!note.todoItems || (!onUpdate && !onUpdateInline)) return;
 
-    const updatedTodoItems = note.todoItems.map((item, index) => {
-      if (index === itemIndex) {
-        return { ...item, completed: !item.completed };
-      }
-      return item;
-    });
+    const toggled = (items) => items.map((item, index) => (
+      index === itemIndex ? { ...item, completed: !item.completed } : item
+    ));
 
-    onUpdate(note._id, { todoItems: updatedTodoItems });
+    // v1.17.0 (W1): Todo-Toggle als Inline-Editierung mit baseUpdatedAt +
+    // Reload+Retry — ein paralleler Edit (anderer Tab/Gerät) 409-t vorher,
+    // und der Toggle war still verloren (unhandled rejection im Karten-Kontext).
+    if (onUpdateInline) {
+      onUpdateInline(note._id, (fresh) => ({ todoItems: toggled(fresh?.todoItems || []) }));
+      return;
+    }
+
+    onUpdate(note._id, { todoItems: toggled(note.todoItems) });
   };
 
   return (
@@ -305,6 +333,22 @@ function Note({ note, index, onDelete, onUpdate, onTogglePin, onToggleArchive, o
 
         {editorName && (
           <div className="note-edited-by">{t('lastEditedBy', { name: editorName })}</div>
+        )}
+
+        {/* v1.17.0 (W3): Erinnerungs-Chip — remindAt war bislang nur in der
+            Android-App sichtbar/setzbar; im Web zeigte keine Ansicht, dass eine
+            Notiz eine Erinnerung trägt. Formatiert in der Browser-Locale. */}
+        {note.remindAt && (
+          <div
+            className={`note-reminder-chip ${new Date(note.remindAt).getTime() < Date.now() ? 'due' : ''}`}
+            title={t('reminderAt', { date: formatReminderDate(note.remindAt) })}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span>{formatReminderDate(note.remindAt)}</span>
+          </div>
         )}
 
         <div className="note-hover-actions">

@@ -67,6 +67,16 @@ const secureFileServe = async (req, res, next) => {
       return res.status(403).json({ error: 'Zugriff verweigert' });
     }
 
+    // v1.17.0: Der Papierkorb versteckt geteilte Notizen für Mitbearbeiter in
+    // jeder anderen Sicht (getNoteById/noteEditQuery filtern deletedAt:null) —
+    // genau dieser Filter fehlte hier. Ohne ihn blieben Bilder und PDFs einer
+    // „gelöschten“ Notiz bis zum Janitor-Purge (30 Tage) über die direkte
+    // /uploads/-URL abrufbar. Der Owner behält Zugriff: Der Papierkorb zeigt
+    // ihm die Anhänge in der Vorschau weiterhin (restore muss sie sehen).
+    if (note.deletedAt && note.userId.toString() !== userId) {
+      return res.status(404).json({ error: 'Datei nicht gefunden' });
+    }
+
     // Check if file exists
     if (!fs.existsSync(filepath)) {
       return res.status(404).json({ error: 'Datei nicht auf dem Server gefunden' });

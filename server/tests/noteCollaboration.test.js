@@ -154,6 +154,46 @@ test('sharing with a friend succeeds', async () => {
   assert.deepEqual(updated, { $addToSet: { sharedWith: FRIEND_ID } });
 });
 
+// v1.17.0: shareNote ohne deletedAt-Guard nahm Papierkorb-Notizen an — der
+// Freund sah die Freigabe in keiner Sicht, aber seine ID stand in sharedWith:
+// eine dormante Freigabe, die beim Restore kommentarlos „auftaucht“, ohne dass
+// der Empfänger je zustimmen konnte.
+test('sharing a trashed note is a 404 — no dormant grants from the trash', async () => {
+  const query = (doc) => ({
+    select: async () => doc,
+    then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject)
+  });
+  const seenQueries = [];
+  const service = loadService(
+    {
+      findOneAndUpdate: (queryArg) => {
+        seenQueries.push(queryArg);
+        // Das deletedAt:null-Prädikat verfehlt die (weiterhin) gelöschte
+        // Notiz — genau wie in der echten Datenbank: resolve(null).
+        return {
+          populate() { return this; },
+          then: (resolve, reject) => Promise.resolve(null).then(resolve, reject)
+        };
+      }
+    },
+    {
+      findById: (id) => query(String(id) === FRIEND_ID
+        ? { _id: FRIEND_ID, username: 'bob' }
+        : { _id: OWNER_ID, username: 'alice', friends: [FRIEND_ID] })
+    }
+  );
+
+  await assert.rejects(
+    service.shareNote(NOTE_ID, OWNER_ID, FRIEND_ID),
+    (error) => {
+      assert.equal(error.statusCode, 404);
+      return true;
+    }
+  );
+
+  assert.equal(seenQueries[0].deletedAt, null, 'the share target must come from the active stock');
+});
+
 test('the note list is ordered by manual order, then the recency key the client sorts by', async () => {
   const seen = {};
   const chain = {
