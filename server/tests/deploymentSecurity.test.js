@@ -76,6 +76,19 @@ test('Nginx deployments keep recovery assets and the service worker out of immut
   assert.match(splitConfig, /location (?:\^~ )?\/uploads\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/server:5000/);
 });
 
+test('both nginx distributions keep health probes out of the access log', () => {
+  // v1.17.0 (O1): Uptime-Sonden und Watchdogs treffen /api/health alle 30 s —
+  // im Split-Image lief jede Zeile ins Access-Log, obwohl das all-in-one-Image
+  // den Endpunkt schon stillstellte. Exakter Match + access_log off in BEIDEN.
+  for (const filename of ['client/nginx.conf', 'nginx-allinone.conf']) {
+    const config = fs.readFileSync(path.join(root, filename), 'utf8');
+    const health = config.match(/location = \/api\/health\s*\{([\s\S]*?)\n\s*\}/);
+    assert.ok(health, `${filename}: exakte /api/health-Location fehlt`);
+    assert.match(health[1], /access_log\s+off/, `${filename}: Health-Sonden duerfen nicht geloggt werden`);
+    assert.match(health[1], /proxy_pass/, `${filename}: der Endpoint muss weiterhin ans Backend gehen`);
+  }
+});
+
 test('both nginx distributions allow what multer allows and never cache /uploads errors', () => {
   // Body-Size-Parität (Review v1.15.0): Die Limits muessen in BEIDEN Confs
   // stehen — vorher pruefte nur der all-in-one-Teil, und die Split-Distribution

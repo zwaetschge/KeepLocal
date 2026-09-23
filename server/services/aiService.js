@@ -19,7 +19,7 @@ const aiServiceToken = () => (process.env.AI_SERVICE_TOKEN || '').trim();
  * @param {string} [requestId] - Correlation id, logged by the AI service too
  * @returns {Promise<Object>} Transcription result with text, language, and probability
  */
-async function transcribeAudio(filePath, language = null, requestId = null) {
+async function transcribeAudio(filePath, language = null, requestId = null, signal = undefined) {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error('Audio file not found on disk');
@@ -41,7 +41,10 @@ async function transcribeAudio(filePath, language = null, requestId = null) {
       },
       timeout: 300000,
       maxBodyLength: 26 * 1024 * 1024,
-      maxContentLength: 1024 * 1024
+      maxContentLength: 1024 * 1024,
+      // v1.17.0: Abbruch-Signal der Route — ein disconnected Client stoppt
+      // den Upstream-Call statt einen Geister-Job zu füttern.
+      ...(signal ? { signal } : {})
     });
 
     return response.data;

@@ -358,6 +358,42 @@ test('an unknown attachment is a 404, and traversal into images is not routed', 
   assert.equal(traversal.status, 404, 'the path regex only accepts files/<basename>');
 });
 
+// v1.17.0 — Papierkorb × Teilen: deleteNote setzt nur deletedAt, aber diese
+// Middleware löste das Dokument per Dateinamen OHNE deletedAt-Filter auf.
+// Ein (weiterhin eingetragener) Mitbearbeiter konnte so bis zum Janitor-Purge
+// (30 Tage) die Bilder und PDFs einer „gelöschten“ geteilten Notiz ziehen.
+// Der Owner sieht den Trash in der Vorschau weiter — restore braucht die Bytes.
+test('a trashed shared note: collaborators get 404, the owner keeps preview access', async () => {
+  writeImage('trashed.png', 'TRASHED');
+  writeAttachment('trashed.pdf');
+  const trashedNote = note(OWNER, ['trashed.png'], {
+    sharedWith: [FRIEND],
+    deletedAt: new Date('2026-09-23T10:00:00.000Z')
+  });
+  trashedNote.files = [{ filename: 'trashed.pdf', originalName: 'x.pdf', mimetype: 'application/pdf', size: 10 }];
+  loadServer({
+    'trashed.png': trashedNote,
+    'trashed-thumb.webp': trashedNote,
+    'trashed.pdf': trashedNote
+  });
+
+  const friendImage = await get('/uploads/images/trashed.png', FRIEND);
+  assert.equal(friendImage.status, 404, 'collaborator: the trashed note no longer exists for them');
+
+  const friendPdf = await get('/uploads/files/trashed.pdf', FRIEND);
+  assert.equal(friendPdf.status, 404);
+  assert.equal(friendPdf.body.includes('%PDF'), false, 'no bytes leak after soft-delete');
+
+  const friendThumb = await get('/uploads/images/trashed-thumb.webp', FRIEND);
+  assert.equal(friendThumb.status, 404, 'thumbnails follow the same rule');
+
+  const ownerImage = await get('/uploads/images/trashed.png', OWNER);
+  assert.equal(ownerImage.status, 200, 'owner: the trash preview keeps working');
+
+  const ownerPdf = await get('/uploads/files/trashed.pdf', OWNER);
+  assert.equal(ownerPdf.status, 200);
+});
+
 test.after(() => {
   fs.rmSync(uploadsRootDir, { recursive: true, force: true });
   delete process.env.UPLOADS_DIR;

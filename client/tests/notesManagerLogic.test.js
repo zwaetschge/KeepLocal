@@ -450,8 +450,9 @@ test('Nr. 26: operationLoading schreibt keine false-Leichen mehr', () => {
   assert.doesNotMatch(manager, /\.\.\.prev, \[id\]: false \}\)/, 'Einträge werden entfernt, nicht auf false gesetzt');
   assert.doesNotMatch(manager, /\.\.\.prev, (create|trash): false \}\)/);
   const uses = (manager.match(/setOperationLoading\(prev => withoutOperation\(prev, /g) || []).length;
-  // v1.10.0: moveNote und runBulkAction kamen dazu (10 statt 8); v1.11.0: manageTag (11).
-  assert.ok(uses === 11, `alle elf Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
+  // v1.10.0: moveNote und runBulkAction kamen dazu (10 statt 8); v1.11.0: manageTag (11);
+  // v1.17.0: updateNoteInline (12).
+  assert.ok(uses === 12, `alle zwölf Cleanup-Stellen nutzen withoutOperation, gefunden: ${uses}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -988,7 +989,9 @@ test('bulkAddTag: Case-insensitiver Skip, vorhandener Tag-Satz wird erweitert st
   await manager.bulkAddTag('Privat');
   await harness.settled();
 
-  assert.deepEqual(calls.update, [{ id: 'note-2', data: { tags: ['sonstiges', 'Privat'] } }]);
+  // v1.17.0: Der Update-Call trägt baseUpdatedAt (Cursor = Stand der Basis) —
+  // ein paralleler Edit 409-t statt still überschrieben zu werden.
+  assert.deepEqual(calls.update, [{ id: 'note-2', data: { tags: ['sonstiges', 'Privat'], baseUpdatedAt: '2026-01-01T10:00:00.000Z' } }]);
   assert.match(toasts[0]?.message ?? '', /^bulkTagged#/);
   assert.equal(toasts[0]?.type, 'success');
 
@@ -999,7 +1002,7 @@ test('bulkAddTag: Case-insensitiver Skip, vorhandener Tag-Satz wird erweitert st
   // … und der Input wird getrimmt.
   await manager.bulkAddTag(' Arbeit ');
   await harness.settled();
-  assert.deepEqual(calls.update, [{ id: 'note-1', data: { tags: ['privat', 'Arbeit'] } }]);
+  assert.deepEqual(calls.update, [{ id: 'note-1', data: { tags: ['privat', 'Arbeit'], baseUpdatedAt: '2026-01-01T10:00:00.000Z' } }]);
 });
 
 test('off-window Auswahl: getById liefert den IST-Stand, der Pin-Skip richtet sich nach den frischen Daten', async () => {
@@ -1053,7 +1056,7 @@ test('off-window Auswahl: Tag-Skip und Bestandserhaltung anhand der frisch nachg
   await harness.settled();
   // Die Basis kommt aus der Nachladung: ['privat'] + 'Arbeit' — vor v1.15.0
   // lief die Aktion mit note=undefined und ersetzte den Satz durch ['Arbeit'].
-  assert.deepEqual(calls.update, [{ id: 'offen-1', data: { tags: ['privat', 'Arbeit'] } }]);
+  assert.deepEqual(calls.update, [{ id: 'offen-1', data: { tags: ['privat', 'Arbeit'], baseUpdatedAt: '2026-01-01T10:00:00.000Z' } }]);
 });
 
 test('off-window Auswahl: inzwischen gelöschte Notiz (getById → null) läuft deterministisch ohne Crash', async () => {
@@ -1090,6 +1093,93 @@ test('off-window Auswahl: inzwischen gelöschte Notiz (getById → null) läuft 
   await harness.settled();
   assert.deepEqual(calls.update, [{ id: 'weg-1', data: { isArchived: true } }]);
   assert.deepEqual(toasts, [{ message: 'bulkArchived#1', type: 'success' }]);
+});
+
+// ---------------------------------------------------------------------------
+// v1.17.0 (W1): updateNoteInline — Inline-Editierungen (Todo-Toggle auf der
+// Karte, Tag-Drop) senden baseUpdatedAt und lösen ein 409 per Reload+Retry,
+// statt den Konflikt still als unhandled rejection zu verlieren.
+// ---------------------------------------------------------------------------
+
+test('updateNoteInline: Happy Path sendet baseUpdatedAt des Fensterstands', async () => {
+  const windowNote = note({
+    tags: ['privat'],
+    todoItems: [{ text: 'Milch', completed: false }],
+    updatedAt: '2026-01-01T10:00:00.000Z'
+  });
+  const { api, calls } = createBulkApi({ windowNotes: [windowNote] });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  const result = await manager.updateNoteInline('note-1', (fresh) => ({
+    todoItems: (fresh?.todoItems || []).map(item => ({ ...item, completed: !item.completed }))
+  }));
+  await harness.settled();
+
+  assert.deepEqual(calls.update, [{
+    id: 'note-1',
+    data: {
+      todoItems: [{ text: 'Milch', completed: true }],
+      baseUpdatedAt: '2026-01-01T10:00:00.000Z'
+    }
+  }]);
+  assert.equal(calls.getById.length, 0, 'die Fenster-Notiz reicht als Basis — kein getById nötig');
+  assert.ok(result?._id, 'das Update-Ergebnis kommt zurück');
+  assert.deepEqual(toasts, [{ message: 'noteUpdated', type: 'success' }]);
+});
+
+test('updateNoteInline: 409 → getById-Frischstand, Absicht neu angewendet, einmal wiederholt', async () => {
+  const conflictError = new Error('Konflikt');
+  conflictError.status = 409;
+  // Das Fenster kennt einen VERALTETEN Stand (Mitbearbeiter hat inzwischen
+  // einen Tag ergänzt) — genau der Fall, den baseUpdatedAt auffängt.
+  const staleWindowNote = note({ tags: ['arbeit'], updatedAt: '2026-01-01T10:00:00.000Z' });
+  const freshNote = note({ tags: ['arbeit', 'vom-freund'], updatedAt: '2026-01-02T12:00:00.000Z' });
+  const calls = { update: [], getById: [] };
+  const api = {
+    getAll: async () => ({ notes: [staleWindowNote], pagination: { page: 1, limit: 50, total: 1, pages: 1 }, counts: { active: 1, archived: 0, trash: 0 }, tags: [] }),
+    getTree: async () => [],
+    getById: async (id) => { calls.getById.push(id); return freshNote; },
+    update: async (id, data) => {
+      calls.update.push({ id, data });
+      if (calls.update.length === 1) throw conflictError;
+      return { _id: id, ...data };
+    },
+  };
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  // Der Tag-Drop aus der Sidebar: Absicht = „privat“ anhängen — beim Retry auf
+  // dem FISCHEN Stand, nicht auf dem veralteten Karten-Stand (sonst wäre der
+  // Tag des Mitbearbeiters platt gemacht worden).
+  const result = await manager.updateNoteInline('note-1', (fresh) => {
+    const tags = fresh?.tags || [];
+    return { tags: [...tags, 'privat'] };
+  });
+  await harness.settled();
+
+  assert.deepEqual(calls.update[0], {
+    id: 'note-1',
+    data: { tags: ['arbeit', 'privat'], baseUpdatedAt: '2026-01-01T10:00:00.000Z' }
+  }, 'erster Versuch gegen den Fensterstand mit Cursor');
+  assert.deepEqual(calls.getById, ['note-1'], 'nach dem 409 wird genau einmal frisch geladen');
+  assert.deepEqual(calls.update[1], {
+    id: 'note-1',
+    data: { tags: ['arbeit', 'vom-freund', 'privat'], baseUpdatedAt: '2026-01-02T12:00:00.000Z' }
+  }, 'der Retry baut die Absicht auf den frischen Tag-Satz');
+  assert.ok(result?._id);
+  assert.deepEqual(toasts, [{ message: 'noteUpdated', type: 'success' }], 'ein einziger Erfolgs-Toast');
+});
+
+test('updateNoteInline: leere Builder-Antwort ist ein No-Op ohne Request', async () => {
+  const { api, calls } = createBulkApi({ windowNotes: [note({ tags: ['privat'] })] });
+  const { harness, manager, toasts } = await mountBulkManager({ api });
+
+  // Tag-Drop auf eine Notiz, die den Tag (case-insensitiv) schon trägt.
+  const result = await manager.updateNoteInline('note-1', () => ({}));
+  await harness.settled();
+
+  assert.equal(result, null);
+  assert.deepEqual(calls.update, [], 'kein Update-Request für eine erschöpfte Absicht');
+  assert.deepEqual(toasts, [], 'und auch kein Toast');
 });
 
 test('filterNotesByTag matcht case-insensitiv wie der Server und lässt Präfixe fallen', async () => {
@@ -1220,13 +1310,20 @@ test('Delta-Sync-Verdrahtung: Poll schickt since, API baut die Query, leerer Bau
     path.join(__dirname, '../src/services/api/notesAPI.js'), 'utf8'
   );
 
-  // Der Poll reicht den Cursor der VORHERIGEN Sonde durch …
-  assert.match(hookSource, /since: previousMeta\.maxUpdatedAt/);
+  // Der Poll rechnet den Cursor der VORHERIGEN Sonde aus (null = Voll-Pfad) …
+  assert.match(hookSource, /const since = deltaEligible \? previousMeta\.maxUpdatedAt : null;/);
   // … an fetchNotes (Query-Param) …
   assert.match(hookSource, /if \(since\) params\.since = since;/);
   // … und an refreshTree + api.getTree.
-  assert.match(hookSource, /refreshTree\(\{ since: previousMeta\.maxUpdatedAt \}\)/);
+  assert.match(hookSource, /await refreshTree\(\{ since \}\);/);
   assert.match(apiSource, /getTree:\s*\(params = \{\}, options = \{\}\) => \{/);
+
+  // v1.17.0: Cursor und Signatur werden erst NACH erfolgreichem Fetch
+  // committet — refreshInBackground liefert dazu true/false, und nur bei
+  // true übernimmt der Tick die neue Sonde (sonst try-and-error nächstes
+  // Intervall wieder, statt die Änderung still zu verschlucken).
+  assert.match(hookSource, /const ok = deltaEligible\s*\n\s*\? await refreshInBackground\(stateRef\.current\.searchTerm, 1, \{ silent: true, since \}\)/);
+  assert.match(hookSource, /if \(ok\) \{\s*\n\s*lastMetaRef\.current = meta;\s*\n\s*metaSignatureRef\.current = signature;\s*\n\s*\}/);
 
   // Der Delta-Pfad ersetzt das Fenster nicht mehr (applyNotesDelta mischt),
   // und ein leerer Baum-Delta verwirft den Baum nicht.

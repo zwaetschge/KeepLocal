@@ -813,3 +813,38 @@ input:checked + .toggle-slider:before {
   background: rgba(230, 81, 0, 0.12);
   color: #e65100;
 }
+
+/* v1.17.0 (W4): Speicher-Nutzung + Quota-Balken. */
+.settings-storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.settings-storage-line {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.settings-storage-limit {
+  color: var(--text-secondary, #666);
+  margin-left: 4px;
+}
+
+.settings-storage-bar {
+  height: 8px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--border-color, rgba(0, 0, 0, 0.12));
+  overflow: hidden;
+}
+
+.settings-storage-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  transition: width var(--duration-slow, 300ms) var(--ease-default, ease);
+}
+
+.settings-storage-bar.near-limit .settings-storage-fill {
+  background: var(--error-color, #d32f2f);
+}

@@ -132,6 +132,10 @@ async function handleImageUpload(req, res) {
       const finalPath = path.join(imagesDir(), file.filename);
 
       await fs.promises.rename(tempPath, finalPath);
+      // v1.17.0: EXIF/GPS vom ausgelieferten Original streifen, BEVOR das
+      // Thumbnail daraus gebaut wird — beide lesen danach denselben
+      // bereinigten Stand, und die gespeicherte Größe ist die echte.
+      const strippedSize = await notesService.stripImageMetadata(finalPath);
       const thumbnailFilename = await notesService.generateThumbnail(file.filename, finalPath);
 
       imageData.push({
@@ -139,7 +143,7 @@ async function handleImageUpload(req, res) {
         filename: file.filename,
         thumbnailUrl: thumbnailFilename ? `/uploads/images/${thumbnailFilename}` : '',
         thumbnailFilename: thumbnailFilename,
-        size: file.size,
+        size: strippedSize ?? file.size,
         uploadedAt: new Date()
       });
     }

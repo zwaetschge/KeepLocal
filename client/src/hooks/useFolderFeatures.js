@@ -146,6 +146,24 @@ export function useFolderFeatures({
     return Array.from(names).sort();
   }, [allTags, treeNodes]);
 
+  /** v1.17.0 (W3): Anstehende Erinnerungen — die Baum-Projektion trägt remindAt
+   *  für den KOMPLETTEN Bestand (nicht nur das 50er-Fenster) und reist
+   *  ohnehin im 60s-Poll mit. Archivierte bleiben außen vor; gefeuerte
+   *  Erinnerungen bleiben 60 s sichtbar, damit ein kurz vorbei geplanter
+   *  Termin nicht sofort verschwindet. */
+  const upcomingReminders = useMemo(() => Object.values(treeNodes)
+    .filter(node => node.remindAt && !node.isArchived
+      && new Date(node.remindAt).getTime() > Date.now() - 60_000)
+    .sort((a, b) => new Date(a.remindAt) - new Date(b.remindAt))
+    .slice(0, 5)
+    .map(node => ({
+      id: node.id,
+      title: node.title,
+      label: new Date(node.remindAt).toLocaleString(undefined, {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+      })
+    })), [treeNodes]);
+
   /** Nach Markdown-Import (Settings): Liste und Baum nachziehen. */
   const handleDataImported = useCallback(() => {
     fetchNotes(searchTerm, 1, { background: true, silent: true });
@@ -164,6 +182,8 @@ export function useFolderFeatures({
     handleTagManage,
     handleFolderDrop,
     handleDataImported,
+    // v1.17.0 (W3): Erinnerungs-Übersicht in der Sidebar
+    upcomingReminders,
   };
 }
 

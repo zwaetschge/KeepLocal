@@ -18,8 +18,13 @@ const COMPOSE_FILES = ['docker-compose.yml', 'docker-compose.npm.yml', 'docker-c
 const OPS_VARS = [
   'LOG_LEVEL', 'LOG_FORMAT', 'REQUIRE_AI_FOR_READY', 'AI_HEALTH_TIMEOUT_MS',
   'LINK_PREVIEW_LIMIT_PER_MINUTE', 'TRANSCRIPTION_LIMIT_PER_HOUR',
-  'TRANSCRIPTION_LIMIT_PER_DAY', 'MAX_CONCURRENT_TRANSCRIPTIONS',
-  'TRASH_RETENTION_DAYS', 'STORAGE_JANITOR_INTERVAL_HOURS'
+  'TRANSCRIPTION_LIMIT_PER_DAY', 'TRANSCRIPTION_MINUTES_PER_DAY',
+  'MAX_CONCURRENT_TRANSCRIPTIONS', 'TRASH_RETENTION_DAYS',
+  'STORAGE_JANITOR_INTERVAL_HOURS',
+  // v1.17.0: die Governance-Variablen aus v1.16.0 waren im Server lesbar,
+  // aber in keinem Deployment-Vertrag setzbar — Quota, Backup-/Health-
+  // Freiplatz-Schwellen und Disk-Fatal mussten eingecheckte Dateien editieren.
+  'UPLOAD_QUOTA_MB', 'BACKUP_MIN_FREE_MB', 'HEALTH_MIN_FREE_MB', 'HEALTH_DISK_FATAL'
 ];
 
 test('all-in-one program logs reach docker logs instead of the container layer', () => {

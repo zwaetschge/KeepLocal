@@ -13,6 +13,7 @@ import com.keeplocal.android.widget.NoteWidget
 import com.keeplocal.android.widget.PinnedNotesWidget
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
@@ -56,6 +57,11 @@ class SyncWorker @AssistedInject constructor(
                 runCatching { reminderScheduler.rescheduleAll() }
             }
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager-Abbruch (Stopp/Timeout) ist kein Crash und kein
+            // RETRY-Fall (v1.17.0): geschluckt würde der Worker dem System
+            // ein Ergebnis melden und den Abbruch brechen.
+            throw e
         } catch (e: Exception) {
             fileLogger.error("SyncWorker", "background sync crashed", e)
             Result.retry()

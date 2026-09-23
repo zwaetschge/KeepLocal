@@ -452,6 +452,7 @@ function loadUploadApi({ keyScopes = ['write'], isDemo = false, serviceOverrides
       },
       validateImageDimensions: async () => {},
       generateThumbnail: async (filename) => { calls.push({ op: 'generateThumbnail', filename }); return null; },
+      stripImageMetadata: async () => null,
       addImages: async (id, userId, imageData) => { calls.push({ op: 'addImages', id, userId, imageData }); return { _id: id, images: imageData }; },
       addFiles: async (id, userId, fileData) => { calls.push({ op: 'addFiles', id, userId, fileData }); return { _id: id, files: fileData }; },
       removeImage: async (id, userId, filename) => { calls.push({ op: 'removeImage', id, userId, filename }); return { _id: id, images: [] }; },

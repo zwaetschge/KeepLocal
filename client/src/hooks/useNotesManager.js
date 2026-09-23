@@ -426,6 +426,10 @@ export function useNotesManager({
   const lastMetaRef = useRef(null);
   const [folderScope, setFolderScope] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // v1.17.0 (W5): Offene Freundschaftsanfragen als renderbarer Zustand — die
+  // Sonde liefert sie mit (getNotesMeta), der Hook hält sie für das
+  // Sidebar-Badge. Füllt sich mit dem ersten Poll-Tick nach Login.
+  const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
 
   const fetchSequenceRef = useRef(0);
   const fetchAbortRef = useRef(null);
@@ -536,7 +540,11 @@ export function useNotesManager({
    * dann via applyNotesDelta ins Fenster gemischt statt es zu ersetzen.
    */
   const fetchNotes = useCallback(async (search = '', page = 1, { background = false, silent = false, since = null } = {}) => {
-    if (!isLoggedIn) return;
+    // Rückgabe (v1.17.0): true, wenn diese Anfrage den Zustand geschrieben
+    // hat; false bei Fehler, Abbruch oder Superseded. Der 60s-Poll committet
+    // seine Meta-Signatur erst bei true — sonst verschlucke ein einziger
+    // Netzwerkblip die Änderung bis zur nächsten serverseitigen Bewegung.
+    if (!isLoggedIn) return false;
     const requestSequence = ++fetchSequenceRef.current;
     // Der vorherige Request wird ersetzt, nicht nur ignoriert.
     if (fetchAbortRef.current) fetchAbortRef.current.abort('ABORTED');
@@ -581,22 +589,23 @@ export function useNotesManager({
       if (since) params.since = since;
 
       const response = await api.getAll(params, { signal: controller.signal });
-      if (requestSequence !== fetchSequenceRef.current) return;
+      if (requestSequence !== fetchSequenceRef.current) return false;
       if (since) {
         // Delta-Pfad: Fenster mischen statt ersetzen — die Pagination der
         // Antwort zählt nur die geänderten Notizen und ist keine Fenster-Wahrheit.
         applyNotesDelta(normalizeNotesPayload(response), {
           archivedView: params.archived === 'true'
         });
-        return;
+        return true;
       }
       applyServerState(normalizeNotesPayload(response), { merge: background, keepAbsentMeta: skipMeta });
+      return true;
     } catch (error) {
-      if (requestSequence !== fetchSequenceRef.current) return;
+      if (requestSequence !== fetchSequenceRef.current) return false;
       // Bewusst ersetzter Request (Filterwechsel, Mutation, Unmount): kein
       // Fehler. Ein Timeout dagegen ist einer — ohne diese Unterscheidung bliebe
       // die Liste still im `refreshing`-Zustand stehen.
-      if (error?.code === 'ABORTED') return;
+      if (error?.code === 'ABORTED') return false;
       console.error('Fehler beim Laden der Notizen:', error);
       if (!silent) {
         showToast(resolveApiErrorMessage(error, t, 'errorLoadingNotes'), 'error');
@@ -621,7 +630,7 @@ export function useNotesManager({
    * schaltet auf den Delta-Pfad um (siehe fetchNotes).
    */
   const refreshInBackground = useCallback((search = stateRef.current.searchTerm, page = stateRef.current.pagination.page, { silent = false, since = null } = {}) => {
-    fetchNotes(search, page, { background: true, silent, since });
+    return fetchNotes(search, page, { background: true, silent, since });
   }, [fetchNotes]);
 
   /**
@@ -697,6 +706,7 @@ export function useNotesManager({
       // Account) darf nicht gegen die Signatur der alten Session vergleichen.
       metaSignatureRef.current = null;
       lastMetaRef.current = null;
+      setPendingFriendRequests(0);
       setFolderScope(null);
       setSelectedIds(new Set());
     }
@@ -865,6 +875,44 @@ export function useNotesManager({
       setOperationLoading(prev => withoutOperation(prev, id));
     }
   }, [api, applyLocallyAndRevalidate, showToast, t]);
+
+  // v1.17.0 (W1): Inline-Editierungen — Todo-Toggle auf der Karte, Tag-Drop
+  // aus der Sidebar — sind kleine Absichtserklärungen. Ein 409 (optimistic
+  // Locking) verdient hier keinen Konflikt-Dialog wie im NoteModal, sondern
+  // Reload+Retry: frischen Serverstand holen, die Absicht auf den NEUEN Stand
+  // anwenden (buildPayload bekommt die frische Notiz) und genau einmal
+  // wiederholen. Liefert der Builder ein leeres Payload-Objekt, war die
+  // Absicht inzwischen ein No-Op (Tag schon vorhanden) — dann fliegt gar
+  // kein Request. updateNote toaste Nicht-409-Fehler schon selbst; hier
+  // ankommen tun nur 409 (stiller Wurf) und getById-Fehler.
+  const updateNoteInline = useCallback(async (id, buildPayload) => {
+    if (typeof buildPayload !== 'function') return null;
+    setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
+    try {
+      const local = stateRef.current.notes.find(item => item._id === id)
+        ?? normalizeNote(await api.getById(id));
+      if (!local) return null;
+      const attempt = async (base) => {
+        const payload = buildPayload(base) || {};
+        if (Object.keys(payload).length === 0) return null;
+        return updateNote(id, { ...payload, baseUpdatedAt: base.updatedAt });
+      };
+      try {
+        return await attempt(local);
+      } catch (error) {
+        if (!(error?.status === 409 || error?.statusCode === 409)) throw error;
+        const fresh = normalizeNote(await api.getById(id));
+        if (!fresh) throw error;
+        return attempt(fresh);
+      }
+    } catch (error) {
+      console.error('Inline-Update fehlgeschlagen:', error);
+      showToast(resolveApiErrorMessage(error, t, 'errorUpdating'), 'error');
+      return null;
+    } finally {
+      setOperationLoading(prev => withoutOperation(prev, id));
+    }
+  }, [api, updateNote, showToast, t]);
 
   // Notiz anheften/abheften (bereits lokales Muster, plus Hintergrund-Revalidation)
   const togglePinNote = useCallback(async (id) => {
@@ -1066,9 +1114,25 @@ export function useNotesManager({
       // Tag-Cloud. note.tags kommt hier immer an: runBulkAction lädt off-window
       // Notizen vorher nach (vorher ersetzte [...(note?.tags ?? [])] bei
       // fensterfremden Notizen den gesamten Tag-Satz).
-      if ((note?.tags ?? []).some(existing => existing.toLowerCase() === trimmed.toLowerCase())) return;
-      await api.update(id, { tags: [...(note?.tags ?? []), trimmed] });
-      acted += 1;
+      const addTagTo = async (base) => {
+        const tags = base?.tags ?? [];
+        if (tags.some(existing => existing.toLowerCase() === trimmed.toLowerCase())) return 'skipped';
+        // v1.17.0 (W1): baseUpdatedAt mitgeben — das Tag-$set überschreibt den
+        // kompletten Tag-Satz; ohne Cursor hätte ein paralleler Edit (anderer
+        // Tab, Mitbearbeiter) still dessen Tags platt gemacht. Ohne bekannten
+        // Stand (getById → null) bleibt der Cursor weg statt undefined.
+        await api.update(id, { tags: [...tags, trimmed], ...(base?.updatedAt ? { baseUpdatedAt: base.updatedAt } : {}) });
+        return 'added';
+      };
+      try {
+        if ((await addTagTo(note)) === 'added') acted += 1;
+      } catch (error) {
+        // 409 → Reload+Retry (genau wie updateNoteInline): einmal den frischen
+        // Stand holen und die Absicht auf DEN anwenden. Bleibt es konfliktig,
+        // zählt der Pool-Handler den Einzelfehler — die anderen laufen weiter.
+        if (error?.status !== 409 && error?.statusCode !== 409) throw error;
+        if ((await addTagTo(await api.getById(id))) === 'added') acted += 1;
+      }
     });
     if (acted > 0) showToast(t('bulkTagged', { count: acted, tag: trimmed }), 'success');
     if (failed > 0) showToast(t('bulkSomeFailed', { count: failed }), 'error');
@@ -1231,18 +1295,26 @@ export function useNotesManager({
       // Fail-open: Geht die Sonde schief oder kennt das API sie nicht, wird
       // wie bisher voll geladen — der Poll hungert nie aus.
       if (typeof api.getMeta === 'function' && hasLoadedRef.current) {
+        let meta = null;
+        let signature = null;
         try {
-          const meta = await api.getMeta();
-          const signature = notesMetaSignature(meta);
+          meta = await api.getMeta();
+          signature = notesMetaSignature(meta);
+          // W5: Die Anfragen-Zahl reist mit jeder Sonde — auch bei unveränderter
+          // Signatur (gleicher Zahlenwert → React bail-out, kein Rerender).
+          if (Number.isFinite(meta.pendingFriendRequests)) {
+            setPendingFriendRequests(meta.pendingFriendRequests);
+          }
           if (metaSignatureRef.current === signature) return;
+        } catch (_error) {
+          // Sonde unerreichbar: unten voll weiterladen.
+        }
+        if (meta) {
           const previousMeta = lastMetaRef.current;
-          lastMetaRef.current = meta;
-          metaSignatureRef.current = signature;
           // Delta-Sync (v1.16.0): Reine Änderungen ohne Zählungs-Bewegung —
           // der Cursor ist der maxUpdatedAt der VORHERIGEN Sonde. Filter, andere
           // Seiten oder der Papierkorb laden weiter voll (canUseDeltaSync
-          // dokumentiert warum). Fail-open: Ein Fehler im Delta-Pfad fällt
-          // unten in den Voll-Refresh zurück.
+          // dokumentiert warum).
           const deltaEligible = canUseDeltaSync(previousMeta, meta, {
             trash: stateRef.current.showTrash,
             search: stateRef.current.searchTerm,
@@ -1250,17 +1322,21 @@ export function useNotesManager({
             folderScope: stateRef.current.folderScope,
             page: stateRef.current.pagination.page
           });
-          if (deltaEligible) {
-            // Fehler fangen fetchNotes/refreshTree selbst (silent) — der Poll
-            // bleibt in jedem Fall beim nächsten Tick wieder dran.
-            refreshInBackground(stateRef.current.searchTerm, 1, {
-              silent: true, since: previousMeta.maxUpdatedAt
-            });
-            refreshTree({ since: previousMeta.maxUpdatedAt });
-            return;
+          const since = deltaEligible ? previousMeta.maxUpdatedAt : null;
+          // v1.17.0: Signatur und Cursor werden ERST nach erfolgreichem Fetch
+          // committet. Vorher standen beide refs schon vor dem Delta-Abruf —
+          // scheiterte der (stille) Fetch an einem Blip, sah der nächste Tick
+          // dieselbe Signatur und sprang ab: Die Änderung erreichte den
+          // sichtbaren Tab nie wieder, bis sich serverseitig noch etwas tat.
+          const ok = deltaEligible
+            ? await refreshInBackground(stateRef.current.searchTerm, 1, { silent: true, since })
+            : await refreshInBackground(undefined, undefined, { silent: true });
+          await refreshTree({ since });
+          if (ok) {
+            lastMetaRef.current = meta;
+            metaSignatureRef.current = signature;
           }
-        } catch (_error) {
-          // Sonde unerreichbar: unten voll weiterladen.
+          return;
         }
       }
       refreshInBackground(undefined, undefined, { silent: true });
@@ -1322,6 +1398,8 @@ export function useNotesManager({
     refreshInBackground,
     createNote,
     updateNote,
+    // v1.17.0 (W1): Inline-Editierungen mit 409-Retry (Todo-Toggle, Tag-Drop)
+    updateNoteInline,
     deleteNote,
     restoreNote,
     purgeNote,
@@ -1339,6 +1417,8 @@ export function useNotesManager({
     treeNodes,
     folderScope,
     selectedIds,
+    // v1.17.0 (W5): offene Freundschaftsanfragen (Sidebar-Badge, aus der Sonde)
+    pendingFriendRequests,
     selectFolder,
     refreshTree,
     moveNote,

@@ -79,8 +79,9 @@ internal fun transcriptionLanguageFor(languageSetting: String?): String? {
 /**
  * Media features straight against the API. Uses its own Retrofit instance
  * built on a derived OkHttpClient (same auth interceptors and cookie jar as
- * the app client) with a raised read timeout: transcription jobs run 30-60s
- * server-side and would trip the default 30s read timeout.
+ * the app client) with a raised read timeout for slow media endpoints;
+ * transcription rides its own 330 s client (see [transcriptionApi]) because
+ * the server may work on a recording for up to five minutes.
  */
 @Singleton
 class MediaRepositoryImpl @Inject constructor(
@@ -102,6 +103,21 @@ class MediaRepositoryImpl @Inject constructor(
         // Placeholder base URL — DynamicBaseUrlInterceptor rewrites host per request.
         .baseUrl("http://localhost/")
         .client(mediaCallFactory)
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .build()
+        .create(KeepLocalApi::class.java)
+
+    /**
+     * Transkription fährt auf einem eigenen Client (v1.17.0): Der Server darf
+     * bis zu 300 s an Whisper arbeiten (aiService timeout 300000) — der
+     * 120-s-Read-Timeout des Medien-Clients kneift die Verbindung mitten im
+     * legitimen Lauf ab, der Nutzer sieht einen Netzwerkfehler, obwohl der
+     * Server fertig wird. 330 s = Upload + 300 s Verarbeitung + Antwort;
+     * alles darüber liefert der Server selbst als Fehler.
+     */
+    private val transcriptionApi: KeepLocalApi = Retrofit.Builder()
+        .baseUrl("http://localhost/")
+        .client(okHttpClient.newBuilder().readTimeout(330, TimeUnit.SECONDS).build())
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
         .create(KeepLocalApi::class.java)
@@ -255,7 +271,7 @@ class MediaRepositoryImpl @Inject constructor(
                     "MediaRepo",
                     "transcribeAudio: note=$noteId file=${audioFile.name} size=${audioFile.length()} language=${language ?: "auto"}"
                 )
-                val response = api.transcribeAudio(noteId, audioPart, languagePart)
+                val response = transcriptionApi.transcribeAudio(noteId, audioPart, languagePart)
                 if (!response.isSuccessful) {
                     if (response.code() == 503) {
                         // TODO-STR: string resource (transcribe_service_unavailable)

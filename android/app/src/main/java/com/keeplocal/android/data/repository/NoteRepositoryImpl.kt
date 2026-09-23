@@ -36,6 +36,7 @@ import com.keeplocal.android.util.NoteImportParser
 import com.keeplocal.android.util.NoteShareFormatter
 import com.keeplocal.android.util.Result
 import com.keeplocal.android.util.ServerContract
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -76,7 +77,7 @@ class NoteRepositoryImpl @Inject constructor(
         filter: NoteTypeFilter,
         scope: FolderScope
     ): Flow<Result<List<Note>>> = flow {
-        try { syncManager.syncPendingOperations() } catch (_: Exception) {}
+        try { syncManager.syncPendingOperations() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
 
         try {
             fileLogger.log(
@@ -636,7 +637,7 @@ class NoteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getAllNotesForExport(): Result<List<Note>> {
-        try { syncManager.syncPendingOperations() } catch (_: Exception) {}
+        try { syncManager.syncPendingOperations() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         return try {
             // Two sweeps: the server splits live notes by archive state, and
             // trashed notes are deliberately excluded (they expire after 30
@@ -854,7 +855,7 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun exportMarkdownTo(output: OutputStream): Result<Long> = Result.catching {
         // Push offline edits first so the ZIP contains them.
-        try { syncManager.syncPendingOperations() } catch (_: Exception) {}
+        try { syncManager.syncPendingOperations() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         withContext(Dispatchers.IO) {
             val response = api.exportMarkdown()
             if (!response.isSuccessful) {
@@ -899,7 +900,7 @@ class NoteRepositoryImpl @Inject constructor(
             }
             // Frische Server-Notizen sofort in den Room-Cache ziehen (best
             // effort — das nächste Pull-Fenster holte sie sonst erst später).
-            try { syncManager.pullRemoteChanges() } catch (_: Exception) {}
+            try { syncManager.pullRemoteChanges() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
             fileLogger.log("NoteRepo", "importMarkdownFiles: bulk import created $created notes")
             created
         } catch (e: IOException) {

@@ -84,7 +84,10 @@ test('the notes list aborts the previous request instead of stacking them', () =
   assert.match(hook, /if \(fetchAbortRef\.current\) fetchAbortRef\.current\.abort\('ABORTED'\);/);
   assert.match(hook, /const controller = new AbortController\(\);\n\s+fetchAbortRef\.current = controller;/);
   assert.match(hook, /await api\.getAll\(params, \{ signal: controller\.signal \}\)/);
-  assert.match(hook, /if \(error\?\.code === 'ABORTED'\) return;/, 'a replaced request must not raise an error toast');
+  // v1.17.0: fetchNotes meldet boolesch, ob der Zustand geschrieben wurde —
+  // ein abgebrochener Request ist kein Fehler und kein Erfolg (kein Toast,
+  // und der 60s-Poll committet die Meta-Signatur nicht).
+  assert.match(hook, /if \(error\?\.code === 'ABORTED'\) return false;/, 'a replaced request must not raise an error toast');
   assert.match(hook, /if \(fetchAbortRef\.current === controller\) fetchAbortRef\.current = null;/);
 
   const notesAPI = read('services', 'api', 'notesAPI.js');

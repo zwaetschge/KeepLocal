@@ -38,6 +38,12 @@ const blockDemoCollaboration = blockDemoUser('collaboration');
 const blockDemoLinkPreview = blockDemoUser('link_preview');
 const blockDemoUploads = blockDemoUser('uploads');
 const blockDemoTranscription = blockDemoUser('transcription');
+// v1.17.0: vier Routen wirkten noch ungeschützt auf den geteilten Demo-Korpus —
+// applyTagOperation rennt als updateMany über ALLE Demo-Notizen (anonymer
+// Besucher kann Tags global umbenennen/löschen), emptyTrash leert das Konto,
+// Reorder verdirbt die Sortierung und der RAM-gepufferte Export blockiert über
+// sein 1-Permit-Gate alle anderen Demo-Besucher mit 429.
+const blockDemoMaintenance = blockDemoUser('maintenance');
 
 // Teure Endpunkte brauchen eigene Budgets: Der globale Limiter (500/15 min pro
 // IP) schützt weder den Whisper-Worker (ein Request blockiert bis zu 300 s alle
@@ -193,7 +199,7 @@ router.get('/meta', async (req, res, next) => {
  * in dem mongod und Whisper mit auf dem Host liegen — der Import-Endpunkt
  * gate't exakt dieses Profil seit v1.15.0 (siehe unten).
  */
-router.get('/export/markdown', async (req, res, next) => {
+router.get('/export/markdown', blockDemoMaintenance, async (req, res, next) => {
   const gate = acquire(`export:${req.user._id}`, 1);
   if (!gate.acquired) {
     res.setHeader('Retry-After', '30');
@@ -469,7 +475,7 @@ router.put('/:id', noteValidation.update, rejectDemoNoteCapabilities, async (req
  * DELETE /api/notes/trash - Papierkorb endgültig leeren
  * Muss VOR '/:id' registriert sein, sonst wird 'trash' als ID geprüft.
  */
-router.delete('/trash', async (req, res, next) => {
+router.delete('/trash', blockDemoMaintenance, async (req, res, next) => {
   try {
     const removed = await notesService.emptyTrash(req.user._id);
     res.json({ message: 'Papierkorb geleert', removed });
@@ -483,7 +489,7 @@ router.delete('/trash', async (req, res, next) => {
  * löschen. Ein updateMany über alle sichtbaren Notizen statt N Einzel-Updates;
  * registriert vor '/:id'-Mustern, damit 'tags' nicht als ID geroutet wird.
  */
-router.patch('/tags', noteValidation.tagOperation, async (req, res, next) => {
+router.patch('/tags', blockDemoMaintenance, noteValidation.tagOperation, async (req, res, next) => {
   try {
     const result = await notesService.applyTagOperation({
       userId: req.user._id,
@@ -501,7 +507,7 @@ router.patch('/tags', noteValidation.tagOperation, async (req, res, next) => {
  * PATCH /api/notes/reorder - manuelle Reihenfolge nach Drag & Drop speichern.
  * Vor '/:id' registriert, damit 'reorder' nicht als ID geprüft wird.
  */
-router.patch('/reorder', noteValidation.reorder, async (req, res, next) => {
+router.patch('/reorder', blockDemoMaintenance, noteValidation.reorder, async (req, res, next) => {
   try {
     const result = await notesService.reorderNotes(req.user._id, req.body.orderedIds);
     res.json({ message: 'Reihenfolge gespeichert', ...result });
@@ -838,11 +844,28 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
       });
     }
 
+    // v1.17.0: Der Whisper-Container hat einen Worker — bricht der Client ab
+    // (Android-Timeout nach 30 s, Tab zu, Netz weg), lief der Job vorher
+    // trotzdem bis zu 300 s weiter: Slot belegt (jeder Retry → 429
+    // TRANSCRIPTION_BUSY), Audio-Minuten gebucht, Ergebnis an niemanden.
+    // Der AbortController koppelt den Upstream-Call an die Connection.
+    const clientGone = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) clientGone.abort();
+    });
+
     let result;
     try {
-      result = await aiService.transcribeAudio(req.file.path, language, req.id);
+      result = await aiService.transcribeAudio(req.file.path, language, req.id, clientGone.signal);
     } finally {
       gate.release();
+    }
+
+    // Race: Client ist während des Transkribierens verschwunden, aber der
+    // Upstream lief zu Ende — nicht buchen, nicht antworten (Connection ist zu).
+    if (clientGone.signal.aborted) {
+      await fs.promises.rm(req.file.path, { force: true });
+      return;
     }
 
     if (!result || typeof result.text !== 'string' || !result.text.trim()) {
@@ -869,6 +892,13 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
     // Cleanup temp file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
+    }
+
+    // Client weg + Upstream abgebrochen (v1.17.0): Es gibt keinen Empfänger
+    // für Status oder Body — nicht loggen (kein Fehler), nicht antworten.
+    if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError'
+      || error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+      return;
     }
 
     console.error('[TRANSCRIPTION ERROR]', error);
