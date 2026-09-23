@@ -100,11 +100,12 @@ export function useFolderFeatures({
     if (migration?.tagColors) updateSettings({ tagColors: migration.tagColors });
     if (migration?.savedSearches) setSavedSearches(migration.savedSearches);
 
-    // Aktiver Tag-Filter wandert mit (Rohname — Sidebar-Highlight und
-    // Server-Filter matchen exakt).
+    // Aktiver Tag-Filter wandert mit — in der lowercased-Form, die der
+    // Server speichert: Die Notizen tragen "rezepte", ein Roh-"Rezepte"
+    // träfe weder das Sidebar-Chip-Highlight noch clientseitiges Filtering.
     const affected = from.map((tag) => tag.toLowerCase());
     if (selectedTag && affected.includes(selectedTag.toLowerCase())) {
-      setSelectedTag(action === 'delete' ? null : (to ?? null));
+      setSelectedTag(action === 'delete' ? null : (to ? to.trim().toLowerCase() : null));
     }
   }, [manageTag, selectedTag, settings, updateSettings, setSavedSearches, setSelectedTag]);
 

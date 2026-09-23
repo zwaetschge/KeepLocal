@@ -152,16 +152,23 @@ fun TodoItem.toDto(): TodoItemDto = TodoItemDto(
 
 /**
  * v1.16.0: Flacht einen geparsten Markdown-Import auf die Items des
- * Bulk-Endpunkts /api/notes/import/markdown ab — Ordner als `<pfad>/_index.md`
- * mit isFolderIndex (der Server verschmilzt sie wieder mit dem Ordnerknoten),
- * Dateien unter ihrem Originalpfad. Todo-Listen reisen als
- * isTodoList-Frontmatter + Checkbox-Markdown, exakt das Format, das der Server
- * beim Import wieder zu todoItems parst (derselbe Round-trip wie beim Export).
+ * Bulk-Endpunkts /api/notes/import/markdown ab. Wire-Kontrakt (SERVER-SEITIG
+ * verifiziert, notesService.importMarkdownNotes — nicht raten):
+ *  - `path` einer DATEI ist der ORDNERPFAD ohne Dateinamen; der Server baut
+ *    seinen Ordnersatz aus allen Pfad-Segmenten und hängt die Notiz unter
+ *    folderIdByPath[path] an.
+ *  - `path` eines Ordner-Index-Items ist der BARE Ordnerpfad mit
+ *    isFolderIndex=true — der Server verschmilzt Titel/Inhalt/Tags mit dem
+ *    Ordnerknoten statt ein leeres Duplikat plus Kind anzulegen.
+ * Todo-Listen reisen als isTodoList-Frontmatter + Checkbox-Markdown, exakt
+ * das Format, das der Server beim Import wieder zu todoItems parst (derselbe
+ * Round-trip wie beim Export — der Server-Export lässt den Inhalt von
+ * Todo-Notizen ebenfalls weg, Parität).
  */
 fun buildMarkdownImportItems(parsed: MarkdownNoteParser.ParsedImport): List<ImportMarkdownItemDto> {
     val dirItems = parsed.dirs.map { dir ->
         ImportMarkdownItemDto(
-            path = "${dir.dirPath.trimEnd('/')}/_index.md",
+            path = dir.dirPath.trimEnd('/'),
             title = dir.title,
             content = dir.indexContent ?: "# ${dir.title}",
             isFolderIndex = true
@@ -169,7 +176,7 @@ fun buildMarkdownImportItems(parsed: MarkdownNoteParser.ParsedImport): List<Impo
     }
     val fileItems = parsed.files.map { file ->
         ImportMarkdownItemDto(
-            path = file.path,
+            path = file.parentPath ?: "",
             title = file.title,
             content = if (file.isTodoList) {
                 val checkboxes = file.todoItems.joinToString("\n") { item ->

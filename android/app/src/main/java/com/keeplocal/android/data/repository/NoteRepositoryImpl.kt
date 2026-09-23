@@ -887,8 +887,8 @@ class NoteRepositoryImpl @Inject constructor(
         // /api/notes/import/markdown (500 Dateien pro Request, dasselbe
         // Wire-Format wie der Web-Client) — vorher war es eine createNote-
         // Sequenz pro Datei mit halbem Import bei Abbruch mitten drin.
+        var created = 0
         try {
-            var created = 0
             for (chunk in buildMarkdownImportItems(parsed).chunked(IMPORT_CHUNK_SIZE)) {
                 val response = api.importMarkdown(ImportMarkdownRequestDto(chunk))
                 if (!response.isSuccessful) {
@@ -903,8 +903,15 @@ class NoteRepositoryImpl @Inject constructor(
             fileLogger.log("NoteRepo", "importMarkdownFiles: bulk import created $created notes")
             created
         } catch (e: IOException) {
-            // Offline: Bulk geht nicht — jeder Eintrag wird zum Offline-Entwurf
-            // mit CREATE-Op, der nächste Drain zieht alles nach.
+            // Offline-Fallback NUR solange nichts am Server gelandet ist: Der
+            // Offline-Pfad legt JEDE Datei als Entwurf an — nach einem
+            // Teilerfolg (Chunk 1 ok, Chunk 2 offline) hätte alles doppelt.
+            // Dann lieber ehrlich scheitern: Die Fehlermeldung verrät den
+            // Teilerfolg, ein Retry dupliziert höchstens den Rest-Chunk.
+            if (created > 0) {
+                fileLogger.error("NoteRepo", "importMarkdownFiles: partial bulk import ($created), surfacing error", e)
+                throw Exception("Teilimport: $created Notizen angelegt, Rest fehlgeschlagen (${e.javaClass.simpleName}) — bitte erneut versuchen")
+            }
             fileLogger.log("NoteRepo", "importMarkdownFiles: offline (${e.javaClass.simpleName}), queueing drafts")
             importOfflineDrafts(parsed)
         }

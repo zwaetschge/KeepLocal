@@ -1249,10 +1249,13 @@ test('migrateTagReferences: rename trägt die Farbe auf den neuen Namen über', 
     savedSearches: [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'projekt' }],
   });
 
-  assert.deepEqual(result.tagColors, { 'Projekt 2026': '#ff0000', privat: '#00ff00' },
-    'die Farbe folgt dem neuen Namen, andere bleiben unangetastet');
+  // Der SERVER speichert das Ziel lowercased (applyTagOperation) — die
+  // migrierten Verweise tragen exakt diese Form, sonst greifen Farbe und
+  // gespeicherte Suche auf einem Tag nie, der real "projekt 2026" heißt.
+  assert.deepEqual(result.tagColors, { 'projekt 2026': '#ff0000', privat: '#00ff00' },
+    'die Farbe folgt dem neuen Namen (lowercase wie der Server), andere bleiben unangetastet');
   assert.deepEqual(result.savedSearches,
-    [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'Projekt 2026' }]);
+    [{ id: 's1', name: '#projekt', query: '', typeFilter: null, tag: 'projekt 2026' }]);
 });
 
 test('migrateTagReferences: merge respektiert eine vorhandene Zielfarbe, delete räumt komplett weg', async () => {
@@ -1285,14 +1288,15 @@ test('migrateTagReferences: case-insensitiv, unveränderte Bestände bleiben ide
     tagColors: { projekt: '#ff0000' },
     savedSearches: [],
   });
-  assert.deepEqual(result.tagColors, { Ziel: '#ff0000' });
+  assert.deepEqual(result.tagColors, { ziel: '#ff0000' }, 'Ziel in Server-Form (lowercase)');
 
   // Nichts betroffen → null, damit der Handler keine sinnlosen Settings-Pushes lostritt.
   assert.equal(migrateTagReferences('rename', ['andere'], 'Ziel',
     { tagColors: { projekt: '#ff0000' }, savedSearches: [{ id: 's1', name: '', query: '', typeFilter: null, tag: 'projekt' }] }), null);
-  // Reine Groß-/Kleinschreibungs-Rename nimmt die Farbe nicht doppelt mit.
+  // Reine Groß-/Kleinschreibungs-Rename kollabiert auf die Server-Form —
+  // die Farbe bleibt genau einmal, unter dem kanonischen (lowercase) Namen.
   const caseOnly = migrateTagReferences('rename', ['projekt'], 'Projekt', { tagColors: { projekt: '#ff0000' } });
-  assert.deepEqual(caseOnly.tagColors, { Projekt: '#ff0000' });
+  assert.deepEqual(caseOnly.tagColors, { projekt: '#ff0000' });
 });
 
 test('Tag-Chips auf den Karten filtern die Liste (Klick öffnet nicht die Notiz)', () => {

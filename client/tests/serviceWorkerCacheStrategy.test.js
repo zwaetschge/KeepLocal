@@ -128,3 +128,25 @@ test('index.jsx meldet wartende Worker, der Hook zeigt den Update-Toast', () => 
   assert.match(updatePrompt, /addEventListener\('controllerchange', reloadOnce\)/);
   assert.match(updatePrompt, /reloadGuard/, 'der Reload ist einmalig');
 });
+
+test('controllerchange wird erst im Update-Klick armdiert, nicht global (v1.16.0)', () => {
+  // activate ruft clients.claim() — das feuert controllerchange auch beim
+  // ALLERERSTEN Besuch. Ein global registrierter Listener lud jede frische
+  // Session einmal sinnlos neu; armiert wird er erst als Reaktion auf den
+  // sichtbaren Update-Toast.
+  const hookBlock = updatePrompt.slice(
+    updatePrompt.indexOf('const onUpdateAvailable'),
+    updatePrompt.indexOf('window.addEventListener')
+  );
+  assert.match(
+    hookBlock,
+    /onClick: \(\) => \{[\s\S]*addEventListener\('controllerchange', reloadOnce\)[\s\S]*postMessage/,
+    'der Listener hängt im Klick, VOR dem postMessage'
+  );
+  const cleanup = updatePrompt.slice(updatePrompt.indexOf('return () =>'));
+  assert.doesNotMatch(
+    cleanup,
+    /removeEventListener\('controllerchange'/,
+    'kein globaler Listener mehr, der entfernt werden müsste'
+  );
+});

@@ -439,7 +439,9 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   if (isDeleted) {
     const trashQuery = {
       userId,
-      deletedAt: sinceDate ? { $gt: sinceDate } : { $ne: null },
+      // $gte aus demselben Grund wie im Live-Zweig: Bulk-Löschungen im selben
+      // Millisekunden-Stempel dürften keinen Eintrag überspringen.
+      deletedAt: sinceDate ? { $gte: sinceDate } : { $ne: null },
       ...(typeof search === 'string' && search.trim() !== '' ? { $text: { $search: search.trim() } } : {})
     };
     if (typeof tag === 'string' && tag.trim() !== '') {
@@ -1032,9 +1034,13 @@ async function deleteNote(noteId, userId) {
  * @returns {Promise<Object>} The restored note
  */
 async function restoreNote(noteId, userId) {
+  // updatedAt mitnehmen (v1.16.0-Review): Ohne den Bump ist eine wieder-
+  // hergestellte Notiz in KEINER Delta-Sicht sichtbar — live filtert auf
+  // updatedAt (unverändert alt), Trash auf deletedAt (jetzt null). Der 60s-
+  // Poll und der Android-Pull würden sie erst nach einem Voll-Load sehen.
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, deletedAt: { $ne: null } },
-    { $set: { deletedAt: null } },
+    { $set: { deletedAt: null, updatedAt: new Date() } },
     { new: true, projection: { revisions: 0 } }
   ).populate('userId', 'username email')
     .populate('sharedWith', 'username email');

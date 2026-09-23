@@ -203,6 +203,10 @@ router.get('/export/markdown', async (req, res, next) => {
     });
   }
   try {
+    // NOTE: the gate serialises export STARTS per process, not the memory
+    // they consume — buildMarkdownExport buffers one user's ZIP in RAM.
+    // Cross-user overlap is therefore still possible until export moves to
+    // streaming; accepted tradeoff (documented in v1.16.0 review).
     const archive = await notesService.buildMarkdownExport(req.user._id);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="keeplocal-export.zip"');

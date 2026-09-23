@@ -8,10 +8,16 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Wire format of the v1.16.0 bulk import: the server's
- * POST /api/notes/import/markdown rebuilds the tree from the paths, so the
- * mapper's path/isFolderIndex contract has to be exact — a wrong path puts a
- * note into the wrong folder (or the root) without any error.
+ * Wire format of the v1.16.0 bulk import, pinned against the SERVER source
+ * (notesService.importMarkdownNotes), not against the mapper itself:
+ *  - a FILE item's `path` is the PARENT FOLDER path, no file name — the
+ *    server builds its folder set from the path's segment prefixes and hangs
+ *    the note under folderIdByPath[path];
+ *  - a folder index item's `path` is the BARE folder path with
+ *    isFolderIndex=true — the server merges its title/content/tags into the
+ *    folder note instead of creating an empty duplicate plus a child.
+ * A wrong path puts a note into the wrong folder (or the root) without any
+ * error — this suite exists so that never silently regresses.
  */
 class MarkdownBulkImportMapperTest {
 
@@ -20,7 +26,7 @@ class MarkdownBulkImportMapperTest {
     )
 
     @Test
-    fun `folders become _index paths with isFolderIndex and default content`() {
+    fun `folders become bare dir paths with isFolderIndex and default content`() {
         val parsed = MarkdownNoteParser.ParsedImport(
             dirs = listOf(
                 MarkdownNoteParser.ParsedDir(
@@ -36,7 +42,7 @@ class MarkdownBulkImportMapperTest {
         val items = buildMarkdownImportItems(parsed)
 
         assertEquals(1, items.size)
-        assertEquals("projekt/notizen/_index.md", items[0].path)
+        assertEquals("projekt/notizen", items[0].path)
         assertEquals("Notizen", items[0].title)
         assertEquals("Ohne _index gibt der Ordner sich selbst eine Überschrift", "# Notizen", items[0].content)
         assertEquals(true, items[0].isFolderIndex)
@@ -58,12 +64,40 @@ class MarkdownBulkImportMapperTest {
 
         val items = buildMarkdownImportItems(parsed)
 
+        assertEquals("projekt", items[0].path)
         assertEquals("Der aus _index.md stammende Ordnerkörper.", items[0].content)
         assertNull("Ordner tragen nie Tags", items[0].tags)
     }
 
     @Test
-    fun `plain files map one to one and omit empty tags`() {
+    fun `file path is the parent folder - never the file name`() {
+        // The regression this pins: sending "kochen/rezept.md" made the
+        // server create a phantom folder "rezept.md" and nest the note
+        // inside it.
+        val parsed = MarkdownNoteParser.ParsedImport(
+            dirs = emptyList(),
+            files = listOf(
+                MarkdownNoteParser.ParsedFile(
+                    title = "Rezept",
+                    content = "Butterbraten",
+                    tags = emptyList(),
+                    isTodoList = false,
+                    todoItems = emptyList(),
+                    parentPath = "kochen",
+                    path = "kochen/rezept.md"
+                )
+            )
+        )
+
+        val items = buildMarkdownImportItems(parsed)
+
+        assertEquals("kochen", items[0].path)
+    }
+
+    @Test
+    fun `root level files send an empty path`() {
+        // path "" → segments [] → root note, same as the web client's
+        // top-level files (folderPath of "einkaufsliste.md" is "").
         val parsed = MarkdownNoteParser.ParsedImport(
             dirs = emptyList(),
             files = listOf(
@@ -82,7 +116,7 @@ class MarkdownBulkImportMapperTest {
         val items = buildMarkdownImportItems(parsed)
 
         assertEquals(1, items.size)
-        assertEquals("einkaufsliste.md", items[0].path)
+        assertEquals("", items[0].path)
         assertEquals("Einkaufsliste", items[0].title)
         assertEquals("Milch", items[0].content)
         assertNull("leere Tags bleiben weg — null statt []", items[0].tags)
@@ -140,7 +174,10 @@ class MarkdownBulkImportMapperTest {
     }
 
     @Test
-    fun `folders come before files so the server can create the parents first`() {
+    fun `index and file of the same folder share the bare path`() {
+        // Index item (merges INTO the folder note) and child file (hangs
+        // UNDER it) both address the folder as "ordner" — distinguished only
+        // by isFolderIndex.
         val parsed = MarkdownNoteParser.ParsedImport(
             dirs = listOf(
                 MarkdownNoteParser.ParsedDir("ordner", "Ordner", null, null)
@@ -156,11 +193,13 @@ class MarkdownBulkImportMapperTest {
 
         val items = buildMarkdownImportItems(parsed)
 
-        assertEquals(listOf("ordner/_index.md", "ordner/kind.md"), items.map { it.path })
+        assertEquals(listOf("ordner", "ordner"), items.map { it.path })
+        assertEquals(listOf(true, null), items.map { it.isFolderIndex })
     }
 
-    /** End-to-end: the parser must hand every file its normalized path so the
-     *  mapper can address it — the tree on the server IS these paths. */
+    /** End-to-end: the parser must hand every file its normalized parent
+     *  path so the mapper can address it — the tree on the server IS these
+     *  paths. */
     @Test
     fun `parse carries normalized paths through to the import items`() {
         val files = listOf(
@@ -172,7 +211,7 @@ class MarkdownBulkImportMapperTest {
         val items = buildMarkdownImportItems(parsed)
 
         assertEquals(
-            listOf("projekt/_index.md", "projekt/notizen/_index.md", "projekt/notizen/idee.md"),
+            listOf("projekt", "projekt/notizen", "projekt/notizen"),
             items.map { it.path }
         )
         assertEquals(true, items[0].isFolderIndex)

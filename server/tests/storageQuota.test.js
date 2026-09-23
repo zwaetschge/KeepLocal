@@ -156,3 +156,20 @@ test('quota is enforced on both upload handlers and the ZIP import', () => {
   assert.match(imageHandler, /size: file\.size/);
   assert.match(service, /size: asset\.size \?\? 0/, 'Import-Anhänge zählen mit');
 });
+
+// v1.16.0-Review: Die Quota wird dem NOTIZ-EIGENTÜMER berechnet, nicht dem
+// Uploader — die Bytes landen in owner.images[]/files[] und in dessen
+// getStorageUsage. Ein Mitarbeiter mit leerem Konto würde sonst am Limit des
+// Eigentümers vorbei hochladen (Shared-Note-Kollaboration).
+test('upload handlers bill the quota to the note owner, not the uploader', () => {
+  const pipeline = fs.readFileSync(path.join(__dirname, '../utils/attachmentUpload.js'), 'utf8');
+  const calls = [...pipeline.matchAll(/assertStorageQuota\(([^)]+)\)/g)].map((m) => m[1]);
+  assert.ok(calls.length >= 2, `both handlers must check the quota (found ${calls.length})`);
+  for (const callArgs of calls) {
+    assert.match(
+      callArgs,
+      /req\.ownedNote\.userId/,
+      `quota must bill the note owner (got: ${callArgs.trim()})`
+    );
+  }
+});

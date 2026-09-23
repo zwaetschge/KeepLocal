@@ -50,6 +50,7 @@ function errorHandler(err, req, res, next) {
     return res.status(statusCode).json({
       success: false,
       error: message,
+      ...(typeof err.code === 'string' && { code: err.code }),
       ...(requestId && { requestId }),
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
@@ -57,6 +58,12 @@ function errorHandler(err, req, res, next) {
 
   res.status(statusCode).json({
     error: message,
+    // Maschinenlesbarer Fehlercode (v1.16.0-Review): STORAGE_QUOTA_EXCEEDED &
+    // Co. reisten bisher nur in den beiden Upload-Handlern mit — der ZIP-
+    // Import-Path (next(error)) verlor das Feld. Nur Strings: Mongoose hängt
+    // numerische Codes an (11000 = Duplicate Key), die hätten hier nichts
+    // verloren.
+    ...(typeof err.code === 'string' && { code: err.code }),
     ...(requestId && { requestId }),
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
