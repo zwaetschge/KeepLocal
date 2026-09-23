@@ -372,11 +372,15 @@ const noteValidationRules = {
       .isLength({ max: 200 })
       .withMessage('Titel darf maximal 200 Zeichen lang sein'),
 
+    // Roh-String-Grenze wie der Service (v1.16.0-Review): 20.000 mit
+    // Frontmatter-Spielraum, der BODY bleibt auf 10.000 begrenzt — die 10k
+    // hier hätte den Android-Chunk-Import langer Todo-Notizen abgewiesen,
+    // bevor der Service seine präzisere Prüfung überhaupt sieht.
     body('items.*.content')
       .optional({ checkFalsy: true })
       .isString()
-      .isLength({ max: 10000 })
-      .withMessage('Inhalt darf maximal 10.000 Zeichen lang sein'),
+      .isLength({ max: 20000 })
+      .withMessage('Inhalt darf maximal 20.000 Zeichen lang sein'),
 
     body('items.*.tags')
       .optional()

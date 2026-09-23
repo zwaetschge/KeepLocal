@@ -3,6 +3,7 @@ import { authAPI, initializeCSRF } from '../services/api';
 import { UNAUTHORIZED_EVENT } from '../services/api/apiUtils';
 import { removeLocalStorage } from '../utils/localStorage.mjs';
 import { clearDraftsForUser } from '../utils/noteDraft.mjs';
+import { purgeAppCaches } from '../utils/swCachePurge.mjs';
 
 const AuthContext = createContext();
 
@@ -110,6 +111,10 @@ export function AuthProvider({ children }) {
     // Nutzer keine fremden Entwürfe angeboten bekommen (dieselbe Begründung wie
     // bei den konto-gebundenen Einstellungen).
     clearDraftsForUser(user?._id || user?.id || null);
+    // Dasselbe gilt für die SWR-Cached-/api/notes-Antworten des Service
+    // Workers — der purgt selbst nur auf 401-GETs, hier schlägt der Logout
+    // aktiv zu (v1.16.0). Best effort: schlägt er fehl, bleibt nur Cache.
+    purgeAppCaches();
     setSessionExpired(false);
     setUser(null);
     setIsLoggedIn(false);

@@ -80,6 +80,37 @@ test('successful and non-error payloads are left alone', async () => {
   );
 });
 
+// v1.16.0-Review: Ein geworfener Fehler mit eigenem Code (STORAGE_QUOTA_EXCEEDED
+// aus dem ZIP-Import, EXPORT_BUSY, …) muss ihn DURCH den zentralen Handler
+// retten — vorher verlor next(error) das Feld und der Status-Code gewann.
+test('a thrown error keeps its own string code, numeric codes do not leak', async () => {
+  await withApp(
+    app => {
+      app.get('/own-code', () => {
+        const err = new Error('Eine voellig ungemappte Meldung');
+        err.statusCode = 413;
+        err.code = 'STORAGE_QUOTA_EXCEEDED';
+        throw err;
+      });
+      app.get('/mongoose-dup', () => {
+        const err = new Error('dup key');
+        err.statusCode = 409;
+        err.code = 11000; // mongoose duplicate-key: number, not a label
+        throw err;
+      });
+      app.use(errorHandler);
+    },
+    async base => {
+      const own = await (await fetch(`${base}/own-code`)).json();
+      assert.equal(own.code, 'STORAGE_QUOTA_EXCEEDED', 'call-site code beats the status-derived fallback');
+
+      const dup = await (await fetch(`${base}/mongoose-dup`)).json();
+      assert.notEqual(dup.code, 11000, 'numeric mongoose codes must not appear as body.code');
+      assert.equal(typeof dup.code, 'string');
+    }
+  );
+});
+
 test('errors thrown into the central handler are coded too', async () => {
   await withApp(
     app => {

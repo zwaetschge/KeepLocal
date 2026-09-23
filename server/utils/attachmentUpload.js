@@ -116,8 +116,12 @@ async function handleImageUpload(req, res) {
     // ein abgelehnter Upload hinterlässt keine Datei. Die Multiplikator-Summe
     // (Größe × Dateien) kann das Budget überschreiten, obwohl jede einzelne
     // Datei unter dem Multer-Limit bleibt.
+    // Geprüft wird das Konto des NOTIZ-OWNERS (Review v1.16.0): Die Bytes
+    // landen in dessen images[] und zählen in dessen getStorageUsage — gegen
+    // den Uploader zu prüfen würde geteilte Notizen zum Quota-Bypass machen
+    // (Kollaborator mit leerem Konto füllt das Volume des Owners).
     await assertStorageQuota(
-      req.user._id,
+      req.ownedNote.userId,
       req.files.reduce((sum, file) => sum + (file.size || 0), 0)
     );
 
@@ -218,8 +222,9 @@ async function handleFileUpload(req, res) {
     }
 
     // Quota wie bei Bildern (v1.16.0): Validierungen durch, nichts verschoben.
+    //Owner-Konto, siehe Bild-Upload.
     await assertStorageQuota(
-      req.user._id,
+      req.ownedNote.userId,
       req.files.reduce((sum, file) => sum + (file.size || 0), 0)
     );
 

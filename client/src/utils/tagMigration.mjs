@@ -16,6 +16,11 @@
 export function migrateTagReferences(action, from, to, { tagColors = {}, savedSearches = [] } = {}) {
   const affected = from.map((tag) => tag.toLowerCase());
   const matchesTag = (tag) => Boolean(tag) && affected.includes(tag.toLowerCase());
+  // Der Server speichert das Ziel lowercased (applyTagOperation trimmt und
+  // lowercased) — die migrierten Verweise müssen dieselbe Form tragen, sonst
+  // zeigt tagColors["Rezepte"] auf einen Tag, der auf den Notizen "rezepte"
+  // heißt, und die Farbe greift nie.
+  const target = action !== 'delete' && to ? String(to).trim().toLowerCase() : null;
 
   // Farben: gelöschte Tags verlieren ihren Eintrag; bei Rename/Merge springt
   // die Farbe mit (bereits vorhandene Zielfarbe gewinnt, erste Quelle reicht).
@@ -23,11 +28,11 @@ export function migrateTagReferences(action, from, to, { tagColors = {}, savedSe
   let colors = null;
   if (matchedKeys.length > 0) {
     colors = { ...tagColors };
-    if (action !== 'delete' && to && colors[to] === undefined) {
+    if (target && colors[target] === undefined) {
       const donor = matchedKeys.find((name) => colors[name] !== undefined);
-      if (donor !== undefined) colors[to] = colors[donor];
+      if (donor !== undefined) colors[target] = colors[donor];
     }
-    matchedKeys.forEach((name) => { if (name !== to) delete colors[name]; });
+    matchedKeys.forEach((name) => { if (name !== target) delete colors[name]; });
   }
 
   // Gespeicherte Suchen: auf einen gelöschten Tag fällt die Suche weg, sonst
@@ -36,7 +41,7 @@ export function migrateTagReferences(action, from, to, { tagColors = {}, savedSe
   if (savedSearches.some((search) => matchesTag(search.tag))) {
     searches = action === 'delete'
       ? savedSearches.filter((search) => !matchesTag(search.tag))
-      : savedSearches.map((search) => (matchesTag(search.tag) ? { ...search, tag: to } : search));
+      : savedSearches.map((search) => (matchesTag(search.tag) ? { ...search, tag: target } : search));
   }
 
   if (colors === null && searches === null) return null;

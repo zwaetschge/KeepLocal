@@ -100,13 +100,16 @@ test('the trash view honours since (on deletedAt) and the tag filter', async () 
   const since = '2026-09-20T12:00:00.000Z';
   await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, deleted: 'true', since, tag: 'Projekt' });
 
-  assert.deepEqual(seen.find.deletedAt, { $gt: new Date(since) });
+  // $gte, nicht $gt: gleiche Millisekunde wie der Live-Zweig — eine Notiz,
+  // die im selben Tick wie der since-Cursor gelöscht wurde, darf nicht
+  // unsichtbar bleiben (v1.16.0 Review-Fix).
+  assert.deepEqual(seen.find.deletedAt, { $gte: new Date(since) });
   assert.equal(seen.find.userId, OWNER_ID);
   assert.ok(seen.find.tags.$regex instanceof RegExp, 'Tag-Filter als RegExp');
   assert.equal(seen.find.tags.$regex.source, '^Projekt$');
   assert.equal(seen.find.tags.$regex.flags, 'i');
   // Dasselbe Prädikat zählt die Pagination-Summe — nicht eine Variante ohne seit/tag.
-  assert.deepEqual(seen.counts[0].deletedAt, { $gt: new Date(since) });
+  assert.deepEqual(seen.counts[0].deletedAt, { $gte: new Date(since) });
   assert.equal(seen.counts[0].tags.$regex.source, '^Projekt$');
 });
 
@@ -130,9 +133,18 @@ test('restore clears deletedAt and purge only accepts trashed notes', async () =
     updateMany: async () => ({ modifiedCount: 0 })
   });
 
+  const before = Date.now();
   await service.restoreNote(NOTE_ID, OWNER_ID);
   assert.deepEqual(seen[0].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: { $ne: null } });
-  assert.deepEqual(seen[0].update, { $set: { deletedAt: null } });
+  // Restore muss updatedAt mit anheben (v1.16.0 Review-Fix): Der Live-Delta-
+  // Zweig filtert updatedAt >= since — ohne Bump bliebe eine wiederhergestellte
+  // Notiz für JEDE Delta-Consumption unsichtbar, bis sie zufällig anders
+  // geändert wird.
+  assert.equal(seen[0].update.$set.deletedAt, null);
+  const bumped = seen[0].update.$set.updatedAt;
+  assert.ok(bumped instanceof Date, 'updatedAt must be set to a Date');
+  assert.ok(bumped.getTime() >= before && bumped.getTime() <= Date.now(),
+    'updatedAt must be "now", not the stale pre-trash value');
 
   await service.purgeNote(NOTE_ID, OWNER_ID);
   assert.deepEqual(seen[1].query, { _id: NOTE_ID, userId: OWNER_ID, deletedAt: { $ne: null } },

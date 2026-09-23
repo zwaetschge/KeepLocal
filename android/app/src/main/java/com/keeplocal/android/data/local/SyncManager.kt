@@ -135,8 +135,17 @@ class SyncManager @Inject constructor(
                 // Timeout. Kein failed-, kein Versuch-Zähler: der nächste
                 // Drain (wieder online) setzt unverändert fort.
                 break
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // Unerwartete Fehler (Serialisierung, Storage-Defekt …) zählen
+                // genauso zum Gift-Cap wie Server-Ablehnungen — sonst lebt
+                // eine dauerhaft kaputte Op für immer in jedem Drain mit.
+                // IOException steht darüber und bricht ohne Zähler ab.
                 failed++
+                pendingOperationDao.incrementAttempts(op.id)
+                if (op.attemptCount + 1 >= MAX_SYNC_ATTEMPTS) {
+                    pendingOperationDao.markPoisoned(op.id)
+                    poisoned++
+                }
             }
         }
 

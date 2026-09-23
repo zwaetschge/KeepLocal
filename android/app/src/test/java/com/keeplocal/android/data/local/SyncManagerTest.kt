@@ -316,6 +316,28 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `unexpected exceptions count toward the poison cap`() = runTest {
+        // A JsonDataException/serialization crash is not transport (no
+        // IOException) and not a server verdict — but it IS deterministic:
+        // left uncounted, a permanently broken op rides along in every
+        // drain forever (v1.16.0 review finding L).
+        noteDao.insertNote(entity("offline_x", title = "Kaputt"))
+        enqueue(OperationType.CREATE, "offline_x")
+        coEvery { api.createNote(any()) } throws RuntimeException("bad json")
+
+        repeat(7) {
+            val result = syncManager.syncPendingOperations()
+            assertEquals(1, result.failed)
+            assertEquals(0, result.poisoned)
+        }
+        assertEquals(7, pendingDao.ops.single().attemptCount)
+
+        val capped = syncManager.syncPendingOperations()
+        assertEquals(1, capped.poisoned)
+        assertEquals(true, pendingDao.ops.single().poisoned)
+    }
+
+    @Test
     fun `auth failure never poisons the queue`() = runTest {
         noteDao.insertNote(entity("offline_a"))
         enqueue(OperationType.CREATE, "offline_a")

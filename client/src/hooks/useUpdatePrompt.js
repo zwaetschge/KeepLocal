@@ -20,9 +20,11 @@ export function useUpdatePrompt({ showToast, t }) {
     let pendingWorker = null;
     let reloadGuard = false;
 
-    // controllerchange feuert nur noch nach dem Klick (install ruft kein
-    // skipWaiting mehr) — trotzdem einmalig bleiben, der Change kann in
-    // Theorie zweimal emittiert werden.
+    // Der Listener wird NICHT global registriert: activate ruft weiterhin
+    // clients.claim(), und das feuert controllerchange auch beim ALLERERSTEN
+    // Besuch (Registrierung + Übernahme) — ein globaler Listener lud jede
+    // frische Session einmal sinnlos neu. Armiert wird er erst im Klick, als
+    // Reaktion auf ein Update, das der Nutzer gesehen und gewählt hat.
     const reloadOnce = () => {
       if (reloadGuard) return;
       reloadGuard = true;
@@ -38,6 +40,7 @@ export function useUpdatePrompt({ showToast, t }) {
         action: {
           label: t('updateNow'),
           onClick: () => {
+            navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
             pendingWorker?.postMessage?.({ type: 'SKIP_WAITING' });
           }
         }
@@ -45,10 +48,8 @@ export function useUpdatePrompt({ showToast, t }) {
     };
 
     window.addEventListener('keeplocal:update-available', onUpdateAvailable);
-    navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
     return () => {
       window.removeEventListener('keeplocal:update-available', onUpdateAvailable);
-      navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
     };
   }, [showToast, t]);
 }
