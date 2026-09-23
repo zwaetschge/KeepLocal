@@ -50,6 +50,14 @@ async function transcribeAudio(filePath, language = null, requestId = null, sign
     return response.data;
   } catch (error) {
     const logger = require('../utils/logger');
+    // v1.17.1: Der Client ist weg (die Route abortet das Signal, s. ERR_CANCELED-
+    // Zweig dort) — das ist der Designed-Fall der Still-Abbruch-Logik, kein
+    // Fehlerbild. Review v1.17.0: dieser Call loggte trotzdem auf error und
+    // machte jeden abgebrochenen Upload zum Incident im Log.
+    if (error.code === 'ERR_CANCELED') {
+      logger.warn('AI service call aborted (client gone)', { requestId });
+      throw error;
+    }
     logger.error('AI service call failed', { requestId, message: error.message, code: error.code });
     if (error.code === 'ECONNREFUSED') {
       throw new Error('AI Service ist nicht erreichbar. Läuft der Container?');

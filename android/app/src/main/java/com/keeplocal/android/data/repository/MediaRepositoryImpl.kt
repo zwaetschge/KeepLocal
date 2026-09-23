@@ -114,10 +114,15 @@ class MediaRepositoryImpl @Inject constructor(
      * legitimen Lauf ab, der Nutzer sieht einen Netzwerkfehler, obwohl der
      * Server fertig wird. 330 s = Upload + 300 s Verarbeitung + Antwort;
      * alles darüber liefert der Server selbst als Fehler.
+     *
+     * Basis ist der MEDIEN-Client, nicht der Roh-App-Client (v1.17.1, Review):
+     * Der Upload-Teil hängt am writeTimeout — vom App-Client (30 s) geerbt
+     * hätte er gegenüber v1.16.0 auf 30 s HALBIERT; der Medien-Client bringt
+     * die 60 s mit, nur der Read-Timeout wird angehoben.
      */
     private val transcriptionApi: KeepLocalApi = Retrofit.Builder()
         .baseUrl("http://localhost/")
-        .client(okHttpClient.newBuilder().readTimeout(330, TimeUnit.SECONDS).build())
+        .client(mediaCallFactory.newBuilder().readTimeout(330, TimeUnit.SECONDS).build())
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
         .create(KeepLocalApi::class.java)

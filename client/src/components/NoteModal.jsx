@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { isoToLocalInput, localInputToIso } from '../utils/reminderTime.mjs';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -53,21 +54,9 @@ function isNoteConflictError(error) {
 // v1.17.0 (W3): Erinnerung — der Server speichert/validiert remindAt seit
 // v1.8.0 und Android plant sie lokal per AlarmManager, im Web fehlte bislang
 // jede Möglichkeit, sie zu setzen. datetime-local will 'YYYY-MM-DDTHH:mm' in
-// der Lokalzeit; remindAt reist als ISO-UTC. '' = keine Erinnerung.
-function isoToLocalInput(iso) {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function localInputToIso(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
+// der Lokalzeit; remindAt reist als ISO-UTC. '' = keine Erinnerung. Die
+// Konverter (und ihre Teil-Eingabe-/Zeitzonen-Fallen) leben seit v1.17.1 in
+// utils/reminderTime.mjs.
 function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -422,8 +411,11 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     // bei neuen Notizen setzt der Editor den aktuell gewählten Ordner-Scope.
     if (canManage) {
       noteData.parentId = parentId || null;
-      // W3: Erinnerung — null löscht eine bestehende (leeres Feld im Editor).
-      noteData.remindAt = localInputToIso(remindAt);
+      // W3: Erinnerung — null löscht eine bestehende (leeres Feld im Editor);
+      // undefined (unvollständige Eingabe, v1.17.1-Review) lässt die
+      // gespeicherte unverändert, statt sie still zu löschen.
+      const remindAtIso = localInputToIso(remindAt);
+      if (remindAtIso !== undefined) noteData.remindAt = remindAtIso;
     }
 
     // Optimistic locking (edits only — creates have no server version yet).

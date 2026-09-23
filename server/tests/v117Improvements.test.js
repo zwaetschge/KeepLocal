@@ -86,7 +86,7 @@ test('ZIP-Import weist Dateianhänge mit verbotener Endung ab', async () => {
 
     await assert.rejects(
       () => service.importMarkdownZip(USER, zip.finish()),
-      /nur PDF-Dateien erlaubt/
+      /nur PDF- oder Bild-Dateien erlaubt/
     );
     assert.equal(fs.readdirSync(path.join(root, 'files')).length, 0, 'keine Datei bleibt zurück');
   } finally {
@@ -105,7 +105,7 @@ test('ZIP-Import prüft %PDF- Magic Bytes auch bei korrekter Endung', async () =
 
     await assert.rejects(
       () => service.importMarkdownZip(USER, zip.finish()),
-      /kein gültiges PDF/
+      /nur PDF- oder Bild-Dateien erlaubt/
     );
     assert.equal(fs.readdirSync(path.join(root, 'files')).length, 0);
   } finally {
@@ -252,7 +252,9 @@ test('transcribeAudio reicht das AbortSignal an axios durch', async () => {
 test('Transkriptions-Route koppelt den Upstream-Call an die Connection', () => {
   const routes = fs.readFileSync(require.resolve('../routes/notes.js'), 'utf8');
   // Der Abbruch-Läufer: close OHNE beendete Antwort → abort().
-  assert.match(routes, /res\.on\('close', \(\) => \{\s*\n\s*if \(!res\.writableEnded\) clientGone\.abort\(\);/);
+  // (v1.17.1: Layout-lockere Matcher — der Pin soll Semantik sichern, keine
+  // Zeilenumbrüche einfrieren.)
+  assert.match(routes, /res\.on\('close', \(\) => \{[\s\S]*?if \(!res\.writableEnded\) clientGone\.abort\(\);/);
   // Signal wandert in den Service-Call …
   assert.match(routes, /transcribeAudio\(req\.file\.path, language, req\.id, clientGone\.signal\)/);
   // … und ein abgebrochener Call wird still beendet (kein Log-Noise, kein Buchen).
@@ -325,3 +327,132 @@ test('GET /api/auth/storage liefert dem Owner sein Quota-Budget', () => {
   assert.match(auth, /quotaLimitBytes\(\)/);
   assert.match(auth, /enforced: limitBytes > 0/);
 });
+
+// ---------------------------------------------------------------------------
+// v1.17.1 — Review-Fixes der v1.17.0-Runde
+// ---------------------------------------------------------------------------
+
+test('ZIP-Import nimmt Legacy-Bildanhänge per Magic-Bytes an (Roundtrip)', async () => {
+  // Review-Fund: LEGACY-Exporte tragen Bilder als Dateianhang unter
+  // assets/files/ (hochgeladen, bevor der Multipart-Pfad PDF-only wurde).
+  // Die v1.17.0-Endungsprüfung wies sie hart ab — der komplette Restore
+  // scheiterte an einem einzigen alten Foto.
+  const root = setupUploads();
+  try {
+    const inserted = [];
+    const service = loadService(modelOver({ inserted }));
+    const { ZipWriter } = require('../utils/zipWriter');
+    const zip = new ZipWriter();
+    zip.add('assets/files/altes-foto.dat', Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]));
+    zip.add('notiz.md', Buffer.from('# Album\n\n![alt](assets/files/altes-foto.dat)'));
+
+    const result = await service.importMarkdownZip(USER, zip.finish());
+    assert.ok(result.created >= 1);
+    const stored = fs.readdirSync(path.join(root, 'files'));
+    // Endung folgt dem ERKANNTEN Inhalt (.jpg), nicht dem ZIP-Namen (.dat):
+    // secureFileServe leitet den Content-Type aus der Endung ab.
+    assert.equal(stored.filter((name) => name.endsWith('.jpg')).length, 1,
+      'das JPEG liegt mit erkannter Endung in files/');
+    const noteWithFile = inserted.find((note) => (note.files || []).length > 0);
+    assert.ok(noteWithFile, 'die importierte Notiz referenziert den Anhang');
+    assert.equal(noteWithFile.files[0].mimetype, 'image/jpeg');
+  } finally {
+    teardownUploads();
+  }
+});
+
+test('ZIP-Import weist fake-Bildanhänge ab (Endung jpg, Inhalt HTML)', async () => {
+  const root = setupUploads();
+  try {
+    const service = loadService(modelOver());
+    const { ZipWriter } = require('../utils/zipWriter');
+    const zip = new ZipWriter();
+    zip.add('assets/files/preview.jpg', Buffer.from('<!DOCTYPE html><script>alert(1)</script>'));
+    zip.add('notiz.md', Buffer.from('# Hallo'));
+
+    await assert.rejects(
+      () => service.importMarkdownZip(USER, zip.finish()),
+      /Magic-Bytes/,
+      'nur PDF- oder Bild-Inhalt kommt durch — der Name allein nie'
+    );
+    assert.equal(fs.readdirSync(path.join(root, 'files')).length, 0, 'kein Byte bleibt liegen');
+  } finally {
+    teardownUploads();
+  }
+});
+
+test('shouldStripImageMetadata: Animation bleibt byte-identisch, EXIF-JPEG wird encodiert', async () => {
+  const service = loadService(modelOver());
+  const { shouldStripImageMetadata } = service;
+  const exif = { hasExif: true };
+
+  // Statisches JPEG mit EXIF: der Normalfall, wird gere-encodet.
+  assert.equal(shouldStripImageMetadata({ format: 'jpeg', exif, pages: 1 }), true);
+  assert.equal(shouldStripImageMetadata({ format: 'jpeg', exif, pages: undefined }), true);
+  // Ohne EXIF gibt es nichts zu strippen.
+  assert.equal(shouldStripImageMetadata({ format: 'jpeg', exif: null }), false);
+  // Animiertes WebP (sharp meldet pages > 1): Re-Encode würde auf Frame 1
+  // kollabieren — Fund aus dem v1.17.0-Review.
+  assert.equal(shouldStripImageMetadata({ format: 'webp', exif, pages: 7 }), false);
+  // APNG tarnt sich als einframe-PNG; der acTL-Chunk liegt zwingend vor IDAT.
+  const apngHead = Buffer.alloc(128);
+  apngHead.write('acTL', 33, 'latin1');
+  assert.equal(shouldStripImageMetadata({ format: 'png', exif, pages: 1 }, apngHead), false);
+  const staticPngHead = Buffer.alloc(128);
+  assert.equal(shouldStripImageMetadata({ format: 'png', exif, pages: 1 }, staticPngHead), true);
+  // GIF und Exoten bleiben außen vor (Kollateral > Nutzen).
+  assert.equal(shouldStripImageMetadata({ format: 'gif', exif, pages: 1 }), false);
+  assert.equal(shouldStripImageMetadata({ format: 'avif', exif, pages: 1 }), false);
+});
+
+test('aiService loggt Client-Abbruch auf warn, nicht auf error', async () => {
+  // Review-Fund: der ERR_CANCELED-Fall (Route abortet das Signal, weil der
+  // Client weg ist) lief als error ins Log — jeder abgebrochene Upload war
+  // ein Incident. Behavioral: axios wirft ERR_CANCELED, der Logger-Stub
+  // darf warn sehen, aber kein error.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'keeplocal-ai-cancel-'));
+  const axiosPath = require.resolve('axios');
+  const aiPath = require.resolve('../services/aiService');
+  const originalAxios = require.cache[axiosPath];
+  const originalLogger = require.cache[loggerPath];
+  const calls = [];
+  try {
+    fs.writeFileSync(path.join(dir, 'memo.webm'), Buffer.from([0x1A, 0x45, 0xDF, 0xA3, 0x00, 0x00]));
+    require.cache[axiosPath] = {
+      id: axiosPath, filename: axiosPath, loaded: true,
+      exports: {
+        post: async () => {
+          const err = new Error('canceled');
+          err.code = 'ERR_CANCELED';
+          throw err;
+        }
+      }
+    };
+    require.cache[loggerPath] = {
+      id: loggerPath, filename: loggerPath, loaded: true,
+      exports: {
+        warn: (message, meta) => calls.push({ level: 'warn', message }),
+        error: (message, meta) => calls.push({ level: 'error', message })
+      }
+    };
+    delete require.cache[aiPath];
+    const aiService = require(aiPath);
+
+    await assert.rejects(
+      () => aiService.transcribeAudio(path.join(dir, 'memo.webm'), null, 'req-cancel'),
+      (error) => error.code === 'ERR_CANCELED'
+    );
+    assert.ok(calls.some((c) => c.level === 'warn' && /abort/i.test(c.message)),
+      'Abbruch ist warn-würdig');
+    assert.ok(!calls.some((c) => c.level === 'error'),
+      'kein error-Log für den Designed-Fall');
+  } finally {
+    delete require.cache[aiPath];
+    if (originalAxios) require.cache[axiosPath] = originalAxios;
+    else delete require.cache[axiosPath];
+    if (originalLogger) require.cache[loggerPath] = originalLogger;
+    else delete require.cache[loggerPath];
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+

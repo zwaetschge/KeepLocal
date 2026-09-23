@@ -637,7 +637,9 @@ class NoteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getAllNotesForExport(): Result<List<Note>> {
-        try { syncManager.syncPendingOperations() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+        // awaitRunningDrain wie im Markdown-Export (v1.17.1): auch dieses
+        // Backup verspricht, offline Edits VOR dem Abruf gepusht zu haben.
+        try { syncManager.syncPendingOperations(awaitRunningDrain = true) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         return try {
             // Two sweeps: the server splits live notes by archive state, and
             // trashed notes are deliberately excluded (they expire after 30
@@ -854,8 +856,11 @@ class NoteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun exportMarkdownTo(output: OutputStream): Result<Long> = Result.catching {
-        // Push offline edits first so the ZIP contains them.
-        try { syncManager.syncPendingOperations() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+        // Push offline edits first so the ZIP contains them. awaitRunningDrain
+        // (v1.17.1, Review): Ops, die NACH dem Snapshot eines laufenden Drains
+        // enqueued wurden, otherwise bleiben liegen — das ZIP wäre stille
+        // Alte Daten, obwohl der Aufruf Erfolg meldet.
+        try { syncManager.syncPendingOperations(awaitRunningDrain = true) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         withContext(Dispatchers.IO) {
             val response = api.exportMarkdown()
             if (!response.isSuccessful) {

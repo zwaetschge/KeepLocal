@@ -69,6 +69,27 @@ function matchesSignature(buffer, signature, offset = 0) {
 }
 
 /**
+ * Detect an image format from an in-memory buffer (v1.17.1).
+ * ZIP-Import-Anhänge liegen schon als Bytes vor — derselbe Signatur-Katalog
+ * wie detectImageFormat, nur ohne den Umweg über eine Temp-Datei.
+ * @param {Buffer} bytes mindestens die ersten 16 Bytes der Datei
+ * @returns {string|null} 'jpeg'|'png'|'webp'|'gif' oder null
+ */
+function detectImageMagic(bytes) {
+  for (const [format, signatures] of Object.entries(IMAGE_SIGNATURES)) {
+    for (const sig of signatures) {
+      const mainMatch = matchesSignature(bytes, sig.signature, sig.offset);
+      if (mainMatch && sig.extraCheck) {
+        if (matchesSignature(bytes, sig.extraCheck.signature, sig.extraCheck.offset)) return format;
+      } else if (mainMatch) {
+        return format;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Validate if a file is a legitimate image by checking magic numbers
  * @param {string} filepath - Path to the uploaded file
  * @returns {Promise<boolean>} True if file is a valid image
@@ -155,6 +176,7 @@ async function validateImageFiles(files) {
 }
 
 module.exports = {
+  detectImageMagic,
   validateImageFile,
   validateImageFiles,
   validateAudioFile,

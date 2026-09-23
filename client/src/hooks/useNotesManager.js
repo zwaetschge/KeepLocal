@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { normalizeNote, normalizeNotesPayload } from '../utils/notesPayload.mjs';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
+import { createPollGate } from '../utils/pollGate.mjs';
 
 /**
  * useNotesManager (Core-Refactoring P13/P15/P17)
@@ -419,8 +420,11 @@ export function useNotesManager({
   // dürfen keine neuen Identitäten (Sidebar-Rerender) erzeugen.
   const treeSignatureRef = useRef(null);
   // v1.13.0 Nr. 9: Signatur der letzten Meta-Sonde — 60s-Poll-Ticks ohne
-  // serverseitige Änderung überspringen Liste+Baum komplett.
-  const metaSignatureRef = useRef(null);
+  // serverseitige Änderung überspringen Liste+Baum komplett. Seit v1.17.1 als
+  // Gate-Objekt (utils/pollGate.mjs): Commit NUR nach erfolgreichem Abruf —
+  // die Semantik ist damit behavioral getestet, nicht nur als Source-Pin.
+  const pollGateRef = useRef(null);
+  if (pollGateRef.current === null) pollGateRef.current = createPollGate();
   // v1.16.0: Letztes Meta-Objekt (nicht nur die Signatur) — der Delta-Pfad
   // braucht die Zählungen zum Vergleich und den alten maxUpdatedAt als Cursor.
   const lastMetaRef = useRef(null);
@@ -704,7 +708,7 @@ export function useNotesManager({
       treeSignatureRef.current = null;
       // Meta-Signatur ebenfalls verwerfen: Der nächste Login (ggf. ein anderer
       // Account) darf nicht gegen die Signatur der alten Session vergleichen.
-      metaSignatureRef.current = null;
+      pollGateRef.current.reset();
       lastMetaRef.current = null;
       setPendingFriendRequests(0);
       setFolderScope(null);
@@ -1305,7 +1309,7 @@ export function useNotesManager({
           if (Number.isFinite(meta.pendingFriendRequests)) {
             setPendingFriendRequests(meta.pendingFriendRequests);
           }
-          if (metaSignatureRef.current === signature) return;
+          if (pollGateRef.current.seen(signature)) return;
         } catch (_error) {
           // Sonde unerreichbar: unten voll weiterladen.
         }
@@ -1334,7 +1338,7 @@ export function useNotesManager({
           await refreshTree({ since });
           if (ok) {
             lastMetaRef.current = meta;
-            metaSignatureRef.current = signature;
+            pollGateRef.current.commit(signature);
           }
           return;
         }

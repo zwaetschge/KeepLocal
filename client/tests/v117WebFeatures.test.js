@@ -78,14 +78,16 @@ test('Settings laden die Nutzung einmalig und zeigen einen Balken nur bei erzwun
 
 test('NoteModal: datetime-local-Feld, ISO-Konverter, remindAt reist in jedem canManage-Save', () => {
   const modal = readClientFile('src/components/NoteModal.jsx');
-
-  assert.match(modal, /function isoToLocalInput\(iso\)/);
-  assert.match(modal, /function localInputToIso\(value\)/);
+  // v1.17.1: Die Konverter leben in utils/reminderTime.mjs (behavioral
+  // getestet, s. unten) — hier bleibt der Verdrahtungs-Pin.
+  assert.match(modal, /import \{ isoToLocalInput, localInputToIso \} from '\.\.\/utils\/reminderTime\.mjs';/);
   assert.match(modal, /const \[remindAt, setRemindAt\] = useState\(isoToLocalInput\(note\?\.remindAt\)\);/);
   // Externe Aktualisierung (60s-Poll) übernimmt auch die Erinnerung …
   assert.match(modal, /setRemindAt\(isoToLocalInput\(source\.remindAt\)\);/);
-  // … und der Save-Wert hängt im canManage-Zweig neben parentId.
-  assert.match(modal, /noteData\.remindAt = localInputToIso\(remindAt\);/);
+  // … und der Save-Wert hängt im canManage-Zweig neben parentId. undefined
+  // (unvollständige Eingabe) lässt die gespeicherte Erinnerung in Ruhe.
+  assert.match(modal, /const remindAtIso = localInputToIso\(remindAt\);/);
+  assert.match(modal, /if \(remindAtIso !== undefined\) noteData\.remindAt = remindAtIso;/);
   assert.match(modal, /type="datetime-local"/);
   assert.match(modal, /note-modal-reminder-clear/, 'ein gesetzter Wert ist löschbar');
 });
@@ -159,4 +161,62 @@ test('Erinnerungs-/Speicher-/Badge-Schlüssel existieren in de UND en', async ()
   }
   assert.match(de.reminderAt, /\{date\}/, 'Platzhalter muss zur Interpolation passen');
   assert.match(en.reminderAt, /\{date\}/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.17.1 — Review-Fixes: Erinnerungs-Konverter + Poll-Gate (behavioral)
+// ---------------------------------------------------------------------------
+
+test('localInputToIso: Teil-Eingabe lässt die Erinnerung unverändert (undefined)', async () => {
+  const { localInputToIso } = await import(pathToFileURL(
+    path.join(__dirname, '../src/utils/reminderTime.mjs')).href);
+
+  // Der v1.17.0-Bug: mitten im Tippen gespeichert → NaN → null → die
+  // bestehende Erinnerung war still GELÖSCHT.
+  assert.equal(localInputToIso('2026-03-05T14'), undefined, 'Teil-Eingabe');
+  assert.equal(localInputToIso('2026-03'), undefined);
+  assert.equal(localInputToIso('garbage'), undefined);
+  // Leeres Feld bleibt die ausdrückliche Löschung.
+  assert.equal(localInputToIso(''), null);
+  assert.equal(localInputToIso(null), null);
+  assert.equal(localInputToIso(undefined), null);
+});
+
+test('localInputToIso interpretiert Datum und Datum+Zeit als LOKAL, nie UTC', async () => {
+  const { localInputToIso } = await import(pathToFileURL(
+    path.join(__dirname, '../src/utils/reminderTime.mjs')).href);
+
+  const iso = localInputToIso('2026-03-05T14:30');
+  assert.ok(typeof iso === 'string' && iso.endsWith('Z'));
+  // Roundtrip zurück in die Lokalzeit muss dieselben Felder zeigen —
+  // new Date('2026-03-05') (UTC-Parsing) würde das je nach Zeitzone brechen.
+  const back = new Date(iso);
+  assert.equal(back.getFullYear(), 2026);
+  assert.equal(back.getMonth(), 2);
+  assert.equal(back.getDate(), 5);
+  assert.equal(back.getHours(), 14);
+  assert.equal(back.getMinutes(), 30);
+
+  const dateOnly = localInputToIso('2026-03-05');
+  assert.ok(typeof dateOnly === 'string', 'Datum-only gilt als lokale Mitternacht');
+  const midnight = new Date(dateOnly);
+  assert.equal(midnight.getHours(), 0);
+  assert.equal(midnight.getDate(), 5);
+});
+
+test('pollGate: Signatur zählt erst nach erfolgreichem Abruf als gesehen', async () => {
+  const { createPollGate } = await import(pathToFileURL(
+    path.join(__dirname, '../src/utils/pollGate.mjs')).href);
+
+  const gate = createPollGate();
+  const signature = '12/0/3/2026-09-23T10:00:00.000Z';
+  // Negative sequence des v1.17.0-Fixes: Fetch schlägt fehl → KEIN commit →
+  // der nächste Tick mit derselben Signatur muss erneut laden.
+  assert.equal(gate.seen(signature), false, 'nie committet = nie gesehen');
+  gate.commit(signature);
+  assert.equal(gate.seen(signature), true, 'nach Erfolg gilt: gesehen');
+  assert.equal(gate.seen('andere'), false);
+  // Logout: alles vergessen, der nächste Login lädt voll.
+  gate.reset();
+  assert.equal(gate.seen(signature), false, 'nach reset ist nichts gesehen');
 });
