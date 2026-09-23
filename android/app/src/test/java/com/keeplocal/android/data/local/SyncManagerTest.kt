@@ -423,6 +423,39 @@ class SyncManagerTest {
         assertTrue(pendingDao.ops.isEmpty())
     }
 
+    @Test
+    fun `export drains wait behind a running drain and push their own late op`() = runTest {
+        noteDao.insertNote(entity("offline_1"))
+        noteDao.insertNote(entity("offline_2"))
+        enqueue(OperationType.CREATE, "offline_1")
+        val enteredApi = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var apiCalls = 0
+        coEvery { api.createNote(any()) } coAnswers {
+            apiCalls++
+            enteredApi.complete(Unit)
+            if (apiCalls == 1) release.await() // erster Drain hält die Mutex
+            Response.success(dto("srv-$apiCalls", "Title $apiCalls"))
+        }
+
+        val first = async { syncManager.syncPendingOperations() }
+        enteredApi.await()
+        // Op NACH dem Snapshot des laufenden Drains enqueued — der v1.17.0-
+        // Early-Return hätte sie nie gepusht und dem Export stille Alte
+        // Daten geliefert (Review v1.17.0). awaitRunningDrain stellt sich
+        // hinter die Mutex und draine danach selbst.
+        enqueue(OperationType.CREATE, "offline_2")
+        val exportDrain = async { syncManager.syncPendingOperations(awaitRunningDrain = true) }
+
+        release.complete(Unit)
+        assertEquals(1, first.await().synced)
+        assertEquals("die nach-Snapshot-Op erreicht den Server doch", 1, exportDrain.await().synced)
+        coVerify(exactly = 2) { api.createNote(any()) }
+        assertTrue(pendingDao.ops.isEmpty())
+        assertNotNull(noteDao.notes["srv-1"])
+        assertNotNull(noteDao.notes["srv-2"])
+    }
+
     // --- pullRemoteChanges (v1.14.0 Nr. 6) ---------------------------
 
     private fun meta(

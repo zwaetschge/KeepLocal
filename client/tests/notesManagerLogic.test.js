@@ -617,7 +617,7 @@ test('60s-Poll: Meta-Sonde gatet den Voll-Abruf, fail-open bei Fehler', () => {
   // der Initial-Load darf niemals gegatet werden.
   assert.match(source, /typeof api\.getMeta === 'function' && hasLoadedRef\.current/);
   // Identische Signatur beendet den Tick VOR Liste+Baum-Refresh …
-  assert.match(source, /if \(metaSignatureRef\.current === signature\) return;/);
+  assert.match(source, /if \(pollGateRef\.current\.seen\(signature\)\) return;/);
   // … und ein Fehler der Sonde lädt trotzdem voll weiter (fail-open), statt
   // den Poll still verhungern zu lassen. (Der Slice beginnt am Gate und endet
   // am Interval-Ende — seit v1.16.0 ruft der Delta-Zweig refreshInBackground
@@ -627,7 +627,7 @@ test('60s-Poll: Meta-Sonde gatet den Voll-Abruf, fail-open bei Fehler', () => {
   assert.match(gate, /catch \(_error\) \{/);
   // Beim Logout wird die Signatur zurückgesetzt, damit der nächste Login
   // nicht mit der Signatur der alten Session vergleicht.
-  assert.match(source, /metaSignatureRef\.current = null/);
+  assert.match(source, /pollGateRef\.current\.reset\(\);/);
 });
 
 test('getMeta und importMarkdownZip sind im notesAPI verdrahtet', () => {
@@ -1323,7 +1323,7 @@ test('Delta-Sync-Verdrahtung: Poll schickt since, API baut die Query, leerer Bau
   // true übernimmt der Tick die neue Sonde (sonst try-and-error nächstes
   // Intervall wieder, statt die Änderung still zu verschlucken).
   assert.match(hookSource, /const ok = deltaEligible\s*\n\s*\? await refreshInBackground\(stateRef\.current\.searchTerm, 1, \{ silent: true, since \}\)/);
-  assert.match(hookSource, /if \(ok\) \{\s*\n\s*lastMetaRef\.current = meta;\s*\n\s*metaSignatureRef\.current = signature;\s*\n\s*\}/);
+  assert.match(hookSource, /if \(ok\) \{[\s\S]*?lastMetaRef\.current = meta;[\s\S]*?pollGateRef\.current\.commit\(signature\);[\s\S]*?\}/);
 
   // Der Delta-Pfad ersetzt das Fenster nicht mehr (applyNotesDelta mischt),
   // und ein leerer Baum-Delta verwirft den Baum nicht.

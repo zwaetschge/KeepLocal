@@ -78,8 +78,11 @@ class SyncManager @Inject constructor(
      * Repository (getNotes/Export/Import) und UI (retrySync) können alle
      * gleichzeitig einen Drain anstoßen — zwei parallele Drains spielten
      * dieselbe Op-Liste zweimal ab (Doppel-TOGGLE, Rennen um die id-Rewrites).
-     * Der unterlegene Aufruf kehrt sofort mit Null zurück; der laufende
-     * Drain deckt seine Ops ohnehin ab.
+     * Der unterlegene Aufruf kehrt sofort mit Null zurück — ABER: Das deckt
+     * nur Ops ab, die schon im Snapshot des laufenden Drains stecken. Ops,
+     * die NACH dessen Snapshot enqueued wurden, sieht der laufende Drain nie
+     * (v1.17.1, Review). Wer die Garantie braucht, dass SEINE Ops gepusht
+     * sind, ruft mit [awaitRunningDrain] auf und stellt sich hinter die Mutex.
      */
     private val drainMutex = Mutex()
 
@@ -88,12 +91,25 @@ class SyncManager @Inject constructor(
         _syncStatus.value = _syncStatus.value.copy(pendingCount = pendingOperationDao.getCount())
     }
 
-    suspend fun syncPendingOperations(): SyncResult = withContext(Dispatchers.IO) {
+    /**
+     * Drained die Offline-Queue (Single-Flight, siehe [drainMutex]).
+     *
+     * @param awaitRunningDrain true = läuft bereits ein Drain, STELLE uns
+     *   dahinter und draine danach selbst (Export-Pfade: „offline Edits
+     *   zuerst pushen“ muss auch für Ops gelten, die nach dem Snapshot des
+     *   laufenden Drains enqueued wurden). false (Default) = sofortiges
+     *   Nullergebnis — richtig für Worker/UI, die kein Ergebnis brauchen.
+     */
+    suspend fun syncPendingOperations(awaitRunningDrain: Boolean = false): SyncResult = withContext(Dispatchers.IO) {
         // Single-Flight (v1.17.0): siehe drainMutex. tryLock statt withLock —
         // der unterlegene Aufruf soll nicht anstehen (der laufende Drain
         // erledigt seine Ops ohnehin), sondern sofort ein Nullergebnis
-        // zurückmelden.
-        if (!drainMutex.tryLock()) return@withContext SyncResult(0, 0)
+        // zurückmelden. Ausnahme: awaitRunningDrain (Export) — der darf
+        // nicht ohne seine eigenen Ops weiterlaufen.
+        if (!drainMutex.tryLock()) {
+            if (!awaitRunningDrain) return@withContext SyncResult(0, 0)
+            drainMutex.lock()
+        }
         try {
             return@withContext drainQueue()
         } finally {

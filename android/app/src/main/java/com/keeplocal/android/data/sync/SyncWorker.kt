@@ -42,7 +42,18 @@ class SyncWorker @AssistedInject constructor(
             // Pull half (v1.14.0 Nr. 6): server-side changes land in Room even
             // while the app stays in the background. Meta probe gatet — ohne
             // Änderung kostet der Pull hier keinen einzigen List-Request.
-            val pulled = runCatching { syncManager.pullRemoteChanges() }.getOrDefault(0)
+            // v1.17.1 (Review): KEIN runCatching — das fängt Throwable und
+            // hätte die CancellationException, die pullRemoteChanges seit
+            // v1.17.0 durchreicht, wieder geschluckt (falsches „pulled=0“-
+            // Log, Worker läuft als Zombie weiter). Best-Effort bleibt für
+            // echte Fehler: 0 gezogene, der nächste Takt wiederholt.
+            val pulled = try {
+                syncManager.pullRemoteChanges()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                0
+            }
             fileLogger.log(
                 "SyncWorker",
                 "background sync: synced=${result.synced} failed=${result.failed} " +

@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const { validateImageFile } = require('../utils/magicNumberValidator');
+const { validateImageFile, detectImageMagic } = require('../utils/magicNumberValidator');
 const { assertStorageQuota } = require('../utils/storageQuota');
 
 const NOTE_COLORS = new Set([
@@ -309,15 +309,42 @@ async function generateThumbnail(filename, filepath) {
  * @param {string} filepath Datei im ausgelieferten Verzeichnis (in place)
  * @returns {Promise<number|null>} neue Größe in Bytes, oder null wenn unverändert
  */
+/**
+ * Re-Encode-Entscheidung als reine Funktion (v1.17.1): Review-Fund — der
+ * Re-Encode mit .webp()/.png() flacht ANIMIERTE Dateien auf ihr erstes Frame
+ * ab. sharp meldet pages > 1 für animierte WebP/GIF/TIFF; APNG tarnt sich als
+ * einframe-PNG, wird aber am zwingend vor IDAT liegenden acTL-Chunk erkannt
+ * (die ersten 128 Bytes reichen dafür immer).
+ *
+ * @param {object} meta sharp-Metadaten (format, exif, pages)
+ * @param {Buffer|null} head erste Bytes der Datei (APTL/acTL-Sniff, optional)
+ * @returns {boolean} true = Re-Encode lohnt sich (EXIF vorhanden, statisch)
+ */
+function shouldStripImageMetadata(meta, head = null) {
+  if (!meta.exif) return false;
+  // GIF (Animation) und Exoten: Re-Encode-Kollateral wiegt schwerer als EXIF
+  // (GIF trägt ohnehin kein EXIF) — diese Dateien bleiben byte-identisch.
+  if (!['jpeg', 'png', 'webp'].includes(meta.format)) return false;
+  if ((meta.pages || 1) > 1) return false;
+  if (meta.format === 'png'
+    && head && head.slice(0, 128).toString('latin1').includes('acTL')) return false;
+  return true;
+}
+
 async function stripImageMetadata(filepath) {
   const cleanPath = `${filepath}.clean`;
   try {
     const meta = await sharp(filepath, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' }).metadata();
-    if (!meta.exif) return null;
+    // v1.17.1: Animiert (WebP/pages > 1 oder APNG/acTL) bleibt byte-identisch —
+    // der Re-Encode würde die Animation auf Frame 1 kollabieren.
+    const head = meta.format === 'png' ? await fs.promises.open(filepath, 'r').then(async (fh) => {
+      const buf = Buffer.alloc(128);
+      await fh.read(buf, 0, 128, 0);
+      await fh.close();
+      return buf;
+    }).catch(() => null) : null;
+    if (!shouldStripImageMetadata(meta, head)) return null;
     const format = meta.format;
-    // GIF (Animation) und Exoten: Re-Encode-Kollateral wiegt schwerer als EXIF
-    // (GIF trägt ohnehin kein EXIF). Diese Dateien bleiben byte-identisch.
-    if (!['jpeg', 'png', 'webp'].includes(format)) return null;
 
     let pipeline = sharp(filepath, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' }).rotate();
     if (format === 'jpeg') pipeline = pipeline.jpeg({ quality: 95, mozjpeg: true });
@@ -2075,13 +2102,21 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         // „.html“/„.exe“ lag danach unter /uploads/files; secureFileServe
         // stellt per sendFile nach Endung aus. Jetzt dieselben Regeln wie
         // beim direkten Upload: nur PDFs, Magic Bytes inklusive.
-        if (extension !== '.pdf') {
-          throw clientError(`Anhang ${name}: im ZIP sind nur PDF-Dateien erlaubt (.pdf)`);
+        // v1.17.1 (Review): LEGACY-Exporte können Bilder als Dateianhang
+        // unter assets/files/ tragen (vor der PDF-Pflicht hochgeladen) — deren
+        // Re-Import scheiterte hart und riss den kompletten Restore mit.
+        // Inhalte entscheiden jetzt statt Endungen: %PDF- oder Bild-Magic.
+        // Alles andere (HTML/EXE/…, egal wie benannt) bleibt abgewiesen.
+        const isPdf = bytes.length >= 5 && bytes.subarray(0, 5).toString('latin1') === '%PDF-';
+        const imageFormat = isPdf ? null : detectImageMagic(bytes.subarray(0, 16));
+        if (!isPdf && !imageFormat) {
+          throw clientError(`Anhang ${name}: nur PDF- oder Bild-Dateien erlaubt (Magic-Bytes-Prüfung)`);
         }
-        if (bytes.length < 5 || bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
-          throw clientError(`Anhang ${name}: Inhalt ist kein gültiges PDF (Magic-Bytes-Prüfung)`);
-        }
-        const filename = `${crypto.randomBytes(24).toString('hex')}${extension}`;
+        // Endung folgt dem erkannten Inhalt — secureFileServe leitet den
+        // Content-Type daraus ab, ein umbenanntes „bild.pdf“ (JPEG-Inhalt)
+        // darf nicht als PDF ausgeliefert werden.
+        const safeExtension = isPdf ? '.pdf' : `.${imageFormat === 'jpeg' ? 'jpg' : imageFormat}`;
+        const filename = `${crypto.randomBytes(24).toString('hex')}${safeExtension}`;
         fs.writeFileSync(path.join(filesDir(), filename), bytes);
         written.push(path.join(filesDir(), filename));
         assetMap.set(name, {
@@ -2089,7 +2124,8 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
           originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
             ? meta.originalName.slice(0, 255)
             : path.basename(name),
-          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype : 'application/pdf',
+          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype
+            : (isPdf ? 'application/pdf' : `image/${imageFormat === 'jpeg' ? 'jpeg' : imageFormat}`),
           size: bytes.length
         });
       }
@@ -2576,6 +2612,7 @@ module.exports = {
   deleteNoteFiles,
   generateThumbnail, // Export for use in routes
   stripImageMetadata, // v1.17.0: EXIF/GPS-Strip der ausgelieferten Originale
+  shouldStripImageMetadata, // v1.17.1: reine Re-Encode-Entscheidung (Animations-Guard)
   validateImageDimensions,
   deleteNoteImages, // Export for use in adminService
   buildNotesQuery, // Export for testing

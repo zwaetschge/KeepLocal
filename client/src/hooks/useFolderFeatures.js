@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import notesAPI from '../services/api/notesAPI';
 import { migrateTagReferences } from '../utils/tagMigration.mjs';
 
@@ -151,6 +151,16 @@ export function useFolderFeatures({
    *  ohnehin im 60s-Poll mit. Archivierte bleiben außen vor; gefeuerte
    *  Erinnerungen bleiben 60 s sichtbar, damit ein kurz vorbei geplanter
    *  Termin nicht sofort verschwindet. */
+  // v1.17.1 (Review): Der Cutoff (Date.now()) fraß sich in das useMemo — auf
+  // einer idle Session mit unverändertem Baum rechnete er NIE neu, gefeuerte
+  // Erinnerungen blieben für immer „anstehend“. Ein Minuten-Tick macht das
+  // Memo neu, ohne einen Rerender pro Sekunde zu erzwingen.
+  const [reminderTick, setReminderTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setReminderTick((tick) => tick + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const upcomingReminders = useMemo(() => Object.values(treeNodes)
     .filter(node => node.remindAt && !node.isArchived
       && new Date(node.remindAt).getTime() > Date.now() - 60_000)
@@ -162,7 +172,7 @@ export function useFolderFeatures({
       label: new Date(node.remindAt).toLocaleString(undefined, {
         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
       })
-    })), [treeNodes]);
+    })), [treeNodes, reminderTick]);
 
   /** Nach Markdown-Import (Settings): Liste und Baum nachziehen. */
   const handleDataImported = useCallback(() => {
