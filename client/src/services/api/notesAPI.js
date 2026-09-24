@@ -145,10 +145,10 @@ const notesAPI = {
    * der aktuelle Stand wird dabei selbst zur jüngsten Revision (Undo des
    * Undo funktioniert), 409-Konfliktbehandlung inklusive.
    */
-  restoreRevision: (id, at) =>
+  restoreRevision: (id, at, baseUpdatedAt) =>
     fetchWithAuth(API_ENDPOINTS.NOTES.RESTORE_REVISION(id), {
       method: 'POST',
-      body: JSON.stringify({ at }),
+      body: JSON.stringify(baseUpdatedAt ? { at, baseUpdatedAt } : { at }),
     }),
 
   /**
@@ -175,10 +175,12 @@ const notesAPI = {
    * @param {Array<{path: string, title: string, content: string}>} items
    * @returns {Promise<{created: number, foldersCreated: number}>}
    */
-  importMarkdown: (items) =>
+  importMarkdown: (items, { importId, chunkIndex } = {}) =>
     fetchWithAuth(API_ENDPOINTS.NOTES.IMPORT_MARKDOWN, {
       method: 'POST',
-      body: JSON.stringify({ items }),
+      body: JSON.stringify(
+        importId && chunkIndex != null ? { items, importId, chunkIndex } : { items }
+      ),
     }),
 
   /**

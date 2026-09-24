@@ -992,6 +992,13 @@ export function useNotesManager({
     setSelectedIds(new Set());
   }, []);
 
+  // v1.18.0: Gespeicherte Suchen laufen global — selectFolder ist ein Toggle
+  // und braucht dafür den aktuellen Wert; dieser Clear hier nicht.
+  const clearFolderScope = useCallback(() => {
+    setFolderScope(null);
+    setSelectedIds(new Set());
+  }, []);
+
   /** Notiz in einen Ordner verschieben (parentId null = Hauptebene). */
   const moveNote = useCallback(async (id, parentId) => {
     setOperationLoading(prev => ({ ...prev, [id]: 'update' }));
@@ -1362,7 +1369,11 @@ export function useNotesManager({
   // und die Ansicht lief leer, obwohl der Ordner voll war.
   const { pinnedNotes, otherNotes } = useMemo(() => {
     const filtered = filterNotesByTag(notes, selectedTag);
-    const byRecency = (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+    // _id-Tiebreaker (v1.18.0): Der Server sortiert Listen mit letzter Stufe
+    // _id — Bulk-Stempel teilen sich updatedAt. Derselbe Tiebreaker hier,
+    // damit lokale Ordnung und Server-Seitenfolge nicht auseinanderlaufen.
+    const byRecency = (a, b) => (new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+      || (String(b._id ?? '') > String(a._id ?? '') ? 1 : String(b._id ?? '') < String(a._id ?? '') ? -1 : 0);
     // Manuelle Reihenfolge (order > 0) schlägt Recency; solange niemand
     // sortiert hat, bleibt die gewohnte „zuletzt bearbeitet zuerst"-Ordnung.
     const hasManualOrder = filtered.some(item => Number(item.order) > 0);
@@ -1424,6 +1435,7 @@ export function useNotesManager({
     // v1.17.0 (W5): offene Freundschaftsanfragen (Sidebar-Badge, aus der Sonde)
     pendingFriendRequests,
     selectFolder,
+    clearFolderScope,
     refreshTree,
     moveNote,
     toggleNoteSelection,

@@ -90,7 +90,8 @@ function AppContent() {
     togglePinNote, toggleArchiveNote, handleNoteShared,
     handleDragStart, handleDragEnd, handleDragOver, handleDrop,
     // v1.10.0: Baum, Ordner-Scope, Mehrfachauswahl, Journal
-    noteTree, treeNodes, folderScope, selectedIds, selectFolder, refreshTree, moveNote,
+    noteTree, treeNodes, folderScope, selectedIds, selectFolder, clearFolderScope,
+    refreshTree, moveNote,
     toggleNoteSelection, clearSelection, bulkSetPinned, bulkArchive, bulkDelete, bulkAddTag, bulkMove,
     manageTag, findOrCreateTodayNote, draggedNoteId, pendingFriendRequests,
   } = useNotesManager({
@@ -129,11 +130,13 @@ function AppContent() {
     setCollaborateNote(note);
     setShowCollaborateModal(true);
   }, []);
-  // Ein offener Editor darf nicht von "Neue Notiz" übernommen werden:
-  // noteModal.note kippt auf null, während das Formular noch die Werte der
-  // geöffneten Notiz zeigt — Speichern würde ein Duplikat anlegen.
+  // Ein offener Editor darf nicht von "Neue Notiz" übernommen werden (Speichern
+  // legte ein Duplikat an). v1.18.0: Wiki-Links im offenen Editor sind explizite
+  // Navigation und ersetzen die Notiz — Entwürfe sind pro Notiz gesichert.
   const openNoteModal = useCallback((note = null) => {
-    setNoteModal(prev => (prev.isOpen ? prev : { isOpen: true, note }));
+    setNoteModal(prev => (!prev.isOpen
+      || (note && String(prev.note?._id ?? 'new') !== String(note._id)))
+      ? { isOpen: true, note } : prev);
   }, []);
   const closeNoteModal = useCallback(() => setNoteModal({ isOpen: false, note: null }), []);
   const handleModalSave = useCallback(async (noteData) => (
@@ -167,6 +170,7 @@ function AppContent() {
     openNoteModal, showToast, t, searchTerm, selectedTag,
     settings, manageTag, updateSettings, setSavedSearches,
     setSearchTerm, setSelectedTag, setShowTrash, setShowArchived,
+    clearFolderScope,
   });
 
   // Nr. 26: listActions in useMemo — ein neues Objekt-Literal pro Render hätte
@@ -311,7 +315,7 @@ function AppContent() {
             </svg>
           </button>
           <Logo size={36} />
-          <SearchBar onSearch={handleSearch} ref={searchBarRef} aria-label={t('searchNotes')} />
+          <SearchBar onSearch={handleSearch} searchTerm={searchTerm} ref={searchBarRef} aria-label={t('searchNotes')} />
           <div className="user-info">
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
             {user?.isDemo ? (
@@ -460,11 +464,11 @@ function AppContent() {
       {noteModal.isOpen && (
         <Suspense fallback={LAZY_FALLBACK}>
           <NoteModal
+            key={noteModal.note?._id ?? 'new'}
             note={noteModal.note}
             serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
             onSave={handleModalSave} onClose={closeNoteModal} onRestored={() => fetchNotes(searchTerm, pagination.page, { background: true })}
-            onToggleArchive={toggleArchiveNote} onDelete={deleteNote}
-            onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
+            onToggleArchive={toggleArchiveNote} onDelete={deleteNote} onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
             availableTags={allKnownTags}
             wikiNotes={wikiNotes}
             onOpenNote={handleOpenNoteById}

@@ -13,7 +13,7 @@ import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
  * Selbstständige Komponente statt NoteModal-Erweiterung: Das Modal hat schon
  * 1600+ Zeilen State; die Historie hat ihren eigenen Lade-/Fehler-Zustand.
  */
-function NoteHistory({ noteId, onRestored }) {
+function NoteHistory({ noteId, onRestored, baseUpdatedAtRef }) {
   const { t, language } = useLanguage();
   const [open, setOpen] = useState(false);
   const [revisions, setRevisions] = useState(null);
@@ -86,7 +86,14 @@ function NoteHistory({ noteId, onRestored }) {
     setRestoring(true);
     setPreviewError(null);
     try {
-      const updatedNote = await notesAPI.restoreRevision(noteId, preview.savedAt);
+      // baseUpdatedAt (v1.18.0): derselbe Server-Stand, auf dem NoteModal seine
+      // Edits basiert — hat jemand die Notiz seit dem Laden der Historie
+      // gespeichert, feuert der Restore-409 statt still zu überschreiben.
+      const updatedNote = await notesAPI.restoreRevision(
+        noteId,
+        preview.savedAt,
+        baseUpdatedAtRef?.current ?? undefined
+      );
       setRestoredSavedAt(preview.savedAt);
       onRestored?.(updatedNote, preview);
       // Der aktuelle Stand ist jetzt selbst die jüngste Revision — Liste
@@ -97,7 +104,7 @@ function NoteHistory({ noteId, onRestored }) {
     } finally {
       setRestoring(false);
     }
-  }, [noteId, preview, onRestored, loadRevisions, t]);
+  }, [noteId, preview, onRestored, loadRevisions, t, baseUpdatedAtRef]);
 
   if (!noteId) return null;
 

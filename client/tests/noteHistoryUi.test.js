@@ -19,7 +19,7 @@ test('notesAPI exposes the three revision calls against the documented endpoints
   );
   assert.match(
     source,
-    /restoreRevision: \(id, at\) =>\s*\n\s*fetchWithAuth\(API_ENDPOINTS\.NOTES\.RESTORE_REVISION\(id\), \{\s*\n\s*method: 'POST',\s*\n\s*body: JSON\.stringify\(\{ at \}\),/
+    /restoreRevision: \(id, at, baseUpdatedAt\) =>\s*\n\s*fetchWithAuth\(API_ENDPOINTS\.NOTES\.RESTORE_REVISION\(id\), \{\s*\n\s*method: 'POST',\s*\n\s*body: JSON\.stringify\(baseUpdatedAt \? \{ at, baseUpdatedAt \} : \{ at \}\),/
   );
 
   const endpoints = read('constants', 'api.js');
@@ -34,8 +34,9 @@ test('NoteHistory loads lazily, previews on demand and restores through the API'
   assert.match(source, /if \(!wasOpen && revisions === null && !listError\)/);
   // Vorschau nur auf Klick (?at=), nicht für alle Einträge vorab.
   assert.match(source, /notesAPI\.getRevision\(noteId, savedAt\)/);
-  // Restore schickt exakt das savedAt zurück, das die Liste lieferte.
-  assert.match(source, /notesAPI\.restoreRevision\(noteId, preview\.savedAt\)/);
+  // Restore schickt exakt das savedAt zurück, das die Liste lieferte — und
+  // seit v1.18.0 die Edit-Baseline des Modals dazu (409 statt still kopieren).
+  assert.match(source, /notesAPI\.restoreRevision\(\s*\n\s*noteId,\s*\n\s*preview\.savedAt,\s*\n\s*baseUpdatedAtRef\?\.current \?\? undefined\s*\n\s*\)/);
   // Nach dem Restore wird die Liste neu gelesen: der alte Stand ist selbst
   // eine neue Revision geworden.
   assert.match(source, /\/\/ Der aktuelle Stand ist jetzt selbst die jüngste Revision/);
@@ -57,7 +58,7 @@ test('the modal applies the restored note and refreshes the locking baseline', (
   // via rejectDemoNoteCapabilities — die UI verspricht nichts Unmögliches).
   assert.match(
     source,
-    /\{!isDemo && note && \(\s*\n\s*<NoteHistory noteId=\{note\._id\} onRestored=\{handleRevisionRestored\} \/>/
+    /\{!isDemo && note && \(\s*\n\s*<NoteHistory\s*\n\s*noteId=\{note\._id\}\s*\n\s*onRestored=\{handleRevisionRestored\}\s*\n\s*baseUpdatedAtRef=\{baseUpdatedAtRef\}\s*\n\s*\/>/
   );
 });
 

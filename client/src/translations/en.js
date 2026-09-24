@@ -713,6 +713,14 @@ export const en = {
   reminderClear: 'Clear reminder',
   reminderAt: 'Reminder on {date}',
   upcomingReminders: 'Upcoming reminders',
+  // v1.18.0: reminders actually fire (toast + optional system notification)
+  reminderDue: 'Reminder due',
+  notificationSection: 'Notifications',
+  notificationSectionDescription: 'Due reminders additionally raise a system notification while the app is open — the toast always shows.',
+  notificationEnable: 'Enable notifications',
+  notificationEnabled: 'Notifications are enabled.',
+  notificationBlocked: 'Notifications are blocked in your browser (changeable in browser settings).',
+  notificationUnsupported: 'This browser does not support notifications — the toast remains.',
   pendingFriendRequests: '{count} pending friend request(s)',
   // v1.17.0 (W4): storage usage + quota
   storageSection: 'Storage',

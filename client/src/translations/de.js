@@ -713,6 +713,14 @@ export const de = {
   reminderClear: 'Erinnerung löschen',
   reminderAt: 'Erinnerung am {date}',
   upcomingReminders: 'Anstehende Erinnerungen',
+  // v1.18.0: Erinnerungen feuern (Toast + optionale System-Notification)
+  reminderDue: 'Erinnerung fällig',
+  notificationSection: 'Benachrichtigungen',
+  notificationSectionDescription: 'Fällige Erinnerungen heben zusätzlich eine System-Benachrichtigung an, solange die App geöffnet ist — der Toast erscheint immer.',
+  notificationEnable: 'Benachrichtigungen erlauben',
+  notificationEnabled: 'Benachrichtigungen sind aktiviert.',
+  notificationBlocked: 'Benachrichtigungen sind im Browser blockiert (in den Browser-Einstellungen änderbar).',
+  notificationUnsupported: 'Dieser Browser unterstützt keine Benachrichtigungen — es bleibt der Toast.',
   pendingFriendRequests: '{count} offene Freundschaftsanfrage(n)',
   // v1.17.0 (W4): Speicher-Nutzung + Quota
   storageSection: 'Speicher',

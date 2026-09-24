@@ -1126,7 +1126,11 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
               serverseitig vom Restore ausgesperrt (rejectDemoNoteCapabilities)
               — die Historie bleibt ihnen erspart. */}
           {!isDemo && note && (
-            <NoteHistory noteId={note._id} onRestored={handleRevisionRestored} />
+            <NoteHistory
+              noteId={note._id}
+              onRestored={handleRevisionRestored}
+              baseUpdatedAtRef={baseUpdatedAtRef}
+            />
           )}
 
           {/* v1.10.0: Verlinkte Notizen (aus `[[Titel]]` im Inhalt) und
