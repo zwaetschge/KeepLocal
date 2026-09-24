@@ -99,12 +99,20 @@ openssl rand -hex 48
 
 Replace `JWT_SECRET` in `.env` with the generated value. For a separate CSRF
 signing key, generate another value and set `CSRF_SECRET` too. Then validate and
-start the four-service stack:
+start the stack:
 
 ```bash
 docker compose config
 docker compose up -d --build
 docker compose ps
+```
+
+Die Sprachtranskription (Whisper) ist seit v1.18.0 ein optionales Profil —
+ohne sie startet der Stack schlanker und Transkriptionen antworten mit einem
+klaren „Dienst nicht erreichbar" (503) statt einem Timeout. Wer sie will:
+
+```bash
+docker compose --profile ai up -d --build
 ```
 
 Open <http://localhost:3000>. On an empty database, the setup screen creates

@@ -150,11 +150,11 @@ test('searching ranks by relevance, listing without search keeps the old order',
 
   await service.getAllNotes({ userId: 'u1', search: 'brot', page: 1, limit: 10, archived: 'false' });
   assert.deepEqual(seen.projections[0], { score: { $meta: 'textScore' } });
-  assert.deepEqual(seen.sorts[0], { isPinned: -1, score: { $meta: 'textScore' } });
+  assert.deepEqual(seen.sorts[0], { isPinned: -1, score: { $meta: 'textScore' }, _id: -1 });
 
   await service.getAllNotes({ userId: 'u1', page: 1, limit: 10, archived: 'false' });
   assert.equal(seen.projections[1], undefined);
-  assert.deepEqual(seen.sorts[1], { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 });
+  assert.deepEqual(seen.sorts[1], { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1, _id: -1 });
 });
 
 test('tag counts respect the active search', async () => {

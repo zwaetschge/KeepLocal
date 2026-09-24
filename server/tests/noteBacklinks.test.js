@@ -60,7 +60,7 @@ test('getNoteBacklinks sucht [[Titel]] über das eigene-und-geteilte Korpus', as
   assert.equal(seen.find.content.$regex.source, '\\[\\[Rezepte: Desserts!\\]\\]');
   assert.equal(seen.find.content.$regex.flags, 'i', 'case-insensitiv für importierte Schreibweisen');
 
-  assert.deepEqual(seen.sort, { updatedAt: -1 });
+  assert.deepEqual(seen.sort, { updatedAt: -1, _id: -1 });
   assert.equal(seen.limit, 50, 'Antwort ist auf 50 Erwähnungen gecappt');
   assert.deepEqual(backlinks, [{ id: 'source-1', title: 'Quelle', updatedAt: new Date('2026-09-22T10:00:00Z') }]);
 });

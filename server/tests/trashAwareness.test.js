@@ -94,7 +94,7 @@ test('the demo quota counts visible notes only', async () => {
 });
 
 test('emptying the trash deletes exactly the notes it read', async () => {
-  const captured = { pipelines: [], counts: [], deleteMany: [] };
+  const captured = { findOneAndDelete: [] };
   const trashed = [
     { _id: 'n1', images: [{ filename: 'a.png' }] },
     { _id: 'n2', images: [] }
@@ -106,9 +106,12 @@ test('emptying the trash deletes exactly the notes it read', async () => {
     id: noteModelPath, filename: noteModelPath, loaded: true,
     exports: {
       find: () => ({ select: () => Promise.resolve(trashed) }),
-      deleteMany: async (filter) => {
-        captured.deleteMany.push(filter);
-        return { deletedCount: filter._id.$in.length };
+      // v1.18.0: eine bedingte Löschung pro gelesener Notiz statt einem
+      // deleteMany über die ganze Id-Liste.
+      findOneAndDelete: (query) => {
+        captured.findOneAndDelete.push(query);
+        const hit = trashed.find((note) => String(note._id) === String(query._id));
+        return { lean: async () => (hit ? { ...hit } : null) };
       },
       findOneAndUpdate: async () => null,
       exists: async () => false,
@@ -121,11 +124,12 @@ test('emptying the trash deletes exactly the notes it read', async () => {
   const removed = await service.emptyTrash(USER);
 
   assert.equal(removed, 2);
-  assert.equal(captured.deleteMany.length, 1);
-  const filter = captured.deleteMany[0];
-  assert.deepEqual(filter._id.$in.map(String), ['n1', 'n2'], 'deleting by predicate alone could catch notes trashed in between');
-  assert.deepEqual(filter.deletedAt, { $ne: null });
-  assert.equal(filter.userId, USER);
+  assert.equal(captured.findOneAndDelete.length, 2, 'eine bedingte Löschung pro gelesener Notiz');
+  for (const filter of captured.findOneAndDelete) {
+    assert.equal(filter.userId, USER);
+    assert.deepEqual(filter.deletedAt, { $ne: null }, 'deleting by predicate alone could catch notes trashed in between');
+  }
+  assert.deepEqual(captured.findOneAndDelete.map((filter) => String(filter._id)).sort(), ['n1', 'n2']);
   assert.ok(deletedImages.length === 0);
 });
 

@@ -59,8 +59,20 @@ async function transcribeAudio(filePath, language = null, requestId = null, sign
       throw error;
     }
     logger.error('AI service call failed', { requestId, message: error.message, code: error.code });
-    if (error.code === 'ECONNREFUSED') {
-      throw new Error('AI Service ist nicht erreichbar. Läuft der Container?');
+    // Ohne error.response ist es ein Transport-Fehler (Verbindung verweigert,
+    // DNS, Timeout): Der AI-Container läuft nicht (Compose ohne --profile ai,
+    // v1.18.0) oder ist neu startend. 503 + stabiler Code statt 500 — der
+    // Client zeigt sein „Dienst nicht erreichbar, später erneut“.
+    // ECONNABORTED gehört dazu: axios meldet einen abgelaufenen timeout:-Wert
+    // (Container hängt im Model-Load und antwortet nie) genau so, ETIMEDOUT
+    // deckt nur den OS-Level Connect-Timeout (Review v1.18.0).
+    if (!error.response && (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND'
+      || error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET' || error.code === 'EAI_AGAIN'
+      || error.code === 'ECONNABORTED')) {
+      const unavailable = new Error('AI Service ist nicht erreichbar. Läuft der Container?');
+      unavailable.statusCode = 503;
+      unavailable.code = 'AI_SERVICE_UNAVAILABLE';
+      throw unavailable;
     }
     if (error.response?.status === 401) {
       // The AI service rejected our shared token: misconfigured deployment, not

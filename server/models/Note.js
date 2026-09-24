@@ -198,7 +198,19 @@ noteSchema.index(
   { userId: 1, parentId: 1 },
   { name: 'note_tree', partialFilterExpression: { parentId: { $type: 'objectId' } } }
 );
-noteSchema.index({ sharedWith: 1 }); // Index für geteilte Notizen
+// v1.18.0 (Perf): Deckt die Abfragen ab, die vormals je Anfrage ein FETCH
+// über Volltext-Dokumente kosteten —
+// • {userId, deletedAt, …}: die vier Zähler der Liste (total/aktiv/archiviert/
+//   Papierkorb) und die 60s-Sonde /meta laufen als gedeckte Index-Zählungen
+//   statt Dokument-Lesungen; der Papierkorb-View sortiert über (userId,
+//   deletedAt) denselben Präfix.
+// • {sharedWith, …}: derselbe $or-Zweig der Sonde — geteilte Notizen zählen
+//   mit, ohne ihr Dokument anzufassen. Das hinten angehängte userId brauchen
+//   nur die $group-Felder der Sonde (trash zählt eigene im geteilten Zweig);
+// der frühere Solo-Index {sharedWith: 1} ist ein strikter Präfix davon und
+// fiel weg — syncIndexes() räumt ihn beim Start ab.
+noteSchema.index({ userId: 1, deletedAt: 1, isArchived: 1, updatedAt: -1 });
+noteSchema.index({ sharedWith: 1, deletedAt: 1, isArchived: 1, updatedAt: -1, userId: 1 });
 // Bildauslieferung: middleware/secureFileServe.js sucht die Notiz zu jeder
 // /uploads/images/*-Anfrage über genau diese beiden Array-Felder. Ohne Index
 // war jeder Thumbnail ein COLLSCAN über die gesamte (instanzweite)

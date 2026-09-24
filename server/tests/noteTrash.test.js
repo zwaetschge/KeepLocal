@@ -72,7 +72,7 @@ test('the trash view lists only own deleted notes, newest first', async () => {
   const result = await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, deleted: 'true' });
 
   assert.deepEqual(seen.find, { userId: OWNER_ID, deletedAt: { $ne: null } });
-  assert.deepEqual(seen.sort, { deletedAt: -1 });
+  assert.deepEqual(seen.sort, { deletedAt: -1, _id: -1 });
   assert.equal(result.pagination.total, 2);
   assert.equal(result.counts.trash, 2);
   assert.equal(result.notes.length, 1);
@@ -183,20 +183,45 @@ test('emptying the trash removes documents and their files', async () => {
   const seen = [];
   const service = loadService({
     find: () => ({ select: async () => [{ _id: NOTE_ID, images: [{ filename }] }] }),
-    deleteMany: async (query) => { seen.push(query); return { deletedCount: 1 }; },
+    // v1.18.0: bedingtes findOneAndDelete pro Notiz (wie purgeExpiredTrash)
+    // — nur was wirklich gelöscht wurde, verliert Dateien und Kinder-Bindung.
+    findOneAndDelete: (query) => {
+      seen.push(query);
+      return { lean: async () => ({ _id: NOTE_ID, images: [{ filename }], files: [], parentId: null }) };
+    },
     updateMany: async () => ({ modifiedCount: 0 })
   });
 
   const removed = await service.emptyTrash(OWNER_ID);
 
   assert.equal(removed, 1);
-  // Mengentreu: geloescht wird genau die gelesene Menge (plus Prädikat), sonst
-  // erwischen wir Notizen, die zwischen Find und Delete in den Papierkorb
-  // wanderten — deren Dokumente wären weg, ihre Dateien für immer verwaist.
-  assert.deepEqual(seen[0]._id.$in.map(String), [String(NOTE_ID)]);
+  // Mengentreu UND atomar: jede Notiz einzeln mit userId- und deletedAt-
+  // Prädikat — Notizen, die zwischen Find und Delete in den Papierkorb
+  // wanderten oder daraus zurückgeholt wurden, trifft es nicht.
+  assert.equal(String(seen[0]._id), String(NOTE_ID));
   assert.equal(seen[0].userId, OWNER_ID);
   assert.deepEqual(seen[0].deletedAt, { $ne: null });
   assert.equal(fs.existsSync(path.join(uploadsDir, filename)), false);
+});
+
+test('a note restored during emptyTrash keeps its attachments (v1.18.0)', async () => {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const filename = `trash-race-${process.pid}.png`;
+  fs.writeFileSync(path.join(uploadsDir, filename), 'x');
+
+  const service = loadService({
+    find: () => ({ select: async () => [{ _id: NOTE_ID, images: [{ filename }] }] }),
+    // Restore gewinnt das Rennen: das deletedAt-Prädikat verfehlt.
+    findOneAndDelete: () => ({ lean: async () => null }),
+    updateMany: async () => { throw new Error('reparent darf für die gerettete Notiz nicht laufen'); }
+  });
+
+  const removed = await service.emptyTrash(OWNER_ID);
+
+  assert.equal(removed, 0);
+  assert.equal(fs.existsSync(path.join(uploadsDir, filename)), true,
+    'die Datei der wiederhergestellten Notiz bleibt');
+  fs.rmSync(path.join(uploadsDir, filename), { force: true });
 });
 
 test('empty trash is a no-op', async () => {

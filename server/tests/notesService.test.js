@@ -222,7 +222,7 @@ test('getNotesMeta: eine Aggregation, Bucket-Semantik wie getAllNotes', async ()
   // gepinnt: Ein neues Zählfeld gehört HIERHER, nicht (nur) in $group — sonst
   // liefert $group undefined und die Sonde vergleicht Müll-Signaturen.
   assert.deepEqual(observed.pipeline[1].$project,
-    { deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 });
+    { _id: 0, deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 }); // _id:0 = Covered Query (v1.18.0-Review)
   const group = observed.pipeline[2].$group;
   const activeCond = group.active.$sum.$cond[0].$and;
   assert.equal(activeCond[0].$eq[0].$ifNull[0], '$deletedAt', 'fehlendes deletedAt zählt als aktiv');

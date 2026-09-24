@@ -239,7 +239,10 @@ router.post(
         // Demo-Budget: der Service rechnet Bestand + Chunk-Groesse gegen das
         // Limit — enforceDemoNoteLimit prueft nur den Bestand und wuerde einen
         // Rutsch durchlassen.
-        demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null
+        demoLimit: req.user?.isDemo ? parseDemoNoteLimit() : null,
+        // Chunk-Idempotenz (v1.18.0): importId des Laufs + Index dieses Chunks.
+        importId: req.body.importId,
+        chunkIndex: req.body.chunkIndex
       });
       res.status(httpStatus.CREATED).json(result);
     } catch (error) {
@@ -385,7 +388,7 @@ router.post('/:id/revisions/restore', rejectDemoNoteCapabilities, noteValidation
     if (!req.body || typeof req.body.at !== 'string' || req.body.at.trim() === '') {
       return res.status(httpStatus.BAD_REQUEST).json({ error: 'at (ISO-Zeitpunkt der Fassung) ist erforderlich' });
     }
-    const note = await notesService.restoreNoteRevision(req.params.id, req.user._id, req.body.at);
+    const note = await notesService.restoreNoteRevision(req.params.id, req.user._id, req.body.at, req.body.baseUpdatedAt);
     res.json(note);
   } catch (error) {
     if (error.statusCode === httpStatus.CONFLICT) {
@@ -903,9 +906,13 @@ router.post('/:id/transcribe', blockDemoTranscription, transcribeHourLimiter, tr
 
     console.error('[TRANSCRIPTION ERROR]', error);
 
-    // 503 if AI service is down
-    if (error.message?.includes('nicht erreichbar')) {
-      return res.status(httpStatus.SERVICE_UNAVAILABLE).json({ error: error.message });
+    // 503 if AI service is down (v1.18.0: stabiler statusCode/Code vom
+    // aiService statt Message-Matching; der String-Fallback deckt ältere Pfade).
+    if (error.statusCode === httpStatus.SERVICE_UNAVAILABLE || error.message?.includes('nicht erreichbar')) {
+      return res.status(httpStatus.SERVICE_UNAVAILABLE).json({
+        code: error.code || 'AI_SERVICE_UNAVAILABLE',
+        error: error.message
+      });
     }
 
     // 413: Audio laenger als das Einzellimit (AI-Service, MAX_AUDIO_SECONDS).
