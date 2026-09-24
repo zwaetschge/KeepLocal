@@ -152,7 +152,7 @@ class SyncManagerDeltaPullBatchTest {
         // Transaktion über frische getPendingNoteIds().
         val received = mutableListOf<List<NoteEntity>>()
         coEvery { noteDao.getPendingNoteIds() } returns listOf("p1b")
-        coEvery { noteDao.insertNotesSkippingPending(any()) } answers {
+        coEvery { noteDao.insertNotesSkippingPending(any()) } coAnswers {
             val batch: List<NoteEntity> = firstArg()
             received.add(batch)
             val pending = noteDao.getPendingNoteIds().toSet()
@@ -170,10 +170,10 @@ class SyncManagerDeltaPullBatchTest {
         val changed = syncManager.pullRemoteChanges()
 
         assertEquals(1, changed)
-        assertEquals(listOf("p1a", "p1b"), received.single().map { it.id },
-            "der Pull übergibt den vollen Batch — kein Vorfiltern mehr")
-        assertEquals(listOf("p1a"), batches.single().map { it.id },
-            "die Transaktion selbst filtert die Pending-Note heraus")
+        assertEquals("der Pull übergibt den vollen Batch — kein Vorfiltern mehr",
+            listOf("p1a", "p1b"), received.single().map { it.id })
+        assertEquals("die Transaktion selbst filtert die Pending-Note heraus",
+            listOf("p1a"), batches.single().map { it.id })
     }
 
     @Test
