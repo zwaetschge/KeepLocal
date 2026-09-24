@@ -76,9 +76,12 @@ function makeStore(initial = []) {
 
 /**
  * In-Memory-ImportRun: ein Zähler-Dokument pro (userId, importId). Emuliert die
- * Claim-Semantik (Review v1.18.0): updateOne mit $ne-Filter gewinnt genau
- * einmal (modifiedCount oder upsertedCount = 1), ein bereits vergebener Chunk
- * liefert 0/0 — und $pull gibt den Claim wieder frei.
+ * Claim-Semantik (v1.18.1): updateOne mit Plain-Filter + $addToSet — ein noch
+ * nicht enthaltener Chunk gewinnt (modifiedCount oder upsertedCount = 1), ein
+ * bereits angewandter ist ein No-op und liefert 0/0 (skip). Ein $ne-Filter
+ * wäre falsch: der matcht das existierende Dokument nicht, das Upsert stirbt
+ * am Unique-Index (E11000 → 409, Demo-Smoke 2026-09-24). $pull gibt den Claim
+ * wieder frei.
  */
 function makeImportRunStore() {
   const runs = new Map();
@@ -141,7 +144,7 @@ test('an already applied import chunk is skipped instead of duplicated (v1.18.0)
   assert.equal(store.inserted.length, insertedAfterFirst, 'keine zweite Notiz, kein zweiter Ordner');
   assert.deepEqual(
     runStore.calls.updateOne[0].filter,
-    { userId: OWNER_ID, importId: IMPORT_ID, appliedChunks: { $ne: 0 } },
+    { userId: OWNER_ID, importId: IMPORT_ID },
     'der Claim filtert atomar auf den noch freien Chunk'
   );
   assert.equal(runStore.calls.updateOne.length, 2, 'Claim des ersten Laufs + gescheiterter Claim des Retries');
