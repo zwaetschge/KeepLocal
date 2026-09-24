@@ -187,6 +187,9 @@ private class FakeNoteDao : NoteDao {
 
     override suspend fun getNotesWithUpcomingReminders(nowEpochMs: Long): List<NoteEntity> = emptyList()
 
+    /** v1.18.0: ids with pending local ops (insertNotesSkippingPending). */
+    override suspend fun getPendingNoteIds(): List<String> = emptyList()
+
     override suspend fun getNoteById(id: String): NoteEntity? = notes[id]
 
     override suspend fun insertNote(note: NoteEntity) {
