@@ -101,7 +101,7 @@ class SyncManagerDeltaPullBatchTest {
         val changed = syncManager.pullRemoteChanges()
 
         assertEquals(4, changed)
-        coVerify(exactly = 2) { noteDao.insertNotes(any()) }
+        coVerify(exactly = 2) { noteDao.insertNotesSkippingPending(any()) }
         coVerify(exactly = 0) { noteDao.insertNote(any()) }
         assertEquals(listOf("p1a", "p1b", "p1c"), batches[0].map { it.id })
         assertEquals(listOf("p2a"), batches[1].map { it.id })
@@ -125,7 +125,7 @@ class SyncManagerDeltaPullBatchTest {
         val changed = syncManager.pullRemoteChanges()
 
         assertEquals(1, changed)
-        coVerify(exactly = 1) { noteDao.insertNotes(any()) }
+        coVerify(exactly = 1) { noteDao.insertNotesSkippingPending(any()) }
         coVerify(exactly = 0) { noteDao.insertNote(any()) }
         assertEquals(listOf("p1a"), batches.single().map { it.id })
     }
@@ -146,6 +146,10 @@ class SyncManagerDeltaPullBatchTest {
         // eine offline Änderung, die während des Seitenparsens landet, wirft
         // erst der transaktionsgebundene Filter wirklich raus.
         coEvery { noteDao.getPendingNoteIds() } returns listOf("p1b")
+        // Der Default-Method-Körper läuft echt (callOriginal); was die interne
+        // Transaktion wirklich an insertNotes übergibt, ist der gefilterte
+        // Batch — genau den pinnen wir über das Recording.
+        coEvery { noteDao.insertNotes(any()) } answers { batches.add(firstArg()) }
         coEvery { noteDao.insertNotesSkippingPending(any()) } answers { callOriginal() }
         stubActivePages(
             listOf(
