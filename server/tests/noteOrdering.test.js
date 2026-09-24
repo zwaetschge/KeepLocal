@@ -18,7 +18,9 @@ const OTHER_ID = '507f191e810c19729de860eb';
 const IDS = [
   '507f1f77bcf86cd799439011',
   '507f1f77bcf86cd799439012',
-  '507f1f77bcf86cd799439013'
+  '507f1f77bcf86cd799439013',
+  '507f1f77bcf86cd799439014',
+  '507f1f77bcf86cd799439015'
 ];
 
 function loadService(NoteMock, UserMock = {}) {
@@ -83,13 +85,68 @@ test('a later reorder reuses the existing order values', async () => {
   );
 });
 
-test('a reorder above an already ordered section starts above its maximum', async () => {
-  const notes = [IDS[0], IDS[1]].map(id => ({ _id: id, order: 0, isPinned: false, isArchived: false }));
+test('a page-local reorder of unsorted notes stays below the sorted section (v1.18.0)', async () => {
+  // Abschnitt: eine sortierte Notiz (order 7) oben, zwei unsortierte (order 0)
+  // darunter. Der Payload ist die sichtbare Seite der beiden Unsortierten —
+  // der Drag darf sie nicht über die sortierte Notiz heben.
+  const section = [
+    { _id: IDS[2], order: 7, isPinned: false, isArchived: false },
+    { _id: IDS[0], order: 0, isPinned: false, isArchived: false },
+    { _id: IDS[1], order: 0, isPinned: false, isArchived: false }
+  ];
   const written = [];
   const service = loadService({
-    find: () => leanChain(notes),
-    // Highest existing order in the section is 7.
-    findOne: () => leanChain({ order: 7 }),
+    find: () => leanChain(section),
+    bulkWrite: async (ops) => { written.push(...ops); return { modifiedCount: ops.length }; }
+  });
+
+  await service.reorderNotes(OWNER_ID, [IDS[0], IDS[1]]);
+
+  assert.deepEqual(
+    written.map(op => op.updateOne.update.$set.order),
+    [2, 1],
+    'Block dicht über 0 und unter der sortierten 7 — kein Sprung an die Spitze'
+  );
+});
+
+test('a dense sorted section gets the new block below it, not above (v1.18.0)', async () => {
+  // Der Normalfall nach dem ersten Sortieren einer Seite: dichte Orders 3..1,
+  // Seite 2 komplett unsortiert (0). Zwischen 0 und 1 ist kein freier Slot —
+  // der Block muss NEGATIV unter die sortierte Seite, nicht über sie (Review
+  // v1.18.0: der alte sectionMax-Fallback sprang genau nach oben).
+  const section = [
+    { _id: IDS[2], order: 3, isPinned: false, isArchived: false },
+    { _id: IDS[3], order: 2, isPinned: false, isArchived: false },
+    { _id: IDS[4], order: 1, isPinned: false, isArchived: false },
+    { _id: IDS[0], order: 0, isPinned: false, isArchived: false },
+    { _id: IDS[1], order: 0, isPinned: false, isArchived: false }
+  ];
+  const written = [];
+  const service = loadService({
+    find: () => leanChain(section),
+    bulkWrite: async (ops) => { written.push(...ops); return { modifiedCount: ops.length }; }
+  });
+
+  await service.reorderNotes(OWNER_ID, [IDS[0], IDS[1]]);
+
+  assert.deepEqual(
+    written.map(op => op.updateOne.update.$set.order),
+    [-1, -2],
+    'dichter Abschnitt: Block unterhalb, negative Orders sind erlaubt'
+  );
+});
+
+test('a reorder covering the section top starts above its maximum (v1.18.0)', async () => {
+  // Der Payload HAT die höchsten Orders des Abschnitts (7, gebunden) — erst
+  // dann darf ein frischer Block über dem Maximum vergeben werden.
+  const section = [
+    { _id: IDS[0], order: 7, isPinned: false, isArchived: false },
+    { _id: IDS[1], order: 7, isPinned: false, isArchived: false },
+    { _id: IDS[2], order: 3, isPinned: false, isArchived: false }
+  ];
+  const written = [];
+  const service = loadService({
+    find: () => leanChain(section),
     bulkWrite: async (ops) => { written.push(...ops); return { modifiedCount: ops.length }; }
   });
 
@@ -98,7 +155,7 @@ test('a reorder above an already ordered section starts above its maximum', asyn
   assert.deepEqual(
     written.map(op => op.updateOne.update.$set.order),
     [9, 8],
-    'two notes on top of a section whose maximum is 7'
+    'zwei Notizen an der Spitze eines Abschnitts mit Maximum 7'
   );
 });
 
@@ -175,7 +232,7 @@ test('the list is sorted by manual order before recency', async () => {
   });
 
   await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, archived: 'false' });
-  assert.deepEqual(seen.sort, { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 });
+  assert.deepEqual(seen.sort, { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1, _id: -1 });
 });
 
 test('the note model declares an order field and a matching index', () => {
@@ -222,15 +279,16 @@ test('PATCH /api/notes/reorder persists the order and validates the payload', as
   });
 
   await withServer(router, async base => {
+    const firstThree = IDS.slice(0, 3);
     const ok = await fetch(`${base}/reorder`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ orderedIds: IDS })
+      body: JSON.stringify({ orderedIds: firstThree })
     });
     const body = await ok.json();
     assert.equal(ok.status, 200);
     assert.equal(body.updated, 3);
-    assert.deepEqual(calls[0], [OWNER_ID, IDS]);
+    assert.deepEqual(calls[0], [OWNER_ID, firstThree]);
 
     const notAnArray = await fetch(`${base}/reorder`, {
       method: 'PATCH',

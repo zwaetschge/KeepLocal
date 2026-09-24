@@ -21,8 +21,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # AI Service (Whisper Transcription)
+  # AI Service (Whisper Transcription) — OPTIONAL (v1.18.0): läuft nur mit
+  # `docker compose --profile ai up`. Ohne das Profile startet der Stack ohne
+  # Transkription: /api/health meldet degraded (nicht fatal, solange
+  # REQUIRE_AI_FOR_READY leer), Transkriptionsanfragen bekommen 503 mit
+  # AI_SERVICE_UNAVAILABLE. Vorher hard-gated `depends_on: ai:
+  # condition: service_healthy` den kompletten Stack auf die Gesundheit dieses
+  # optionalen Containers — ein kranker Whisper-Container hielt die Notes-App
+  # vom Start ab.
   ai:
+    profiles: ["ai"]
     build:
       context: ./ai
       dockerfile: Dockerfile
@@ -115,8 +123,6 @@ services:
       - backups_data:/app/backups
     depends_on:
       mongodb:
-        condition: service_healthy
-      ai:
         condition: service_healthy
     networks:
       - backend

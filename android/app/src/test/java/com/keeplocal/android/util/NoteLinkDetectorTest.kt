@@ -59,4 +59,46 @@ class NoteLinkDetectorTest {
 
         assertEquals("https://example.com/pfad", text.substring(link.range))
     }
+
+    @Test
+    fun `finds wiki link target`() {
+        val text = "siehe [[Ziel Notiz]] bitte"
+        val links = NoteLinkDetector.findWikiLinks(text)
+
+        assertEquals(1, links.size)
+        assertEquals("Ziel Notiz", links[0].title)
+        assertEquals("[[Ziel Notiz]]", text.substring(links[0].range))
+    }
+
+    @Test
+    fun `finds every wiki link in order`() {
+        val links = NoteLinkDetector.findWikiLinks("[[A]] und [[B C]]")
+
+        assertEquals(2, links.size)
+        assertEquals("A", links[0].title)
+        assertEquals("B C", links[1].title)
+    }
+
+    @Test
+    fun `wiki link titles are trimmed`() {
+        assertEquals("Ziel", NoteLinkDetector.findWikiLinks("[[ Ziel ]]").single().title)
+    }
+
+    @Test
+    fun `blank wiki link is skipped`() {
+        assertEquals(0, NoteLinkDetector.findWikiLinks("[[ ]]").size)
+    }
+
+    @Test
+    fun `single brackets are not wiki links`() {
+        assertEquals(0, NoteLinkDetector.findWikiLinks("[kein wiki] und [[offen").size)
+    }
+
+    @Test
+    fun `bare urls are not wiki links`() {
+        val links = NoteLinkDetector.findWikiLinks("gehe zu https://example.com/a [[x]]")
+
+        assertEquals(1, links.size)
+        assertEquals("x", links.single().title)
+    }
 }

@@ -6,6 +6,7 @@
 
 const Note = require('../models/Note');
 const User = require('../models/User');
+const ImportRun = require('../models/ImportRun');
 const mongoose = require('mongoose');
 const { errorMessages } = require('../constants');
 const { imagesDir, filesDir } = require('../config/paths');
@@ -531,7 +532,9 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
         .select('-revisions')
         .populate('userId', 'username email')
         .populate('sharedWith', 'username email')
-        .sort({ deletedAt: -1 })
+        // _id-Tiebreaker wie im Live-Zweig: Bulk-Löschungen teilen sich den
+        // deletedAt-Stempel — ohne ihn ist die Seitenfolge nicht stabil.
+        .sort({ deletedAt: -1, _id: -1 })
         .skip(skip)
         .limit(safeLimit),
       withMeta
@@ -650,9 +653,14 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
     // Same recency key the client uses to order a page (useNotesManager sorts by
     // updatedAt): sorting by createdAt here made recently edited older notes
     // land on later pages, so the visible order contradicted the pagination.
+    // _id als letzte Stufe (v1.18.0): Bulk-Operationen (Import-Inserts,
+    // Tag-Rename) schreiben Hunderten Notizen dieselben Zeitstempel — ohne
+    // Tiebreaker ist die Reihenfolge bei gleichem Schlüssel nichtdeterministisch
+    // und Seiten verschieben Zeilen zwischen Abrufen (Skip/Limit-Pagination
+    // plus Delta-Pull überspringt dann eine Änderung im Pull-Fenster).
     .sort(isSearch
-      ? { isPinned: -1, score: { $meta: 'textScore' } }
-      : { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 })
+      ? { isPinned: -1, score: { $meta: 'textScore' }, _id: -1 }
+      : { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1, _id: -1 })
     .skip(skip)
     .limit(safeLimit);
 
@@ -848,21 +856,50 @@ async function reorderNotes(userId, orderedIds) {
 
   // Bestehende Order-Werte der beteiligten Notizen absteigend wiederverwenden.
   // Sind sie alle gleich (z. B. 0 = noch nie sortiert), wird ein frischer Block
-  // über dem bisherigen Maximum des Abschnitts vergeben.
+  // vergeben — aber nur ÜBER dem Abschnitts-Maximum, wenn der Payload die
+  // Abschnittsspitze abdeckt (keine Notiz außerhalb liegt höher). Ein
+  // seiten-lokaler Payload mitten im Abschnitt bekommt seinen Block dicht
+  // UNTER der niedrigsten Order der höher liegenden Notizen (v1.18.0): Vorher
+  // sprang jede Drag-Aktion auf Seite 2+ (unsortierter Anhang, order=0) über
+  // die bereits sortierten Seiten nach ganz oben.
   const existing = ids.map(id => sortable.get(id).order || 0).sort((a, b) => b - a);
   const allEqual = existing.every(value => value === existing[0]);
 
   let values;
   if (allEqual) {
     const first = sortable.get(ids[0]);
-    const highest = await Note.findOne({
+    const sectionNotes = await Note.find({
       userId,
       isPinned: first.isPinned,
       isArchived: first.isArchived,
       deletedAt: null
-    }).sort({ order: -1 }).select('order').lean();
-    const top = Math.max(highest?.order || 0, 0) + ids.length;
-    values = ids.map((_id, index) => top - index);
+    }).select('order').lean();
+    const sectionMax = sectionNotes.reduce((max, note) => Math.max(max, note.order || 0), 0);
+    const sharedValue = existing[0];
+    const payloadIds = new Set(ids);
+    const aboveOrders = sectionNotes
+      .filter(note => !payloadIds.has(String(note._id)) && (note.order || 0) > sharedValue)
+      .map(note => note.order || 0);
+
+    if (aboveOrders.length > 0) {
+      const ceiling = Math.min(...aboveOrders);
+      if (ceiling - sharedValue - 1 >= ids.length) {
+        // Spalt zwischen gemeinsamem Wert und der Decke reicht: Block dicht
+        // über dem gemeinsamen Wert, bleibt unter jeder höheren Notiz.
+        const top = sharedValue + ids.length;
+        values = ids.map((_id, index) => top - index);
+      } else {
+        // Dichte Orders lassen keinen Spalt — der Normalfall nach dem ersten
+        // Sortieren einer Seite (dicht 1..N). Der Block wandert dann dicht
+        // UNTER den gemeinsamen Wert (notfalls negativ), nie per sectionMax
+        // über die bereits sortierte Seite (Review v1.18.0: genau dorthin
+        // sprang der alte Fallback — der Bug, den der Fix eigentlich schloss).
+        values = ids.map((_id, index) => sharedValue - 1 - index);
+      }
+    } else {
+      // Payload deckt die Abschnittsspitze ab: frischer Block über dem Maximum.
+      values = ids.map((_id, index) => sectionMax + ids.length - index);
+    }
   } else {
     values = existing;
   }
@@ -1168,24 +1205,30 @@ async function emptyTrash(userId) {
     return 0;
   }
 
-  // Baum: Kinder jedes endgueltig geloeschten Knotens eine Ebene hochziehen
-  // (vor dem deleteMany — danach waere die Eltern-Notiz fuer den Blick nach
-  // oben weg und die Kinder haengen im Leeren).
+  // v1.18.0: Dokument ZUERST bedingt löschen, dann reparenten + Dateien —
+  // dasselbe Muster wie purgeExpiredTrash (v1.17.0). Die alte Reihenfolge
+  // (deleteMany mit Mengentreue-Prädikat, Dateilöschung aber über die
+  // ORIGINALE Gelesene-Liste) verlor den Restore-Race: Wer eine Notiz genau
+  // im emptyTrash-Fenster wiederherstellte, bekam sie zurück — ohne Anhänge,
+  // weil deleteNoteImages schon lief, das Prädikat sie aber nicht mehr traf.
+  // findOneAndDelete mit demselben Prädikat entscheidet atomar: Restore
+  // vorher → Notiz (und ihre Dateien) bleiben komplett; Notiz weg → Dateien
+  // sind ohnehin Waisen. reparentChildren braucht nur _id/parentId-Werte,
+  // läuft also problemlos nach dem Weg des Dokuments.
+  let removed = 0;
   for (const note of notes) {
-    await reparentChildren(note, userId);
+    const still = await Note.findOneAndDelete(
+      { _id: note._id, userId, deletedAt: { $ne: null } },
+      { projection: { images: 1, files: 1, parentId: 1 } }
+    ).lean();
+    if (!still) continue; // im Fenster wiederhergestellt — Notiz + Anhänge bleiben
+    removed += 1;
+    // Baum: Kinder des endgültig gelöschten Knotens eine Ebene hochziehen.
+    await reparentChildren(still, userId);
+    await deleteNoteImages(still);
+    await deleteNoteFiles(still);
   }
-
-  // Mengentreu: gelöscht wird genau die gelesene Menge (plus erneutes
-  // deletedAt-Prädikat). Nach Prädikat allein zu löschen erwischte auch Notizen,
-  // die zwischen Find und Delete in den Papierkorb wanderten — deren Dokumente
-  // wären weg, ihre Dateien für immer verwaist.
-  const deleted = await Note.deleteMany({
-    _id: { $in: notes.map((note) => note._id) },
-    userId,
-    deletedAt: { $ne: null }
-  });
-  await Promise.all(notes.map(note => Promise.all([deleteNoteImages(note), deleteNoteFiles(note)])));
-  return deleted.deletedCount ?? notes.length;
+  return removed;
 }
 
 /**
@@ -1205,7 +1248,10 @@ async function getNotesMeta(userId) {
     // $project vor $group (v1.15.0): Ohne diese Stufe scannte die 60s-Sonde
     // VOLLTEXT-Dokumente — content bis 10 KB, todoItems, bis zu 10 Revisions-
     // Snapshots. Die Zaehlung braucht vier Felder, kein Dokument-Material.
-    { $project: { deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 } },
+    // _id: 0 (v1.18.0-Review): Mongo projiziert _id sonst implizit mit, was
+    // jeden Index-Scan zu einem FETCH macht — erst ohne _id ist die Sonde
+    // über die Compound-Indizes eine echte Covered-Query (docsExamined: 0).
+    { $project: { _id: 0, deletedAt: 1, isArchived: 1, userId: 1, updatedAt: 1 } },
     { $group: {
       _id: null,
       active: { $sum: { $cond: [{ $and: [
@@ -1307,14 +1353,18 @@ function notFoundError() {
  * Fassung wiederherstellen (v1.13.0): laeuft als normales updateNote — der
  * aktuelle Stand wird dadurch selbst zur juengsten Revision (Undo des Undo
  * funktioniert), Konfliktbehandlung und lastEditedBy inklusive.
+ * baseUpdatedAt (v1.18.0): Der Client schickt den updatedAt-Stand, auf dem
+ * sein Restore-Dialog basiert — ohne ihn konnte der dokumentierte 409-Pfad
+ * nie feuern und der Restore ueberschrieb concurrent edits still.
  */
-async function restoreNoteRevision(noteId, userId, savedAt) {
+async function restoreNoteRevision(noteId, userId, savedAt, baseUpdatedAt) {
   const revision = await getNoteRevision(noteId, userId, savedAt);
   return updateNote(noteId, {
     title: revision.title,
     content: revision.content,
     todoItems: revision.todoItems,
-    isTodoList: revision.isTodoList
+    isTodoList: revision.isTodoList,
+    baseUpdatedAt
   }, userId);
 }
 
@@ -1347,7 +1397,7 @@ async function getNoteTree(userId, since) {
     ...(sinceDate ? { updatedAt: { $gte: sinceDate } } : {})
   })
     .select('parentId title order isPinned isCode isArchived isTodoList remindAt updatedAt userId')
-    .sort({ isPinned: -1, order: -1, updatedAt: -1 })
+    .sort({ isPinned: -1, order: -1, updatedAt: -1, _id: -1 })
     .lean();
 
   return notes.map((note) => ({
@@ -1400,7 +1450,9 @@ async function getNoteBacklinks(noteId, userId) {
     content: { $regex: new RegExp(`\\[\\[${escapeRegexLiteral(title)}\\]\\]`, 'i') }
   })
     .select('title updatedAt')
-    .sort({ updatedAt: -1 })
+    // _id-Tiebreaker: gleichaltrige Quellen liefern sonst pro Abruf eine
+    // andere 50er-Auswahl (limit ohne stabile Ordnung).
+    .sort({ updatedAt: -1, _id: -1 })
     .limit(BACKLINKS_LIMIT)
     .lean();
 
@@ -1692,7 +1744,19 @@ const IMPORT_MAX_ITEMS = 500;
 const IMPORT_MAX_PATH = 400;
 const IMPORT_MAX_DEPTH = 20;
 
-async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMap = null } = {}) {
+async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMap = null, importId = null, chunkIndex = null } = {}) {
+  // 0) Idempotenz (v1.18.0): Der Client kennzeichnet jeden Chunk mit der
+  //    importId seines Laufs. Ein bereits angewandter Chunk (Retry nach
+  //    Teil-Fehler) wird übersprungen statt nochmals angelegt — vorher
+  //    duplizierte jeder Wiederholungsversuch jede Notiz der gelandeten
+  //    Chunks. Ohne importId bleibt das alte Verhalten (Einzel-Aufrufe).
+  const idempotent = importId != null || chunkIndex != null;
+  let claimed = false;
+  if (idempotent && (typeof importId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(importId)
+    || !Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 9999)) {
+    throw clientError('importId/chunkIndex sind ungültig');
+  }
+
   // 1) Normalisieren und validieren — ein fehlerhafter Chunk bricht komplett
   //    ab, statt halb angelegt zu enden.
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -1926,54 +1990,93 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     });
   }
 
+  // 4b) Chunk atomar CLAIMEN statt nur zu prüfen (Review v1.18.0): Ein
+  //     findOne-vor-insertMany ließ zwei überlappende Retries denselben Chunk
+  //     doppelt anlegen (Timeout → Retry, während der erste noch schreibt).
+  //     updateOne mit $ne-Filter entscheidet am Dokument: genau EIN Aufruf
+  //     matcht (oder legt an) — der Verlierer bekommt 0/0 und überspringt,
+  //     während der Gewinner noch schreibt. Der Claim steht bewusst NACH der
+  //     Validierung: Ein ungültiger Chunk (400) hinterlässt keinen Claim, der
+  //     den korrigierten Retry blockieren würde. Scheitert das Schreiben,
+  //     gibt der catch-Block unten den Claim wieder frei.
+  if (idempotent) {
+    const claim = await ImportRun.updateOne(
+      { userId, importId, appliedChunks: { $ne: chunkIndex } },
+      {
+        $addToSet: { appliedChunks: chunkIndex },
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { upsert: true }
+    );
+    if (claim.modifiedCount === 0 && claim.upsertedCount === 0) {
+      return { created: 0, foldersCreated: 0, skipped: true };
+    }
+    claimed = true;
+  }
+
   // 5) Demo-Budget: Einzel-Creates prueft enforceDemoNoteLimit (Bestand < Limit),
   //    hier muss die Chunk-Groesse mitrechnen, sonst sprengt ein Rutsch das Limit.
   //    Verschmolzene _index-Eintraege zaehlen nicht doppelt — sie werden zum
   //    Ordner, nicht zur zusaetzlichen Notiz.
-  if (demoLimit != null) {
-    const noteCount = await Note.countDocuments({ userId, deletedAt: null });
-    if (noteCount + noteItems.length + newFolders.length > demoLimit) {
-      const error = new Error(`Die oeffentliche Demo ist auf ${demoLimit} Notizen begrenzt.`);
-      error.statusCode = 429;
-      error.code = 'DEMO_NOTE_LIMIT';
-      throw error;
-    }
-  }
-
+  //
   // 6) Anlegen: Ordner zuerst (Eltern vor Kindern, insertMany haelt die
   //    Reihenfolge), dann die Notizen ab der aktuellen Spitze. Die positionelle
   //    Vergabe ist ABSTEIGEND (v1.16.0): Der Export schreibt order:-1, der
   //    erste Eintrag ist also der oberste — aufsteigend (bis v1..15) stand der
   //    Round-trip komplett kopfüber. Frontmatter-order gewinnt vor Position.
-  if (newFolders.length > 0) {
-    await Note.insertMany(newFolders);
-  }
-  const baseOrder = await nextTopOrder(userId, false);
-  const newNotes = noteItems.map((item, index) => ({
-    title: item.title,
-    content: item.content,
-    tags: item.tags,
-    isTodoList: item.isTodoList === true,
-    todoItems: item.todoItems || [],
-    isPinned: item.isPinned === true,
-    isArchived: item.isArchived === true,
-    isCode: item.isCode === true,
-    color: item.color || '#ffffff',
-    remindAt: item.remindAt ?? null,
-    images: attachmentMetadata(item).images,
-    files: attachmentMetadata(item).files,
-    ...(item.createdAt ? { createdAt: item.createdAt, updatedAt: item.updatedAt ?? item.createdAt } : {}),
-    parentId: item.segments.length === 0 ? null : (folderIdByPath.get(item.segments.join('/')) ?? null),
-    userId,
-    order: item.order ?? (baseOrder + (noteItems.length - 1 - index))
-  }));
-  await Note.insertMany(newNotes);
+  try {
+    if (demoLimit != null) {
+      const noteCount = await Note.countDocuments({ userId, deletedAt: null });
+      if (noteCount + noteItems.length + newFolders.length > demoLimit) {
+        const error = new Error(`Die oeffentliche Demo ist auf ${demoLimit} Notizen begrenzt.`);
+        error.statusCode = 429;
+        error.code = 'DEMO_NOTE_LIMIT';
+        throw error;
+      }
+    }
+    if (newFolders.length > 0) {
+      await Note.insertMany(newFolders);
+    }
+    const baseOrder = await nextTopOrder(userId, false);
+    const newNotes = noteItems.map((item, index) => ({
+      title: item.title,
+      content: item.content,
+      tags: item.tags,
+      isTodoList: item.isTodoList === true,
+      todoItems: item.todoItems || [],
+      isPinned: item.isPinned === true,
+      isArchived: item.isArchived === true,
+      isCode: item.isCode === true,
+      color: item.color || '#ffffff',
+      remindAt: item.remindAt ?? null,
+      images: attachmentMetadata(item).images,
+      files: attachmentMetadata(item).files,
+      ...(item.createdAt ? { createdAt: item.createdAt, updatedAt: item.updatedAt ?? item.createdAt } : {}),
+      parentId: item.segments.length === 0 ? null : (folderIdByPath.get(item.segments.join('/')) ?? null),
+      userId,
+      order: item.order ?? (baseOrder + (noteItems.length - 1 - index))
+    }));
+    await Note.insertMany(newNotes);
 
-  return {
-    created: newNotes.length,
-    foldersCreated: newFolders.length,
-    folderIds: [...folderIdByPath.values()]
-  };
+    return {
+      created: newNotes.length,
+      foldersCreated: newFolders.length,
+      folderIds: [...folderIdByPath.values()]
+    };
+  } catch (error) {
+    // Claim zurückgeben: Der Chunk ist NICHT angewandt — ein Retry darf und
+    // MUSS ihn wieder versuchen. Best effort: Schlägt selbst die Freigabe
+    // fehl, bleibt der Chunk gesperrt (sichtbar am skipped:true des Retries).
+    if (claimed) {
+      try {
+        await ImportRun.updateOne(
+          { userId, importId },
+          { $pull: { appliedChunks: chunkIndex } }
+        );
+      } catch (_releaseError) { /* best effort — Fehler hier nicht verschlucken: der Original-fehler fliegt weiter */ }
+    }
+    throw error;
+  }
 }
 
 /** attachments eines normalisierten Items als images[]/files[]-Metadaten. */

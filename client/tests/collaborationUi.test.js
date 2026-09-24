@@ -10,10 +10,16 @@ const readPublic = (file) => fs.readFileSync(path.join(__dirname, '../public', f
 // not hijack an already open editor. `noteModal.note` would flip to null while
 // the form still shows the open note's values, so saving created a duplicate
 // instead of updating the note.
-test('a new-note request never replaces an open editor', () => {
+test('a new-note request never replaces an open editor, a wiki link navigates (v1.18.0)', () => {
   const app = read('App.jsx');
 
-  assert.match(app, /setNoteModal\(prev => \(prev\.isOpen \? prev : \{ isOpen: true, note \}\)\)/);
+  // „Neue Notiz“ (note === null) übernimmt nie einen offenen Editor; eine
+  // ANDERE Notiz (Wiki-Link im offenen Editor) ersetzt ihn dagegen — der
+  // alte Guard schluckte die Navigation still.
+  assert.match(
+    app,
+    /setNoteModal\(prev => \(!prev\.isOpen\s*\n\s*\|\| \(note && String\(prev\.note\?\._id \?\? 'new'\) !== String\(note\._id\)\)\)\s*\n\s*\? \{ isOpen: true, note \} : prev\)/
+  );
   assert.doesNotMatch(app, /const openNoteModal = \(note = null\) => setNoteModal\(\{ isOpen: true, note \}\)/);
 });
 

@@ -209,6 +209,20 @@ fun SettingsScreen(
                 }
             )
 
+            // Markdown rendering (v1.18.0): off shows the raw source again,
+            // like the WebUI's "Render cards as Markdown" switch.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.settings_render_markdown)) },
+                supportingContent = { Text(stringResource(R.string.settings_render_markdown_hint)) },
+                leadingContent = { Icon(Icons.Default.Article, contentDescription = null) },
+                trailingContent = {
+                    Switch(
+                        checked = uiState.renderMarkdown,
+                        onCheckedChange = { viewModel.toggleRenderMarkdown() }
+                    )
+                }
+            )
+
             @Suppress("DEPRECATION")
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -851,6 +865,12 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showLogoutConfirm = false },
             title = { Text(stringResource(R.string.auth_logout)) },
+            text = {
+                // v1.18.0: Der Logout wischt den lokalen Cache — inklusive
+                // ungesyncter Notizen. Das muss im Dialog stehen, nicht erst
+                // im Datenverlust (Review v1.18.0).
+                Text(stringResource(R.string.settings_logout_wipe_warning))
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showLogoutConfirm = false

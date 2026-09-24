@@ -211,7 +211,7 @@ test('the note list is ordered by manual order, then the recency key the client 
 
   await service.getAllNotes({ userId: OWNER_ID, page: 1, limit: 50, archived: 'false' });
 
-  assert.deepEqual(seen.sort, { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1 });
+  assert.deepEqual(seen.sort, { isPinned: -1, order: -1, updatedAt: -1, createdAt: -1, _id: -1 });
 });
 
 // Improvement #8 (VERBESSERUNGEN_2026-09-11): collaborators may change the

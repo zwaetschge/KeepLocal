@@ -2,11 +2,22 @@ import React, { useState, useRef, useImperativeHandle, useEffect, useCallback } 
 import { useLanguage } from '../contexts/LanguageContext';
 import './SearchBar.css';
 
-const SearchBar = React.forwardRef(({ onSearch }, ref) => {
+const SearchBar = React.forwardRef(({ onSearch, searchTerm: externalSearchTerm }, ref) => {
   const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+
+  // v1.18.0: Gespeicherte Suchen setzen den Begriff von außen — das Feld muss
+  // ihm folgen (vorher zeigte es weiter den zuletzt getippten Text und die
+  // Liste filterte nach etwas anderem als dastand). Ein noch laufender Debounce
+  // des getippten Texts wird mitgekündigt, sonst überholte er die gespeicherte
+  // Suche 300 ms später.
+  useEffect(() => {
+    if (externalSearchTerm === undefined) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchTerm(externalSearchTerm);
+  }, [externalSearchTerm]);
 
   // Expose focus method to parent
   useImperativeHandle(ref, () => ({

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import notesAPI from '../services/api/notesAPI';
 import { migrateTagReferences } from '../utils/tagMigration.mjs';
 
@@ -39,6 +39,9 @@ export function useFolderFeatures({
   setSelectedTag,
   setShowTrash,
   setShowArchived,
+  // v1.18.0: Gespeicherte Suchen laufen global — der Ordner-Scope des
+  // Moments darf sie nicht still auf einen Unterbaum begrenzen.
+  clearFolderScope,
 }) {
   /** Notiz öffnen — aus dem Fenster oder per Einzelabruf nachladen. */
   const handleOpenNoteById = useCallback(async (id) => {
@@ -71,9 +74,12 @@ export function useFolderFeatures({
   const handleRunSavedSearch = useCallback((search) => {
     setShowTrash(false);
     setShowArchived(false);
+    // v1.18.0: Ein offener Ordner blieb stehen und begrenzte die gespeicherte
+    // Suche still auf diesen Unterbaum — obwohl sie global gemeint war.
+    clearFolderScope?.();
     setSearchTerm(search.query || '');
     setSelectedTag(search.tag || null);
-  }, [setShowTrash, setShowArchived, setSearchTerm, setSelectedTag]);
+  }, [setShowTrash, setShowArchived, clearFolderScope, setSearchTerm, setSelectedTag]);
 
   const handleSaveCurrentSearch = useCallback(() => {
     const query = searchTerm.trim();
@@ -173,6 +179,48 @@ export function useFolderFeatures({
         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
       })
     })), [treeNodes, reminderTick]);
+
+  /** v1.18.0: Erinnerungen FEUERN — die Übersicht oben zeigt sie an, aber der
+   *  Termin verstrich still: Toast und System-Notification erschienen nie.
+   *  Der 60s-Tick (oder eine Baum-Aktualisierung) prüft, welche remindAt SEIT
+   *  dem letzten Check fällig wurde, und stößt genau die einmal pro Notiz und
+   *  Session an. Das Nachholf-Fenster ist auf 15 Minuten gedeckelt — ein
+   *  Reload soll den kurz verpassten Termin nachholen, nicht jeden alten.
+   *  Die Freigabe für System-Notifications gibt es in den Einstellungen;
+   *  ohne sie bleibt der Toast. */
+  const firedRemindersRef = useRef(new Set());
+  const lastDueCheckRef = useRef(Date.now() - 15 * 60_000);
+  useEffect(() => {
+    // Ohne Baum keine Aussage: Das Fenster darf erst fortschreiten, wenn
+    // Daten da sind — sonst brennt der Mount-Lauf (Login-Screen, leerer
+    // Baum) die 15 Minuten ab, und ein Termin, der während des Reloads
+    // fällig wurde, hätte keine Chance mehr (Review v1.18.0).
+    if (Object.keys(treeNodes).length === 0) return;
+    const now = Date.now();
+    const since = Math.max(lastDueCheckRef.current, now - 15 * 60_000);
+    lastDueCheckRef.current = now;
+    for (const node of Object.values(treeNodes)) {
+      const due = node.remindAt ? new Date(node.remindAt).getTime() : null;
+      if (!due || node.isArchived || due > now || due <= since) continue;
+      if (firedRemindersRef.current.has(node.id)) continue;
+      firedRemindersRef.current.add(node.id);
+      const title = node.title || t('untitledNote');
+      const label = new Date(node.remindAt).toLocaleString(undefined, {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+      });
+      showToast(`${t('reminderDue')}: ${title} · ${label}`, 'info', { duration: 10_000 });
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const notification = new Notification(t('reminderDue'), { body: `${title} · ${label}`, tag: node.id });
+          notification.addEventListener('click', () => {
+            window.focus();
+            handleOpenNoteById(node.id);
+          });
+        }
+      } catch { // Manche Browser werfen ohne Service Worker — der Toast deckt es.
+      }
+    }
+  }, [treeNodes, reminderTick, showToast, t, handleOpenNoteById]);
 
   /** Nach Markdown-Import (Settings): Liste und Baum nachziehen. */
   const handleDataImported = useCallback(() => {

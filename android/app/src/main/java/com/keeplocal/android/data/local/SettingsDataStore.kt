@@ -55,6 +55,13 @@ class SettingsDataStore @Inject constructor(
     val voiceTranscription: Flow<Boolean> = dataStore.data.map { it[KEY_VOICE_TRANSCRIPTION] ?: true }
 
     /**
+     * Markdown rendering for note content (server key
+     * `preferences.renderMarkdown`, v1.18.0). Default on, mirroring the
+     * server's `!== false` default; off shows the raw source again.
+     */
+    val renderMarkdown: Flow<Boolean> = dataStore.data.map { it[KEY_RENDER_MARKDOWN] ?: true }
+
+    /**
      * Material You wallpaper colors (v1.7.0 design round). Off by default so
      * the KeepLocal paper palette stays the identity; re-tints light/dark
      * mode. E-ink and doodle keep their fixed schemes, OLED keeps its black
@@ -85,6 +92,9 @@ class SettingsDataStore @Inject constructor(
     // des letzten erfolgreichen Delta-Pulls.
     /** Meta-Signatur des letzten erfolgreichen Pulls ("" = noch nie gezogen). */
     val syncSignature: Flow<String> = dataStore.data.map { it[KEY_SYNC_SIGNATURE] ?: "" }
+
+    /** True, wenn der Logout die Signatur auf den Wipe-Marker gesetzt hat. */
+    val isSyncSignatureWiped: Flow<Boolean> = dataStore.data.map { it[KEY_SYNC_SIGNATURE] == SYNC_SIGNATURE_WIPED }
 
     /** ISO-8601 des letzten Delta-Pulls ("" = noch kein Delta, nächster Pull komplett). */
     val syncSince: Flow<String> = dataStore.data.map { it[KEY_SYNC_SINCE] ?: "" }
@@ -186,6 +196,10 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setVoiceTranscription(enabled: Boolean) {
         dataStore.edit { it[KEY_VOICE_TRANSCRIPTION] = enabled }
+    }
+
+    suspend fun setRenderMarkdown(enabled: Boolean) {
+        dataStore.edit { it[KEY_RENDER_MARKDOWN] = enabled }
     }
 
     suspend fun setMaterialYou(enabled: Boolean) {
@@ -291,11 +305,21 @@ class SettingsDataStore @Inject constructor(
         private val KEY_NOTE_VIEW_MODE = stringPreferencesKey("note_view_mode")
         private val KEY_BACKGROUND_SYNC = booleanPreferencesKey("background_sync")
         private val KEY_VOICE_TRANSCRIPTION = booleanPreferencesKey("voice_transcription")
+        private val KEY_RENDER_MARKDOWN = booleanPreferencesKey("render_markdown")
         private val KEY_MATERIAL_YOU = booleanPreferencesKey("material_you")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         private val KEY_SORT_MODE = stringPreferencesKey("sort_mode")
         private val KEY_LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         private val KEY_SYNC_SIGNATURE = stringPreferencesKey("sync_signature")
+
+        /**
+         * Logout-Marker im Signatur-Slot (Review v1.18.0): unterscheidet
+         * „gewiped" von „noch nie gezogen" (beides wäre ""), damit ein Pull,
+         * der während des Logouts lief, seinen Cursor nicht für das NÄCHSTE
+         * Konto zurückschreibt. Eine echte Signatur enthält immer Zähler-
+         * Slashes ("a/b/t/max") und kann den Marker nie annehmen.
+         */
+        const val SYNC_SIGNATURE_WIPED = "wiped-by-logout"
         private val KEY_SYNC_SINCE = stringPreferencesKey("sync_since")
         private val KEY_BACKUP_INTERVAL_HOURS = intPreferencesKey("backup_interval_hours")
         private val KEY_BACKUP_TREE_URI = stringPreferencesKey("backup_tree_uri")

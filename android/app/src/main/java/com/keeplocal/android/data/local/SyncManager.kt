@@ -303,6 +303,14 @@ class SyncManager @Inject constructor(
                         }
                         val body = response.body() ?: break
                         pages = body.pages ?: 1
+                        // One REPLACE batch per page (v1.18.0): the DAO's list
+                        // insert runs the whole page as a single Room
+                        // transaction instead of one journal commit per note
+                        // (a 500-note first sync used to cost 500 fsyncs).
+                        // Ordering is safe: REPLACE matches by primary key and
+                        // Room replays the list in order inside the one
+                        // transaction, so duplicates keep last-wins semantics.
+                        val pageBatch = mutableListOf<NoteEntity>()
                         for (dto in body.getNotesList()) {
                             val domain = dto.toDomain()
                             maxSeenUpdatedAt = newerIso(dto.updatedAt, maxSeenUpdatedAt)
@@ -316,8 +324,13 @@ class SyncManager @Inject constructor(
                             if (domain.id in pendingIds ||
                                 pendingOperationDao.getCountForNote(domain.id) > 0
                             ) continue
-                            noteDao.insertNote(domain.toEntity().copy(baseUpdatedAt = dto.updatedAt))
-                            changed++
+                            pageBatch += domain.toEntity().copy(baseUpdatedAt = dto.updatedAt)
+                        }
+                        if (pageBatch.isNotEmpty()) {
+                            // Transaction-gebundener Pending-Filter (Review
+                            // v1.18.0): schließt das Fenster zwischen der
+                            // per-note Prüfung oben und dem Seiten-Insert.
+                            changed += noteDao.insertNotesSkippingPending(pageBatch)
                         }
                         page++
                     }
@@ -326,12 +339,18 @@ class SyncManager @Inject constructor(
             }
 
             if (pullClean) {
-                settingsDataStore.setSyncSignature(signature)
-                // Next delta starts strictly after the newest change seen —
-                // server maxUpdatedAt as the floor, the delta itself may
-                // have raced ahead of the probe.
-                val newSince = maxSeenUpdatedAt ?: meta.maxUpdatedAt
-                if (newSince != null) settingsDataStore.setSyncSince(newSince)
+                // Review v1.18.0: Ein Logout während dieses Pulls hat den
+                // Cursor auf den Wipe-Marker gesetzt — dann nichts mehr
+                // zurückschreiben, sonst liefe der nächste Account mit dem
+                // since des alten weiter.
+                if (settingsDataStore.syncSignature.first() != SettingsDataStore.SYNC_SIGNATURE_WIPED) {
+                    settingsDataStore.setSyncSignature(signature)
+                    // Next delta starts strictly after the newest change seen —
+                    // server maxUpdatedAt as the floor, the delta itself may
+                    // have raced ahead of the probe.
+                    val newSince = maxSeenUpdatedAt ?: meta.maxUpdatedAt
+                    if (newSince != null) settingsDataStore.setSyncSince(newSince)
+                }
             }
             changed
         } catch (e: CancellationException) {

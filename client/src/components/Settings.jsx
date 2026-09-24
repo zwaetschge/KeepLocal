@@ -26,6 +26,29 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
   // (Ordner mit .md/.txt — Unterordner werden zu Ordner-Notizen im Baum).
   const [mdBusy, setMdBusy] = useState(null); // 'export' | 'import' | 'zip' | null
   const mdImportInputRef = useRef(null);
+  // Fehlgeschlagener Markdown-Import (v1.18.0): {importId, signature} — dieselben
+  // Dateien erneut gewählt ⇒ Lauf fortsetzen (Server skippt gelandete Chunks).
+  const failedImportRef = useRef(null);
+  // v1.18.0: Fällige Erinnerungen feuern Toast + System-Notification — die
+  // Freigabe dafür wird hier erteilt (Browser fragen nur auf Nutzeraktion).
+  const [notificationPermission, setNotificationPermission] = useState(
+    () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+  );
+  const requestNotifications = useCallback(async () => {
+    if (typeof Notification === 'undefined') return;
+    try {
+      // Alte WebKit-Builds nehmen einen Callback und geben undefined zurück —
+      // ohne diese Brücke wäre der Zustand danach unbenutzbar (Review
+      // v1.18.0). Fallback auf Notification.permission deckt beide Formen.
+      const result = await new Promise((resolve) => {
+        const maybe = Notification.requestPermission(resolve);
+        if (maybe && typeof maybe.then === 'function') maybe.then(resolve);
+      });
+      setNotificationPermission(result || Notification.permission);
+    } catch {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
   const zipImportInputRef = useRef(null);
   // API Keys state
   const [apiKeys, setApiKeys] = useState([]);
@@ -212,6 +235,21 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
     if (files.length === 0) return;
     setMdBusy('import');
     let created = 0;
+    // Chunk-Idempotenz (v1.18.0): Die importId kennzeichnet diesen Lauf; der
+    // Server überspringt beim Wiederholen bereits gelandete Chunks. Schlug ein
+    // Lauf mittendrin fehl, merken wir uns importId + Datei-Signatur — wählt
+    // der Nutzer dieselben Dateien erneut, wird der Lauf fortgesetzt statt
+    // die gelandeten Chunks zu duplizieren; andere Dateien starten einen
+    // frischen Lauf, ein abgeschlossener Import ebenfalls (Reset im Erfolg).
+    const signature = JSON.stringify(
+      files.map((file) => [file.name, file.size, file.lastModified]).sort()
+    );
+    const resumable = failedImportRef.current?.signature === signature;
+    const importId = resumable
+      ? failedImportRef.current.importId
+      : (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `imp-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`);
     try {
       const { items } = await buildMarkdownImportItems(files);
       if (items.length === 0) {
@@ -220,7 +258,7 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
       }
       const chunks = chunkImportItems(items);
       for (let index = 0; index < chunks.length; index += 1) {
-        const result = await notesAPI.importMarkdown(chunks[index]);
+        const result = await notesAPI.importMarkdown(chunks[index], { importId, chunkIndex: index });
         created += (result.created || 0) + (result.foldersCreated || 0);
         if (chunks.length > 1) {
           toastBus.info(t('importMarkdownProgress', {
@@ -229,10 +267,12 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
           }));
         }
       }
+      failedImportRef.current = null;
       toastBus.success(t('importMarkdownDone', { count: created }));
       onDataImported?.();
     } catch (err) {
       console.error('Markdown-Import fehlgeschlagen:', err);
+      failedImportRef.current = { importId, signature };
       toastBus.error(resolveApiErrorMessage(err, t, 'importMarkdownFailed'));
     } finally {
       setMdBusy(null);
@@ -303,6 +343,36 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
             <div className="settings-language">
               <LanguageSelector />
             </div>
+          </section>
+
+          {/* v1.18.0: System-Benachrichtigungen für fällige Erinnerungen —
+              der Toast in der App läuft ohnehin, die Notification braucht die
+              explizite Freigabe des Browsers (nur auf Klick anfragbar). */}
+          <section className="settings-section">
+            <h3 className="settings-section-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ marginRight: '8px' }}>
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 01-3.46 0"/>
+              </svg>
+              {t('notificationSection')}
+            </h3>
+            <p className="settings-section-description">
+              {t('notificationSectionDescription')}
+            </p>
+            {notificationPermission === 'granted' && (
+              <p className="settings-section-description">{t('notificationEnabled')}</p>
+            )}
+            {notificationPermission === 'denied' && (
+              <p className="settings-section-description">{t('notificationBlocked')}</p>
+            )}
+            {notificationPermission === 'unsupported' && (
+              <p className="settings-section-description">{t('notificationUnsupported')}</p>
+            )}
+            {notificationPermission === 'default' && (
+              <button type="button" className="btn-change-password" onClick={requestNotifications}>
+                {t('notificationEnable')}
+              </button>
+            )}
           </section>
 
           {/* Password Section */}

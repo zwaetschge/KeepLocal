@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -60,6 +61,8 @@ import com.keeplocal.android.ui.components.NoteImageGrid
 import com.keeplocal.android.ui.components.SearchHighlightTransformation
 import com.keeplocal.android.util.InNoteSearch
 import com.keeplocal.android.util.LinkOpener
+import com.keeplocal.android.util.MarkdownRenderer
+import com.keeplocal.android.util.MarkdownText
 import com.keeplocal.android.util.NoteLinkDetector
 import com.keeplocal.android.util.PdfNoteRenderer
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +115,16 @@ fun NoteEditorContent(
     // their items on the list screen instead.
     var showFindBar by remember(uiState.id) { mutableStateOf(false) }
     var inNoteSearch by remember(uiState.id) { mutableStateOf(InNoteSearch.State()) }
+    // Markdown preview (v1.18.0): text notes open rendered when the account
+    // has renderMarkdown on; the eye toggles back to the raw editor per note.
+    // Blank notes (new or restored draft) start in the raw field so the
+    // placeholder stays visible. Find-in-note paints its hits into the raw
+    // field, so an open find bar forces raw view too.
+    val markdownEnabled = uiState.renderMarkdown && !uiState.isTodoList && !uiState.isCode
+    var showRawContent by remember(uiState.id) {
+        mutableStateOf(uiState.id == null || !markdownEnabled)
+    }
+    val showMarkdownPreview = markdownEnabled && !showRawContent && !inNoteSearch.isActive
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
     // One scope for everything that leaves the composable tree: image
@@ -292,6 +305,18 @@ fun NoteEditorContent(
                                    else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Markdown preview (v1.18.0): swap rendered/raw in place.
+                    if (markdownEnabled) {
+                        IconButton(onClick = { showRawContent = !showRawContent }) {
+                            Icon(
+                                if (showRawContent) Icons.Default.Visibility else Icons.Default.Edit,
+                                contentDescription = stringResource(
+                                    if (showRawContent) R.string.editor_markdown_rendered
+                                    else R.string.editor_markdown_raw
+                                )
+                            )
+                        }
+                    }
                     IconButton(onClick = { showColorPicker = true }) {
                         Icon(Icons.Default.Palette, contentDescription = stringResource(R.string.editor_color))
                     }
@@ -312,6 +337,8 @@ fun NoteEditorContent(
                                     onClick = {
                                         showOverflow = false
                                         showFindBar = true
+                                        // Hits are painted into the raw field.
+                                        showRawContent = true
                                     }
                                 )
                             }
@@ -595,6 +622,32 @@ fun NoteEditorContent(
                             }
                         }
                     }
+                }
+            } else if (showMarkdownPreview) {
+                // Rendered markdown (v1.18.0): the preview replaces the raw
+                // field; wiki links and URLs are tappable inline, so the chip
+                // rows stay out of the way until the user switches to raw.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    val blocks = remember(uiState.content) {
+                        MarkdownRenderer.parseMarkdown(uiState.content)
+                    }
+                    MarkdownText(
+                        blocks = blocks,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        onOpenUrl = { LinkOpener.open(context, it) },
+                        onOpenWiki = { target ->
+                            // Same resolution as the chips: a title is the
+                            // address, the ViewModel caches the note ids.
+                            uiState.wikiLinks.firstOrNull { it.target == target }?.noteId?.let(onOpenNote)
+                        }
+                    )
                 }
             } else {
                 TextField(
