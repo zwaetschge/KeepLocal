@@ -130,6 +130,8 @@
     <string name="settings_clear_cache">Lokalen Cache leeren</string>
     <string name="settings_cache_cleared">Cache geleert</string>
     <string name="settings_cache_cleared_kept">Cache geleert — %1$d Offline-Notizen behalten</string>
+    <!-- v1.18.0: Logout wischt den lokalen Cache MIT ungesyncten Änderungen. -->
+    <string name="settings_logout_wipe_warning">Auf diesem Gerät gespeicherte, noch nicht synchronisierte Notizen und Änderungen werden gelöscht. Bereits synchronisierte Inhalte bleiben am Server.</string>
     <string name="settings_about">Über</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_connection_status">Verbindungsstatus</string>
@@ -313,6 +315,8 @@
     <!-- v1.6.0 -->
     <string name="settings_voice_transcription">Diktieren (Sprache-zu-Text)</string>
     <string name="settings_voice_transcription_hint">Konto-weites KI-Feature. Aus = das Mikrofon verschwindet aus dem Editor.</string>
+    <string name="settings_render_markdown">Notizen als Markdown rendern</string>
+    <string name="settings_render_markdown_hint">Zeigt Überschriften, Listen, Code-Blöcke und Links formatiert anstatt als Rohtext. Code-Notizen bleiben immer dicktengleich.</string>
     <string name="settings_data">Daten</string>
     <string name="settings_queue">Offline-Warteschlange</string>
     <string name="settings_queue_hint">Änderungen, die noch nicht beim Server sind</string>
@@ -482,6 +486,8 @@
     <string name="cd_toggle_folder">Ordner aus- oder einklappen</string>
     <string name="editor_untitled">Ohne Titel</string>
     <string name="editor_code_mode">Monospace-Codeansicht</string>
+    <string name="editor_markdown_raw">Markdown-Quelltext bearbeiten</string>
+    <string name="editor_markdown_rendered">Gerendertes Markdown anzeigen</string>
     <string name="editor_backlinks">Erwähnt in</string>
     <string name="action_move">Verschieben</string>
     <string name="move_picker_title">In Ordner verschieben</string>

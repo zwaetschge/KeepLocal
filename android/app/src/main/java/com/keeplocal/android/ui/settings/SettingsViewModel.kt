@@ -69,6 +69,8 @@ data class SettingsUiState(
     val isConnected: Boolean = false,
     /** Account-wide dictation switch; hides the editor mic when off. */
     val voiceTranscription: Boolean = true,
+    /** Markdown rendering for note content (v1.18.0); off = raw source. */
+    val renderMarkdown: Boolean = true,
 
     /** Material You wallpaper tint (v1.7.0 design round), light/dark only. */
     val materialYou: Boolean = false,
@@ -181,6 +183,7 @@ class SettingsViewModel @Inject constructor(
             val sync = settingsDataStore.backgroundSync.first()
             val viewMode = settingsDataStore.noteViewMode.first()
             val voice = settingsDataStore.voiceTranscription.first()
+            val renderMarkdown = settingsDataStore.renderMarkdown.first()
             val materialYou = settingsDataStore.materialYou.first()
 
             _uiState.update {
@@ -194,6 +197,7 @@ class SettingsViewModel @Inject constructor(
                     biometricLock = biometric,
                     backgroundSync = sync,
                     voiceTranscription = voice,
+                    renderMarkdown = renderMarkdown,
                     materialYou = materialYou
                 )
             }
@@ -315,6 +319,24 @@ class SettingsViewModel @Inject constructor(
         val newValue = !_uiState.value.materialYou
         _uiState.update { it.copy(materialYou = newValue) }
         viewModelScope.launch { settingsDataStore.setMaterialYou(newValue) }
+    }
+
+    /**
+     * Markdown rendering (v1.18.0): account-wide like voice transcription —
+     * stored locally first (the editor reacts instantly), then pushed via
+     * PUT /api/auth/preferences so every device of the account renders the
+     * same way as the WebUI. Push failures are logged, not surfaced; the
+     * next login pull re-syncs the value anyway.
+     */
+    fun toggleRenderMarkdown() {
+        val newValue = !_uiState.value.renderMarkdown
+        _uiState.update { it.copy(renderMarkdown = newValue) }
+        viewModelScope.launch {
+            settingsDataStore.setRenderMarkdown(newValue)
+            authRepository.pushPreferences(renderMarkdown = newValue)
+                .takeIf { it.isError }
+                ?.let { fileLogger.error("Settings", "renderMarkdown push failed: ${(it as Result.Error).message}") }
+        }
     }
 
     // --- Offline sync queue (v1.6.0 Nr. 6) ---

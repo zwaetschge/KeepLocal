@@ -30,7 +30,8 @@ interface AuthRepository {
         theme: String? = null,
         language: String? = null,
         transcriptionLanguage: String? = null,
-        voiceTranscription: Boolean? = null
+        voiceTranscription: Boolean? = null,
+        renderMarkdown: Boolean? = null
     ): Result<Unit>
     /**
      * Pushes the account-wide tag colors (v1.10.0, same endpoint): tag name

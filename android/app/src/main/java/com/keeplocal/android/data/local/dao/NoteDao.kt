@@ -35,6 +35,25 @@ interface NoteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotes(notes: List<NoteEntity>)
 
+    /** Note ids with at least one queued offline operation. */
+    @Query("SELECT DISTINCT noteId FROM pending_operations")
+    suspend fun getPendingNoteIds(): List<String>
+
+    /**
+     * Page-batch insert that skips notes with a queued offline op. The check
+     * runs in the SAME transaction as the insert, closing the check-to-insert
+     * window of the paged delta pull (Review v1.18.0): an offline edit saved
+     * while the page loop was still parsing would otherwise be REPLACEd away
+     * by its own stale server row. Returns how many rows were written.
+     */
+    @Transaction
+    suspend fun insertNotesSkippingPending(notes: List<NoteEntity>): Int {
+        val pending = getPendingNoteIds().toSet()
+        val batch = if (pending.isEmpty()) notes else notes.filter { it.id !in pending }
+        insertNotes(batch)
+        return batch.size
+    }
+
     @Delete
     suspend fun deleteNote(note: NoteEntity)
 

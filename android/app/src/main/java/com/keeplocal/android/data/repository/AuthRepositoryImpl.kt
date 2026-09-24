@@ -14,6 +14,8 @@ import com.keeplocal.android.data.api.dto.toDomain
 import com.keeplocal.android.data.api.dto.toDto
 import com.keeplocal.android.data.local.SettingsDataStore
 import com.keeplocal.android.data.local.TokenManager
+import com.keeplocal.android.data.local.dao.NoteDao
+import com.keeplocal.android.data.local.dao.PendingOperationDao
 import com.keeplocal.android.domain.model.AuthState
 import com.keeplocal.android.domain.model.OAuthProviders
 import com.keeplocal.android.domain.model.SavedSearch
@@ -37,6 +39,8 @@ class AuthRepositoryImpl @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val okHttpClient: OkHttpClient,
     private val cookieJar: SessionCookieJar,
+    private val noteDao: NoteDao,
+    private val pendingOperationDao: PendingOperationDao,
     private val fileLogger: FileLogger
 ) : AuthRepository {
 
@@ -159,6 +163,32 @@ class AuthRepositoryImpl @Inject constructor(
         cookieJar.clear()
         tokenManager.clearCredentials()
         tokenManager.clearAll()
+        // The notes cache, the offline queue and the delta-sync cursor all
+        // belong to the account that just left — wipe them BEFORE the auth
+        // state flips, so the next login on this device starts from an empty
+        // cache instead of seeing the previous account's notes, and a kept
+        // `since` never replays a foreign delta into it.
+        // Review v1.18.0: jeder Schritt im eigenen try — EIN fehlgeschlagener
+        // Room-Call darf den Rest nicht überspringen. Die Queue geht zuerst
+        // (der schlimmste Leak: ihre Ops würden unter dem NÄCHSTEN Konto
+        // abspielen); der Cursor-Reset läuft zuletzt und bedingungslos.
+        runCatching { pendingOperationDao.deleteAll() }
+            .onFailure { fileLogger.error("AuthRepo", "logout: wiping offline queue failed", it) }
+        runCatching { noteDao.deleteAll() }
+            .onFailure { fileLogger.error("AuthRepo", "logout: wiping note cache failed", it) }
+        runCatching {
+            // Wipe-Marker statt "": Ein Pull, der gerade während des Logouts
+            // läuft, erkennt daran, dass er seinen Cursor NICHT mehr
+            // zurückschreiben darf (SyncManager). since = "" bedeutet wie
+            // bisher „noch nie gezogen" → nächstes Konto zieht komplett.
+            settingsDataStore.setSyncSignature(SettingsDataStore.SYNC_SIGNATURE_WIPED)
+            settingsDataStore.setSyncSince("")
+        }.onFailure { fileLogger.error("AuthRepo", "logout: resetting sync cursor failed", it) }
+        // Residual race (documented, not fixed): a drain or delta pull that
+        // is already in flight still holds the old token in its request
+        // headers and can write rows back after this clear — SyncManager has
+        // no identity concept to gate on. The next account's first clean
+        // pull removes such foreign rows via the tree reconciliation.
         _authState.value = AuthState.Unauthenticated
     }
 
@@ -166,16 +196,18 @@ class AuthRepositoryImpl @Inject constructor(
         theme: String?,
         language: String?,
         transcriptionLanguage: String?,
-        voiceTranscription: Boolean?
+        voiceTranscription: Boolean?,
+        renderMarkdown: Boolean?
     ): Result<Unit> = Result.catching {
-        if (theme == null && language == null && transcriptionLanguage == null && voiceTranscription == null) return@catching
-        fileLogger.log("AuthRepo", "pushPreferences: theme=$theme language=$language transcription=$transcriptionLanguage voice=$voiceTranscription")
+        if (theme == null && language == null && transcriptionLanguage == null && voiceTranscription == null && renderMarkdown == null) return@catching
+        fileLogger.log("AuthRepo", "pushPreferences: theme=$theme language=$language transcription=$transcriptionLanguage voice=$voiceTranscription markdown=$renderMarkdown")
         val response = api.updatePreferences(
             UpdatePreferencesDto(
                 theme = theme,
                 language = language,
                 transcriptionLanguage = transcriptionLanguage,
-                aiFeatures = voiceTranscription?.let { UpdateAiFeaturesDto(voiceTranscription = it) }
+                aiFeatures = voiceTranscription?.let { UpdateAiFeaturesDto(voiceTranscription = it) },
+                renderMarkdown = renderMarkdown
             )
         )
         if (!response.isSuccessful) {
@@ -250,6 +282,11 @@ class AuthRepositoryImpl @Inject constructor(
                 ?.let { settingsDataStore.setTranscriptionLanguage(it) }
             preferences.aiFeatures?.voiceTranscription
                 ?.let { settingsDataStore.setVoiceTranscription(it) }
+            // v1.18.0: markdown rendering follows the account too; the server
+            // always sends the key (auth.js: `!== false`), so null means the
+            // payload predates it and the local value stays untouched.
+            preferences.renderMarkdown
+                ?.let { settingsDataStore.setRenderMarkdown(it) }
             // v1.10.0: tag colors, saved searches and the journal root follow
             // the account like theme and language. Null = the server has
             // never stored them — that must not clear a local edit mid-push.

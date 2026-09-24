@@ -50,7 +50,11 @@ data class UserPreferencesDto(
     // through the account so every device sees the same set.
     @Json(name = "tagColors") val tagColors: Map<String, String>? = null,
     @Json(name = "savedSearches") val savedSearches: List<SavedSearchDto>? = null,
-    @Json(name = "journalFolderId") val journalFolderId: String? = null
+    @Json(name = "journalFolderId") val journalFolderId: String? = null,
+    // v1.18.0: markdown rendering follows the account. The server sends the
+    // key always (auth.js: `renderMarkdown !== false`), so null only means
+    // "never seen" — the local default stays on.
+    @Json(name = "renderMarkdown") val renderMarkdown: Boolean? = null
 )
 
 /** One smart folder: a search pinned into the tree panel (server subdocument
@@ -82,7 +86,9 @@ data class UpdatePreferencesDto(
     // an explicit JSON null is the only way to clear the journal root.
     @Json(name = "tagColors") val tagColors: Map<String, String>? = null,
     @Json(name = "savedSearches") val savedSearches: List<SavedSearchDto>? = null,
-    @Json(name = "journalFolderId") val journalFolderId: NullableString? = null
+    @Json(name = "journalFolderId") val journalFolderId: NullableString? = null,
+    // v1.18.0: Markdown rendering follows the account like on the WebUI.
+    @Json(name = "renderMarkdown") val renderMarkdown: Boolean? = null
 )
 
 /** AI feature switches inside the preferences body; mirrors AiFeaturesDto. */

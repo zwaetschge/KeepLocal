@@ -90,6 +90,9 @@ data class NoteEditorState(
     // Account-wide dictation switch (aiFeatures.voiceTranscription): while
     // off, the mic button is hidden rather than disabled.
     val showMic: Boolean = true,
+    // Markdown rendering (v1.18.0, preferences.renderMarkdown): when on, the
+    // editor opens text notes as a rendered preview instead of raw source.
+    val renderMarkdown: Boolean = true,
     // Server version this edit started from (optimistic locking guard).
     val baseUpdatedAt: Instant? = null,
     /** Reminder time (v1.8.0 Nr. 2); null = no reminder. */
@@ -204,6 +207,7 @@ class NoteEditorViewModel @Inject constructor(
             _uiState.update { it.copy(parentId = initialParentId) }
         }
         observeVoiceTranscription()
+        observeRenderMarkdown()
         observeDraftAutosave()
         observeTagColors()
         loadTagVocabulary()
@@ -232,6 +236,15 @@ class NoteEditorViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.voiceTranscription.collect { enabled ->
                 _uiState.update { it.copy(showMic = enabled) }
+            }
+        }
+    }
+
+    /** Preview availability follows the account-wide markdown switch. */
+    private fun observeRenderMarkdown() {
+        viewModelScope.launch {
+            settingsDataStore.renderMarkdown.collect { enabled ->
+                _uiState.update { it.copy(renderMarkdown = enabled) }
             }
         }
     }

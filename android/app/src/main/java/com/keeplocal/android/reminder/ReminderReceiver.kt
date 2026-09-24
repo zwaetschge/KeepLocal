@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.keeplocal.android.R
+import com.keeplocal.android.data.local.dao.NoteDao
 import com.keeplocal.android.ui.MainActivity
 import com.keeplocal.android.util.FileLogger
 import com.keeplocal.android.util.IncomingIntents
@@ -25,11 +26,18 @@ import javax.inject.Inject
  * Tapping the notification opens the note (MainActivity reads EXTRA_NOTE_ID);
  * "Done" merely dismisses — the reminder stays on the note until the user
  * removes it.
+ *
+ * The alarm was planned minutes or days earlier, so the intent payload alone
+ * proves nothing: before ringing (or snoozing) the note is re-read from Room
+ * and ReminderAlarmPlan.shouldFire() decides whether the reminder is still the
+ * one this alarm was planned for (v1.18.0). A removed, moved, or remotely
+ * deleted reminder stays silent.
  */
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
 
     @Inject lateinit var reminderScheduler: ReminderScheduler
+    @Inject lateinit var noteDao: NoteDao
     @Inject lateinit var fileLogger: FileLogger
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -45,10 +53,16 @@ class ReminderReceiver : BroadcastReceiver() {
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        reminderScheduler.scheduleAt(
-                            noteId, title, System.currentTimeMillis() + delay
-                        )
-                        NotificationManagerCompat.from(context).cancel(noteId.hashCode())
+                        // The user may have removed or moved the reminder while
+                        // the notification sat in the tray — snooze nothing.
+                        if (reminderStillOnNote(noteId)) {
+                            reminderScheduler.scheduleAt(
+                                noteId, title, System.currentTimeMillis() + delay
+                            )
+                            NotificationManagerCompat.from(context).cancel(noteId.hashCode())
+                        } else {
+                            fileLogger.log("ReminderReceiver", "snooze skipped, reminder gone for $noteId")
+                        }
                     } finally {
                         pendingResult.finish()
                     }
@@ -57,8 +71,49 @@ class ReminderReceiver : BroadcastReceiver() {
 
             ACTION_DISMISS -> NotificationManagerCompat.from(context).cancel(noteId.hashCode())
 
-            else -> showNotification(context, noteId, intent.getStringExtra(EXTRA_TITLE).orEmpty())
+            else -> {
+                val scheduledAt = if (intent.hasExtra(EXTRA_SCHEDULED_AT)) {
+                    intent.getLongExtra(EXTRA_SCHEDULED_AT, Long.MIN_VALUE)
+                } else {
+                    null
+                }
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val note = noteDao.getNoteById(noteId)
+                        val fire = ReminderAlarmPlan.shouldFire(
+                            noteExists = note != null,
+                            isArchived = note?.isArchived == true,
+                            remindAtEpochMs = note?.remindAtEpochMs,
+                            scheduledAtEpochMs = scheduledAt,
+                            nowEpochMs = System.currentTimeMillis()
+                        )
+                        if (fire) {
+                            showNotification(context, noteId, intent.getStringExtra(EXTRA_TITLE).orEmpty())
+                        } else {
+                            fileLogger.log("ReminderReceiver", "skipped stale reminder alarm for $noteId")
+                        }
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
         }
+    }
+
+    /**
+     * Snooze needs less than the fire check: the reminder must still exist on
+     * a live, unarchived note, but its time is irrelevant — it fired already.
+     */
+    private suspend fun reminderStillOnNote(noteId: String): Boolean {
+        val note = noteDao.getNoteById(noteId)
+        return ReminderAlarmPlan.shouldFire(
+            noteExists = note != null,
+            isArchived = note?.isArchived == true,
+            remindAtEpochMs = note?.remindAtEpochMs,
+            scheduledAtEpochMs = null,
+            nowEpochMs = System.currentTimeMillis()
+        )
     }
 
     private fun showNotification(context: Context, noteId: String, title: String) {
@@ -150,5 +205,9 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_NOTE_ID = "note_id"
         const val EXTRA_TITLE = "title"
         const val EXTRA_SNOOZE_DELAY = "snooze_delay_millis"
+
+        /** The trigger the alarm was planned with — lets the receiver detect a
+         *  reminder that was rescheduled after this alarm was set. */
+        const val EXTRA_SCHEDULED_AT = "scheduled_at_millis"
     }
 }

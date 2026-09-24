@@ -73,6 +73,8 @@ class SettingsViewModelTest {
             every { lastBackupAt } returns flowOf(0L)
             // v1.10.0 journal folder; null keeps the tree unread in init.
             every { journalFolderId } returns flowOf(null)
+            // v1.18.0 markdown rendering; read once by loadSettings().
+            every { renderMarkdown } returns flowOf(true)
         }
         authRepository = mockk()
         tokenManager = mockk(relaxed = true)

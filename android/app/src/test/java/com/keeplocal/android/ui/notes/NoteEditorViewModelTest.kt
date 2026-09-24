@@ -93,6 +93,7 @@ class NoteEditorViewModelTest {
         settingsDataStore = mockk {
             every { voiceTranscription } returns flowOf(true)
             every { tagColors } returns flowOf(emptyMap())
+            every { renderMarkdown } returns flowOf(true)
         }
         noteDraftStore = mockk(relaxed = true)
         context = mockk(relaxed = true)

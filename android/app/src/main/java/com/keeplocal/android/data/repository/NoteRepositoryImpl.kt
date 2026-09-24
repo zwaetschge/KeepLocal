@@ -106,11 +106,7 @@ class NoteRepositoryImpl @Inject constructor(
                 }
                 if (search == null && tag == null) {
                     // Preserve locally modified notes that haven't synced yet
-                    val pendingOps = pendingOperationDao.getAllOperations()
-                    val pendingNoteIds = pendingOps
-                        .filter { it.operationType == OperationType.UPDATE || it.operationType == OperationType.CREATE }
-                        .map { it.noteId }
-                        .toSet()
+                    val pendingNoteIds = dirtyNoteIds()
 
                     if (pendingNoteIds.isEmpty()) {
                         noteDao.deleteAll()
@@ -146,8 +142,26 @@ class NoteRepositoryImpl @Inject constructor(
                     // chip is a client-side concern — the server has no such
                     // filter — so it narrows the ranked hits in memory; so
                     // does the tree scope (the server search is tree-blind).
-                    noteDao.insertNotes(serverEntities)
+                    // Same dirty-set guard as the plain list: a queued local
+                    // op means the server answer predates the offline edit.
+                    // The stale row must not clobber the Room version (a
+                    // queued UPDATE replays FROM Room) and the list shows the
+                    // local version in the hit's place, exactly like the
+                    // cache rebuild does for the plain list.
+                    val pendingNoteIds = dirtyNoteIds()
+                    val hasDirty = pendingNoteIds.isNotEmpty()
+                    noteDao.insertNotes(
+                        if (hasDirty) serverEntities.filter { it.id !in pendingNoteIds } else serverEntities
+                    )
+                    // A dirty id without a cached row (row lost, op stranded)
+                    // is dropped instead of surfacing the stale server body.
+                    val localDirty = if (hasDirty) {
+                        pendingNoteIds.mapNotNull { noteDao.getNoteById(it) }.associateBy { it.id }
+                    } else {
+                        emptyMap()
+                    }
                     val filtered = notes
+                        .mapNotNull { if (it.id in pendingNoteIds) localDirty[it.id]?.entityToDomain() else it }
                         .let { if (filter == NoteTypeFilter.ALL) it else it.filter { filter.matches(it) } }
                         .let { if (scope == FolderScope.All) it else it.filter { scope.matches(it.parentId) } }
                     val display = if (sortMode == SortMode.MANUAL) filtered else sortInMemory(filtered, sortMode)
@@ -999,6 +1013,16 @@ class NoteRepositoryImpl @Inject constructor(
         fileLogger.log("NoteRepo", "importOfflineDrafts: queued $created drafts")
         return created
     }
+
+    /** Note ids with a queued UPDATE/CREATE (v1.18.0): their Room row is
+     *  newer than anything the server can answer with, so server rows must
+     *  neither shadow them in a result list nor overwrite them in the cache.
+     *  DELETE keeps the old behaviour — a deleted note simply stays gone. */
+    private suspend fun dirtyNoteIds(): Set<String> =
+        pendingOperationDao.getAllOperations()
+            .filter { it.operationType == OperationType.UPDATE || it.operationType == OperationType.CREATE }
+            .map { it.noteId }
+            .toSet()
 
     /** In-memory ordering for server-delivered lists (search/tag results);
      *  MANUAL is not mapped — the server ranking wins. */
