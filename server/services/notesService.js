@@ -1993,15 +1993,21 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
   // 4b) Chunk atomar CLAIMEN statt nur zu prüfen (Review v1.18.0): Ein
   //     findOne-vor-insertMany ließ zwei überlappende Retries denselben Chunk
   //     doppelt anlegen (Timeout → Retry, während der erste noch schreibt).
-  //     updateOne mit $ne-Filter entscheidet am Dokument: genau EIN Aufruf
-  //     matcht (oder legt an) — der Verlierer bekommt 0/0 und überspringt,
-  //     während der Gewinner noch schreibt. Der Claim steht bewusst NACH der
+  //     Claim per updateOne mit PLAIN-Filter + $addToSet und Unique-Index
+  //     {userId, importId}: Ein bereits angewandter Chunk ist ein No-op
+  //     ($addToSet ändert nichts) und liefert 0/0 — der Retry überspringt.
+  //     Ein neuer Chunk liefert modifiedCount 1, ein neuer Lauf
+  //     upsertedCount 1; überlappende Retries entscheidet der Unique-Index.
+  //     NICHT den Chunk mit in den Filter nehmen ($ne): Ein $ne-Filter
+  //     matcht das existierende Dokument nicht, das Upsert versucht einen
+  //     Zweit-Insert und stirbt am Unique-Index (E11000 → 409 statt skip —
+  //     Demo-Smoke 2026-09-24). Der Claim steht bewusst NACH der
   //     Validierung: Ein ungültiger Chunk (400) hinterlässt keinen Claim, der
   //     den korrigierten Retry blockieren würde. Scheitert das Schreiben,
   //     gibt der catch-Block unten den Claim wieder frei.
   if (idempotent) {
     const claim = await ImportRun.updateOne(
-      { userId, importId, appliedChunks: { $ne: chunkIndex } },
+      { userId, importId },
       {
         $addToSet: { appliedChunks: chunkIndex },
         $setOnInsert: { createdAt: new Date() }
