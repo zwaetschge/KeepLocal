@@ -144,13 +144,22 @@ class SyncManagerDeltaPullBatchTest {
     fun `the page insert re-checks pending ops inside its own transaction`() = runTest {
         // Review v1.18.0: Der per-note Check oben lief VOR dem Seiten-Insert;
         // eine offline Änderung, die während des Seitenparsens landet, wirft
-        // erst der transaktionsgebundene Filter wirklich raus.
+        // erst der transaktionsgebundene Filter wirklich raus. Der Stub
+        // emuliert den @Transaction-Körper aus NoteDao.insertNotesSkippingPending
+        // (MockK kann Default-Methoden nicht per callOriginal echt ausführen —
+        // das lief relaxed 0). Gepinnt wird die Verdrahtung: Der Pull übergibt
+        // den VOLLSTÄNDIGEN Batch, die Pending-Entscheidung fällt in der
+        // Transaktion über frische getPendingNoteIds().
+        val received = mutableListOf<List<NoteEntity>>()
         coEvery { noteDao.getPendingNoteIds() } returns listOf("p1b")
-        // Der Default-Method-Körper läuft echt (callOriginal); was die interne
-        // Transaktion wirklich an insertNotes übergibt, ist der gefilterte
-        // Batch — genau den pinnen wir über das Recording.
-        coEvery { noteDao.insertNotes(any()) } answers { batches.add(firstArg()) }
-        coEvery { noteDao.insertNotesSkippingPending(any()) } answers { callOriginal() }
+        coEvery { noteDao.insertNotesSkippingPending(any()) } answers {
+            val batch: List<NoteEntity> = firstArg()
+            received.add(batch)
+            val pending = noteDao.getPendingNoteIds().toSet()
+            val written = if (pending.isEmpty()) batch else batch.filter { it.id !in pending }
+            batches.add(written)
+            written.size
+        }
         stubActivePages(
             listOf(
                 noteDto("p1a", "2026-09-22T09:10:00.000Z"),
@@ -161,7 +170,10 @@ class SyncManagerDeltaPullBatchTest {
         val changed = syncManager.pullRemoteChanges()
 
         assertEquals(1, changed)
-        assertEquals(listOf("p1a"), batches.single().map { it.id })
+        assertEquals(listOf("p1a", "p1b"), received.single().map { it.id },
+            "der Pull übergibt den vollen Batch — kein Vorfiltern mehr")
+        assertEquals(listOf("p1a"), batches.single().map { it.id },
+            "die Transaktion selbst filtert die Pending-Note heraus")
     }
 
     @Test
