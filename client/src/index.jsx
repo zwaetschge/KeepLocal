@@ -27,9 +27,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         '/service-worker.js',
         { updateViaCache: 'none' }
       );
-      if (typeof registration?.update === 'function') {
-        await registration.update();
-      }
       // Update-Prompt (v1.16.0): Der Worker installiert ohne skipWaiting — er
       // wartet. Hier wird ein wartender Worker als Event gemeldet; die App
       // (useUpdatePrompt) zeigt den Toast, erst dessen Klick schickt
@@ -40,20 +37,22 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
           new CustomEvent('keeplocal:update-available', { detail: { sw: worker } })
         );
       };
-      if (registration.waiting) {
-        announceWaiting(registration.waiting);
-      }
-      registration.addEventListener('updatefound', () => {
-        const installing = registration.installing;
+      const watchInstalling = (installing) => {
         if (!installing) return;
-        installing.addEventListener('statechange', () => {
-          // „installed“ + aktiver Controller = Update neben einer laufenden
-          // Seite (ohne Controller wäre es die allererste Installation).
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            announceWaiting(installing);
-          }
-        });
-      });
+        const announceInstalled = () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) announceWaiting(installing);
+        };
+        installing.addEventListener('statechange', announceInstalled);
+        announceInstalled();
+      };
+      // Attach before update(): updatefound may fire before its promise resolves.
+      registration.addEventListener('updatefound', () => watchInstalling(registration.installing));
+      watchInstalling(registration.installing);
+      if (registration.waiting) announceWaiting(registration.waiting);
+      if (typeof registration?.update === 'function') {
+        await registration.update();
+      }
+      if (registration.waiting) announceWaiting(registration.waiting);
     } catch (error) {
       console.error('Service worker registration failed:', error);
     }

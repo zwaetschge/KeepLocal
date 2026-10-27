@@ -1,10 +1,11 @@
-const CACHE_NAME = 'keeplocal-v8';
+const CACHE_NAME = 'keeplocal-v9-__KEEPLOCAL_BUILD_ID__';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '__KEEPLOCAL_BUILD_ASSETS__'
 ];
 
 // GET-Lesezugriffe unter /api/notes sind die Liste, der Baum und die Meta-
@@ -61,10 +62,7 @@ async function purgeCachedApiResponses() {
 // Tab, neue Assets — ohne dass jemand etwas mitbekam.
 self.addEventListener('install', event => {
   const precache = caches.open(CACHE_NAME)
-    .then(cache => cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' }))))
-    .catch(err => {
-      console.log('Cache addAll error:', err.message);
-    });
+    .then(cache => cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' }))));
   event.waitUntil(precache);
 });
 
@@ -156,7 +154,7 @@ self.addEventListener('fetch', event => {
 
   if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-store' })
         .then(response => cacheResponse(event.request, response))
         .catch(() => caches.match(event.request).then(response => response || caches.match('/index.html')))
     );

@@ -134,3 +134,27 @@ Validation:
   alternate device, release or live rollout is included in this follow-up.
 
 Evidence: parent workspace `audit-evidence/keep-layout-2026-10-27/`.
+
+## Release preparation and browser update fix — 2026-10-27
+
+User authorized the live rollout and reported requiring Ctrl+Shift+R. Navigation
+now bypasses the HTTP cache, HTML is explicitly no-store on Vercel, and only
+fingerprinted `/assets/` files inherit nginx's immutable cache policy. Each
+production build stamps the service worker with an identity derived from its
+HTML and asset content and precaches the matching JS/CSS/font cohort. Failed
+precache prevents a partially usable worker from activating. Update listeners
+are attached before update checks, and an already-waiting worker is recovered
+when the update hook mounts. Running editors are not force-reloaded.
+
+Validation: client 337/337, server 519/519, build successful, lint zero errors
+and five existing warnings. An HTTP-cache-enabled Chromium upgrade test uses
+the previous v8 worker, migrates to the new worker without hard reload, loads a
+third build with ordinary reload, then loads that asset cohort offline. Both a
+local draft and an IndexedDB pending operation survive. Evidence:
+`audit-evidence/live-2026-10-27/` in the parent workspace.
+
+The live Docker proxy currently denies inspection of `keeplocal` and
+`keeplocal-demo` with HTTP 403. Rollout requires the project/container access
+assignment to be restored; no production container or appdata has been changed
+by this preparation. New frontend fields require the matching backend, so the
+candidate is kept on its feature branch until coordinated rollout is possible.
