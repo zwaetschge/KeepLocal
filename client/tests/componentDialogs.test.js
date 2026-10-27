@@ -186,7 +186,8 @@ test('keyboard a11y: skip link, drawer visibility, lightbox dialog, admin confir
   // focus() gelegentlich im gleichen Zug wie den Drawer-Öffner (CI-Flake auf
   // PR #142) — deshalb pro Frame prüfen und erneut setzen, bis er sitzt.
   assert.match(sidebar, /const focusFirstInDrawer = \(\) => \{/);
-  assert.match(sidebar, /drawer\.querySelector\('button, a\[href\]'\)/);
+  assert.match(sidebar, /drawer\.querySelectorAll\('button:not\(:disabled\), a\[href\]'\)/);
+  assert.match(sidebar, /element\.getClientRects\(\)\.length > 0/);
   assert.match(sidebar, /drawer\.contains\(document\.activeElement\)/);
   assert.match(sidebar, /\+\+attempts > 60/);
   assert.match(sidebar, /requestAnimationFrame\(tryFocus\)/);

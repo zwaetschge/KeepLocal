@@ -166,3 +166,10 @@ in the integration job, and updates source/image browser tests for inline
 capture, rich text, personal organization and on-demand menus. Browser checks
 found and fixed missing collaborator media controls, relevance ordering in the
 personal-note aggregation, and search highlights across rich formatting.
+
+The final keyboard scenario exposed two layout regressions: single-key shortcuts
+consumed Enter on the skip link, and the drawer focused the retired hidden
+collapse button. Shortcuts now leave interactive elements to their native
+behavior; drawer focus selects a visible control while retaining verified
+per-frame retries. The complete skip-link/drawer/lightbox/nested-Escape scenario
+passes against the production bundle and real backend.

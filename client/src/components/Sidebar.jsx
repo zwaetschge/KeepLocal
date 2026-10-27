@@ -307,7 +307,9 @@ function Sidebar({
       const current = document.activeElement;
       if (drawer.contains(current)) return true;
       if (current && current !== opener) return true;
-      const target = drawer.querySelector('button, a[href]');
+      const target = [...drawer.querySelectorAll('button:not(:disabled), a[href]')]
+        .find(element => element.getClientRects().length > 0
+          && getComputedStyle(element).visibility !== 'hidden');
       target?.focus();
       return Boolean(target && drawer.contains(document.activeElement));
     };

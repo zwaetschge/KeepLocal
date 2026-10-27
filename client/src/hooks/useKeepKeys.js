@@ -23,7 +23,7 @@ export function useKeepKeys({
         return;
       if (
         e.target.closest?.(
-          'input,textarea,select,button,[contenteditable="true"],[role="textbox"]',
+          'input,textarea,select,button,a[href],summary,[role="button"],[role="link"],[contenteditable="true"],[role="textbox"]',
         )
       )
         return;
@@ -62,6 +62,7 @@ export function useKeepKeys({
           break;
         case 'Enter':
           if (id) onOpen(notes.find((n) => n._id === id));
+          else handled = false;
           break;
         default:
           handled = false;
