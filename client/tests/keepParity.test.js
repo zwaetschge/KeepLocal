@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NoteOutbox } from '../src/utils/noteOutbox.mjs';
 import { moveChecklist, toggleChecklist } from '../src/utils/checklist.mjs';
-import { shiftMarks, richSegments } from '../src/utils/richText.mjs';
+import { shiftMarks, richSegments, searchMarks } from '../src/utils/richText.mjs';
 function fixture() {
   let online = false;
   const store = new Map(),
@@ -174,4 +174,14 @@ test('a late response from the previous account cannot enter the new account cac
     { code: 'ABORTED' },
   );
   assert.deepEqual((await f.box.snapshot()).notes, {});
+});
+
+test('search highlights literal text across rich style boundaries without changing formatting', () => {
+  const text = 'Tom <3 & bRoT + Brot';
+  const styles = [{ type: 'bold', start: 10, end: 12 }];
+  const segments = richSegments(text, [...styles, ...searchMarks(text, 'brot')]);
+  assert.equal(segments.filter(s => s.types.includes('search')).map(s => s.text).join(''), 'bRoTBrot');
+  assert.equal(segments.filter(s => s.types.includes('bold')).map(s => s.text).join(''), 'Ro');
+  assert.deepEqual(searchMarks('a.*b aZZb', '.*'), [{ type: 'search', start: 1, end: 3 }]);
+  assert.deepEqual(searchMarks(text, '  '), []);
 });

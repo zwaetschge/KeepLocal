@@ -1,3 +1,13 @@
+// Search ranges share text offsets with formatting, so matches can cross styles.
+export function searchMarks(text, needle = '') {
+  const term = needle.trim();
+  if (!term) return [];
+  const pattern = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  return [...text.matchAll(pattern)].map(match => ({
+    type: 'search', start: match.index, end: match.index + match[0].length,
+  }));
+}
+
 export function shiftMarks(marks = [], before, after) {
   let start = 0;
   while (

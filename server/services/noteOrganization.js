@@ -142,6 +142,7 @@ async function getPersonalNotes({
         ...(term ? { $text: { $search: term } } : {}),
       },
     },
+    ...(term ? [{ $set: { score: { $meta: 'textScore' } } }] : []),
     {
       $lookup: {
         from: Organization.collection.name,
@@ -171,7 +172,9 @@ async function getPersonalNotes({
           {
             $sort: trash
               ? { deletedAt: -1, _id: -1 }
-              : { isPinned: -1, order: -1, updatedAt: -1, _id: -1 },
+              : term
+                ? { isPinned: -1, score: -1, _id: -1 }
+                : { isPinned: -1, order: -1, updatedAt: -1, _id: -1 },
           },
           { $skip: (p - 1) * size },
           { $limit: size },

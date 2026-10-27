@@ -89,11 +89,11 @@ test.describe.serial('published all-in-one image', () => {
 
   test('a note with special characters survives a reload', async () => {
     await page.click('.note-form-button');
-    await expect(page.locator('.note-modal')).toBeVisible();
-    await page.fill('.note-modal-title', TITLE);
-    await page.fill('.note-modal-content', CONTENT);
-    await page.click('.btn-modal-save');
-    await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
+    await expect(page.locator('.quick-capture.expanded')).toBeVisible();
+    await page.fill('.note-form-title', TITLE);
+    await page.fill('.note-form-content', CONTENT);
+    await page.locator('.quick-capture-actions button').last().click();
+    await expect(page.locator('.note-form-button')).toBeVisible();
 
     const card = page.locator('[role="article"]', { hasText: TITLE });
     await expect(card.locator('.note-content')).toContainText('Preis < 100 EUR & Tom <3 Jerry');
@@ -109,7 +109,9 @@ test.describe.serial('published all-in-one image', () => {
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.setInputFiles('#image-upload-input', UPLOAD_FIXTURE);
     await expect(page.locator('.new-images-preview .image-preview')).toHaveCount(1);
+    await page.locator('.note-modal-toolbar').getByRole('button', { name: /More options|Weitere Optionen/ }).click();
     await page.locator('.btn-modal-image-upload').click();
+    await page.keyboard.press('Escape');
     await expect(page.locator('.note-modal-images .image-preview')).toHaveCount(1, { timeout: 30000 });
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
@@ -137,9 +139,11 @@ test.describe.serial('published all-in-one image', () => {
     await page.fill('.search-input', 'Preis');
     await expect(page.locator('[role="article"]', { hasText: TITLE })).toBeVisible({ timeout: 20000 });
     await page.locator('.search-clear').click();
+    await page.locator('.search-input').press('Escape');
 
     const card = page.locator('[role="article"]', { hasText: TITLE });
     await card.hover();
+    await card.locator('.more-btn').click();
     await card.locator('.delete-btn').click();
     await expect(page.locator('.confirm-dialog')).toBeVisible();
     await page.locator('.confirm-dialog .btn-confirm').click();

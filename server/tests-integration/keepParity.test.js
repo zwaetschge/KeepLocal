@@ -339,3 +339,16 @@ test(
     }
   },
 );
+
+test('personal search ranks title matches before newer body matches and paginates that order',
+  { skip: !harness.INTEGRATION_URI }, async () => {
+    const owner = await harness.seedUser();
+    await Note.createIndexes();
+    const title = await harness.seedNote(owner._id, { title: 'Paritaetsbrot', content: 'Mehl und Wasser' });
+    const body = await harness.seedNote(owner._id, { title: 'Einkauf', content: 'Paritaetsbrot kaufen', order: 999 });
+    const first = await service.getAllNotes({ userId: owner.id, personal: true, search: 'Paritaetsbrot', limit: 1 });
+    assert.equal(first.pagination.total, 2);
+    assert.equal(String(first.notes[0]._id), title.id);
+    const second = await service.getAllNotes({ userId: owner.id, personal: true, search: 'Paritaetsbrot', limit: 1, page: 2 });
+    assert.equal(String(second.notes[0]._id), body.id);
+  });

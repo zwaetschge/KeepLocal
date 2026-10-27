@@ -146,7 +146,8 @@ precache prevents a partially usable worker from activating. Update listeners
 are attached before update checks, and an already-waiting worker is recovered
 when the update hook mounts. Running editors are not force-reloaded.
 
-Validation: client 337/337, server 519/519, build successful, lint zero errors
+Validation: client 338/338, server 519/519, real MongoDB integration 18/18,
+build successful, lint zero errors
 and five existing warnings. An HTTP-cache-enabled Chromium upgrade test uses
 the previous v8 worker, migrates to the new worker without hard reload, loads a
 third build with ordinary reload, then loads that asset cohort offline. Both a
@@ -158,3 +159,10 @@ The live Docker proxy currently denies inspection of `keeplocal` and
 assignment to be restored; no production container or appdata has been changed
 by this preparation. New frontend fields require the matching backend, so the
 candidate is kept on its feature branch until coordinated rollout is possible.
+
+Release preflight also updates dependencies within their declared version ranges
+(server/client audits: zero vulnerabilities), installs the required OCR runtime
+in the integration job, and updates source/image browser tests for inline
+capture, rich text, personal organization and on-demand menus. Browser checks
+found and fixed missing collaborator media controls, relevance ordering in the
+personal-note aggregation, and search highlights across rich formatting.

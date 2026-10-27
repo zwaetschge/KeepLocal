@@ -3,15 +3,16 @@ import {
   readRichDom,
   writeRichDom,
   richSegments,
+  searchMarks,
   formatMarks,
   richSelection,
   selectRichRange,
 } from '../utils/richText.mjs';
 import { useLanguage } from '../contexts/LanguageContext';
-export function RichTextPreview({ text, marks = [] }) {
+export function RichTextPreview({ text, marks = [], highlight = '' }) {
   return (
     <>
-      {richSegments(text, marks).map((s, i) => (
+      {richSegments(text, [...marks, ...searchMarks(text, highlight)]).map((s, i) => (
         <span
           key={i}
           style={{
@@ -31,7 +32,7 @@ export function RichTextPreview({ text, marks = [] }) {
                 : undefined,
           }}
         >
-          {s.text}
+          {s.types.includes('search') ? <mark>{s.text}</mark> : s.text}
         </span>
       ))}
     </>

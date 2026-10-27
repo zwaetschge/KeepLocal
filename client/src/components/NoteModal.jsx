@@ -1347,7 +1347,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
           </figure>)}
 
           {/* Hidden file input for image selection */}
-          {!isDemo && canManage && (
+          {!isDemo && (
             <input
               ref={fileInputRef}
               type="file"
@@ -1360,7 +1360,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
           )}
 
           {/* Hidden file input for PDF attachments */}
-          {!isDemo && canManage && (
+          {!isDemo && (
             <input
               ref={pdfInputRef}
               type="file"
@@ -1563,7 +1563,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
           {!isTodoList && !isCode && <button type="button" className="editor-format-toggle" onClick={()=>setFeatures(prev=>({...prev,format:prev.format === 'rich'?'plain':'rich'}))}>{features.format === 'rich' ? t('keepMarkdown') : t('keepVisual')}</button>}
           <label className="note-background-picker">{t('keepBackground')} <select value={features.background || 'none'} onChange={e=>setFeatures(prev=>({...prev,background:e.target.value}))}>
             {['none','grid','lines','dots','leaves','sand'].map(bg=><option key={bg} value={bg}>{t(`keepBackground_${bg}`)}</option>)}
-          </select></label>            {!isDemo && canManage && (
+          </select></label>            {!isDemo && (
               <>
                 {note && newImageFiles.length > 0 && (
                   <button
@@ -1689,7 +1689,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
               selectedColor={color}
               onColorSelect={setColor}
             />
-            {!isDemo && canManage && <button type="button" className="btn-modal-image-select" onClick={()=>fileInputRef.current?.click()} aria-label={t('selectImages')} title={t('selectImages')}><EditorIcon name="image"/></button>}
+            {!isDemo && <button type="button" className="btn-modal-image-select" onClick={()=>fileInputRef.current?.click()} aria-label={t('selectImages')} title={t('selectImages')}><EditorIcon name="image"/></button>}
             {note && onToggleArchive && (
               <button
                 type="button"

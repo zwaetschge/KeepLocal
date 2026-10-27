@@ -140,6 +140,11 @@ jobs:
         working-directory: server
         run: npm ci
 
+      - name: Install OCR runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
+
       - name: Run integration tests
         working-directory: server
         env:

@@ -33,10 +33,8 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
-  // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
-  // aber Archivieren, Teilen und Löschen bleiben beim Besitzer — der Server
-  // lehnt alles andere mit 404 ab, also dürfen die Buttons gar nicht erst
-  // für Mitbearbeiter erscheinen.
+  // Organization (including archive) is personal; sharing and deletion remain
+  // owner-only while participants can edit shared content.
   const canManage = isNoteOwner(note, user);
   const editorName = lastEditorName(note);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -250,7 +248,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
           </div>
         ) : (
           <>
-            {note.features?.format === 'rich' && !note.isCode ? <p ref={contentRef} className="note-content"><RichTextPreview text={note.content || ''} marks={note.features.marks || []}/></p> : (
+            {note.features?.format === 'rich' && !note.isCode ? <p ref={contentRef} className="note-content"><RichTextPreview text={note.content || ''} marks={note.features.marks || []} highlight={highlight}/></p> : (
             <p
               ref={contentRef}
               className={`note-content${markdownHtml ? ' markdown' : ''}`}
