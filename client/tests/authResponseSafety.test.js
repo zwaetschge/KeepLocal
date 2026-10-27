@@ -37,7 +37,8 @@ test('the browser never stores or sends JWT bearer tokens', () => {
 
   assert.doesNotMatch(utils, /localStorage\.(?:getItem|setItem)\(['"]token['"]\)/);
   assert.doesNotMatch(utils, /Authorization/);
-  assert.match(auth, /X-CSRF-Token/);
+  assert.match(auth, /fetchWithCsrf/);
+  assert.match(utils, /X-CSRF-Token/);
 });
 
 test('API base URL normalization prevents an /api/api path', () => {

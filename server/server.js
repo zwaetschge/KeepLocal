@@ -186,6 +186,7 @@ app.get('/uploads/*', authenticateSessionOrApiKey, secureFileServe);
 
 // CSRF-Token-Endpunkt
 app.get('/api/csrf-token', (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
   res.json({ csrfToken: issueCsrfToken(req, res) });
 });
 

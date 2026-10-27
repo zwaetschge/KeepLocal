@@ -51,3 +51,22 @@ tools are not exposed in the active tool inventory.
 
 See [keep-parity.md](keep-parity.md) for user flows, synchronization limits and
 the shared API contract. This branch is not deployed to the live services.
+
+## CSRF follow-up — 2026-10-27
+
+The reported `Ungueltiges CSRF-Token` exposed a reproducible upload gap:
+multipart requests used the in-memory token without initialization or recovery.
+JSON, auth and multipart requests now share a transport that initializes missing
+tokens, coalesces concurrent token requests and retries a rejected CSRF request
+once with the original body. Other 403 responses are never replayed. Token
+responses explicitly disable caching on both the client and server.
+
+Seven executable regression tests exercise the actual client modules against
+the signed-cookie middleware. Six fail against the previous code; all seven
+pass with the correction. Full checks: client 334/334, server 519/519,
+production build successful, zero lint errors (five existing warnings).
+A Chromium check with real HTTP cookies and multipart parsing also verifies
+cookie expiry recovery, retained file bytes, concurrent recovery and no retry
+on permission denial. Evidence is in the parent workspace under
+`audit-evidence/csrf-fix-2026-10-27/`. The user's exact failing URL/action has
+not been supplied; this local correction has not been deployed.

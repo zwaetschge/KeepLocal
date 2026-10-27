@@ -1,25 +1,20 @@
 import {outbox,cachedRead} from './offlineNotes';
 import { API_ENDPOINTS } from '../../constants/api';
-import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, toHttpError, API_BASE_URL } from './apiUtils';
+import { fetchWithAuth, fetchWithCsrf, buildQueryString, getCsrfToken, parseResponse, toHttpError, API_BASE_URL } from './apiUtils';
 import { createRequestSignal, isAbortError, LONG_REQUEST_TIMEOUT_MS } from '../../utils/requestSignals.mjs';
 
 /**
- * Multipart-Calls (Bild-Upload, Transkription) nutzen fetch() direkt. Sie
- * bekommen dasselbe Abort-/Timeout-Verhalten wie fetchWithAuth, nur mit einem
+ * Multipart-Calls nutzen denselben CSRF-Transport wie JSON-Anfragen, ohne
+ * deren Content-Type zu setzen. Sie bekommen Abort-/Timeout-Verhalten mit einem
  * langen Limit: nginx bricht bei `proxy_read_timeout 300s` ab, der Server ruft
  * den AI-Dienst mit 300 s Timeout — ein kürzeres Client-Timeout würde einen
  * Abbruch melden, während der Server noch arbeitet.
  */
 async function fetchMultipart(url, formData, fallbackMessage) {
   const { signal, cleanup, timedOut } = createRequestSignal({ timeoutMs: LONG_REQUEST_TIMEOUT_MS });
-  const headers = {};
-  const csrfToken = getCsrfToken();
-  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-
   try {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
+    const response = await fetchWithCsrf(`${API_BASE_URL}${url}`, {
       method: 'POST',
-      headers,
       body: formData,
       credentials: 'include',
       signal,
