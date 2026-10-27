@@ -11,6 +11,7 @@ export default function ChecklistEditor({
   onAdd,
   options,
   onOptions,
+  showOptions = true,
 }) {
   const { t } = useLanguage();
   const dragged = useRef(null);
@@ -129,6 +130,15 @@ export default function ChecklistEditor({
           {done.map(({ item, index }) => row(item, index))}
         </details>
       )}
+      {showOptions && <ChecklistOptions items={items} onChange={onChange} options={options} onOptions={onOptions}/>}
+
+    </div>
+  );
+}
+
+export function ChecklistOptions({items,onChange,options,onOptions}) {
+  const {t}=useLanguage();
+  return (
       <details>
         <summary>{t('keepListSettings')}</summary>
         <label>
@@ -167,6 +177,5 @@ export default function ChecklistEditor({
           {t('keepRemoveCompleted')}
         </button>
       </details>
-    </div>
   );
 }

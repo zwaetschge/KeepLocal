@@ -45,7 +45,7 @@ test('attachments render as downloads with their original name, never inline', (
     'the download attribute restores the original filename');
   assert.doesNotMatch(source, /<iframe[^>]*file\.url/, 'PDFs are never embedded inline');
   assert.match(source, /accept="application\/pdf,\.pdf"\s*\n\s*multiple[\s\S]*?id="pdf-upload-input"/);
-  assert.match(source, /htmlFor="pdf-upload-input"/, 'the paperclip button opens the picker via label');
+  assert.match(source, /onClick=\{\(\)=>pdfInputRef\.current\?\.click\(\)\}/, 'the keyboard-accessible attachment button opens the picker');
 });
 
 test('the API client speaks the attachment endpoints', () => {

@@ -40,9 +40,8 @@ function ColorPicker({ selectedColor, onColorSelect }) {
         aria-label={t('openColorPicker')}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
-          <line x1="16" y1="8" x2="2" y2="22"/>
-          <line x1="17.5" y1="15" x2="9" y2="15"/>
+          <path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H13a1.5 1.5 0 0 1 0-3h3a5 5 0 0 0 5-5c0-3-4-5-9-5z"/>
+          <circle cx="7" cy="10" r=".8"/><circle cx="10" cy="7" r=".8"/><circle cx="15" cy="7" r=".8"/>
         </svg>
       </button>
 

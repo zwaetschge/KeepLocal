@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import './NoteModal.css';
+import './NoteEditor.css';
 import ColorPicker from './ColorPicker';
 import LinkPreview from './LinkPreview';
 import ConfirmDialog from './ConfirmDialog';
@@ -15,11 +16,24 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
 import NoteHistory from './NoteHistory';
-import ChecklistEditor from './ChecklistEditor';
+import EditorOptionsPopover from './EditorOptionsPopover';
+import ChecklistEditor, { ChecklistOptions } from './ChecklistEditor';
 import RichTextEditor from './RichTextEditor';
 import DrawingEditor from './DrawingEditor';
 import {shiftMarks} from '../utils/richText.mjs';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
+
+function EditorIcon({ name }) {
+  const paths = {
+    reminder: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10 21h4"/><path d="M19 3v6m-3-3h6"/></>,
+    folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>,
+    label: <><path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7" cy="7" r="1"/></>,
+    history: <><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/><path d="M12 7v5l3 2"/></>,
+    image: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="M21 15l-5-5L5 21"/></>,
+    more: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
+  };
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">{paths[name]}</svg>;
+}
 
 // v1.12.0: Anhang-Groesse kompakt anzeigen (1024er-Einheiten, eine Nachkommastelle).
 function formatFileSize(bytes) {
@@ -75,6 +89,16 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
   const [content, setContent] = useState(note?.content || initialNote.content || '');
   const [tags, setTags] = useState(note?.tags || initialNote.tags || []);
   const [tagInput, setTagInput] = useState('');
+  const [editorPanel, setEditorPanel] = useState(null);
+  const panelTriggerRef = useRef(null);
+  const togglePanel = (panel, event) => {
+    panelTriggerRef.current = event.currentTarget;
+    setEditorPanel(current => current === panel ? null : panel);
+  };
+  const closePanel = (restoreFocus = true) => {
+    setEditorPanel(null);
+    if (restoreFocus) panelTriggerRef.current?.focus();
+  };
   const [features, setFeatures] = useState(note?.features || initialNote.features || (!note ? {format:'rich',marks:[]} : {}));
   const listOptions = {checkedToBottom:true, ...features.list};
   const [color, setColor] = useState(note?.color || initialNote.color || '#ffffff');
@@ -931,6 +955,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
         setShowConflictDiscardConfirm(false);
         return;
       }
+      if (editorPanel) { closePanel(); return; }
       // The lightbox has its own Escape handler; closing it must not also
       // save-and-close the whole editor.
       if (lightboxImage) {
@@ -974,16 +999,22 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
         <h2 id={titleId} className="sr-only">
           {note ? t('editNote') : t('newNote')}
         </h2>
-        <button
-          className="note-modal-close"
-          onClick={handleOverlayClick}
-          aria-label={t('close')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+            <button
+              type="button"
+              className={`btn-modal-pin ${isPinned ? 'pinned' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPinned(!isPinned);
+              }}
+              aria-pressed={isPinned}
+              title={isPinned ? t('unpin') : t('pin')}
+              aria-label={isPinned ? t('unpin') : t('pin')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 3h6v6l3 3v2H6v-2l3-3V3zM12 14v8"/>
+              </svg>
+            </button>
+
 
         <div className="note-modal-body">
           {draftOffer && !conflict && (
@@ -1065,7 +1096,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
           )}
 
           {isTodoList ? (
-            <ChecklistEditor items={todoItems} onChange={setTodoItems} onText={handleTodoItemChange} onToggle={handleTodoItemToggle} onDelete={handleTodoItemDelete} onKeyDown={handleTodoItemKeyDown}
+            <ChecklistEditor showOptions={false} items={todoItems} onChange={setTodoItems} onText={handleTodoItemChange} onToggle={handleTodoItemToggle} onDelete={handleTodoItemDelete} onKeyDown={handleTodoItemKeyDown}
               options={listOptions} onOptions={list=>setFeatures(prev=>({...prev,list}))}
               onAdd={() => setTodoItems(prev => listOptions.addToTop ? [{id:crypto.randomUUID(),text:'',completed:false,order:0,indent:0},...prev] : [...prev,{id:crypto.randomUUID(),text:'',completed:false,order:prev.length,indent:0}])}/>
 
@@ -1089,12 +1120,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
             />
           )}
 
-          <button type="button" className="editor-format-toggle" aria-pressed={Boolean(features.drawing)} onClick={()=>setFeatures(prev=>({...prev,drawing:prev.drawing?null:{width:800,height:600,strokes:[]}}))}>{t('keepDrawing')}</button>
           {features.drawing && <DrawingEditor value={features.drawing} images={images} onChange={drawing=>setFeatures(prev=>({...prev,drawing}))}/>}
-          {!isTodoList && !isCode && <button type="button" className="editor-format-toggle" onClick={()=>setFeatures(prev=>({...prev,format:prev.format === 'rich'?'plain':'rich'}))}>{features.format === 'rich' ? t('keepMarkdown') : t('keepVisual')}</button>}
-          <label className="note-background-picker">{t('keepBackground')} <select value={features.background || 'none'} onChange={e=>setFeatures(prev=>({...prev,background:e.target.value}))}>
-            {['none','grid','lines','dots','leaves','sand'].map(bg=><option key={bg} value={bg}>{t(`keepBackground_${bg}`)}</option>)}
-          </select></label>
 
           {/* v1.10.0: Wiki-Link-Vervollständigung — erscheint, sobald über dem
               Caret ein angefangenes `[[` steht; Klick ersetzt das Fragment. */}
@@ -1121,13 +1147,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
               v1.13.0 Fassungen, aber keine UI zeigte sie. Demo-Konten sind
               serverseitig vom Restore ausgesperrt (rejectDemoNoteCapabilities)
               — die Historie bleibt ihnen erspart. */}
-          {!isDemo && note && (
-            <NoteHistory
-              noteId={note._id}
-              onRestored={handleRevisionRestored}
-              baseUpdatedAtRef={baseUpdatedAtRef}
-            />
-          )}
+
 
           {/* v1.10.0: Verlinkte Notizen (aus `[[Titel]]` im Inhalt) und
               Backlinks („Erwähnt in") — Klick springt direkt hinein. */}
@@ -1352,33 +1372,40 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
             />
           )}
 
-          <div className="note-modal-tags-container">
-            {/* v1.10.0: Eltern-Ordner — entspricht dem Move-Picker der App und
-                setzt bei neuen Notizen den aktiven Ordner-Scope vor. */}
-            {canManage && (
-              <div className="note-modal-folder-row">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-                </svg>
-                <select
-                  className="note-modal-folder-select"
-                  value={parentId || ''}
-                  onChange={(e) => setParentId(e.target.value || null)}
-                  aria-label={t('folderLabel')}
-                >
-                  <option value="">{t('topLevel')}</option>
-                  {folders.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      {' '.repeat(folder.depth * 2)}{folder.title}
-                    </option>
-                  ))}
-                </select>
+          <div className="note-editor-chips">
+            {remindAt && canManage && <button type="button" className="note-editor-chip" onClick={e=>togglePanel('reminder',e)} aria-label={t('reminderLabel')}>
+              <EditorIcon name="reminder"/>{new Date(remindAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}
+            </button>}
+            {tags.length > 0 && (
+              <div className="note-modal-tags-pills">
+                {tags.map((tag, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className="tag-pill"
+                    onClick={() => removeTag(index)}
+                    title={t('removeTagTitle', { tag })}
+                  >
+                    <span className="tag-pill-text">{tag}</span>
+                    <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                ))}
               </div>
             )}
-            {/* v1.17.0 (W3): Erinnerung setzen — Parität zur Android-App, die
-                remindAt per AlarmManager plant; der Web-Client konnte den
-                serverseitig längst validierten Wert vorher nicht mal setzen.
-                Leeres Feld löscht die Erinnerung (remindAt: null). */}
+            {parentId && canManage && <button type="button" className="note-editor-chip" onClick={e=>togglePanel('folder',e)}><EditorIcon name="folder"/>{folders.find(folder=>folder.id===parentId)?.title || t('folderLabel')}</button>}
+          </div>
+        </div>
+
+        <div className="note-modal-footer">
+          {editorPanel && <EditorOptionsPopover title={t({reminder:'reminderLabel',labels:'editorLabels',folder:'folderLabel',more:'editorMore',history:'noteHistory'}[editorPanel])} onClose={()=>closePanel()} onOutside={()=>closePanel(false)}>
+            {editorPanel === 'reminder' && <div className="editor-options-fields">
+              {[1,7].map(days=><button key={days} type="button" className="editor-reminder-preset" onClick={()=>{
+                const next=new Date();next.setDate(next.getDate()+days);next.setHours(8,0,0,0);
+                setRemindAt(isoToLocalInput(next.toISOString()));closePanel();
+              }}>{t(days===1?'editorTomorrow':'editorNextWeek')}<span>08:00</span></button>)}
             {canManage && (
               <div className="note-modal-folder-row">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -1409,30 +1436,15 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                 )}
               </div>
             )}
-            {tags.length > 0 && (
-              <div className="note-modal-tags-pills">
-                {tags.map((tag, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    className="tag-pill"
-                    onClick={() => removeTag(index)}
-                    title={t('removeTagTitle', { tag })}
-                  >
-                    <span className="tag-pill-text">{tag}</span>
-                    <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            )}
+              <button type="button" className="editor-options-done" onClick={()=>closePanel()}>{t('close')}</button>
+            </div>}
+            {editorPanel === 'labels' && <div className="editor-options-fields">
             <div className="note-modal-tags-input-wrap">
               <input
                 type="text"
                 className="note-modal-tags-input"
-                placeholder={tags.length > 0 ? t('addMoreTags') : t('tagsPlaceholder')}
+                placeholder={t('editorLabelName')}
+                aria-label={t('editorLabelName')}
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleTagInputKeyDown}
@@ -1460,16 +1472,62 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-
-        <div className="note-modal-footer">
-          <div className="note-modal-toolbar">
-            <ColorPicker
-              selectedColor={color}
-              onColorSelect={setColor}
+            </div>            {tags.length > 0 && (
+              <div className="note-modal-tags-pills">
+                {tags.map((tag, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className="tag-pill"
+                    onClick={() => removeTag(index)}
+                    title={t('removeTagTitle', { tag })}
+                  >
+                    <span className="tag-pill-text">{tag}</span>
+                    <svg className="tag-pill-remove" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+            </div>}
+            {editorPanel === 'folder' && <div className="editor-options-fields">
+            {canManage && (
+              <div className="note-modal-folder-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                <select
+                  className="note-modal-folder-select"
+                  value={parentId || ''}
+                  onChange={(e) => setParentId(e.target.value || null)}
+                  aria-label={t('folderLabel')}
+                >
+                  <option value="">{t('topLevel')}</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {' '.repeat(folder.depth * 2)}{folder.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            </div>}
+            {editorPanel === 'history' && <>
+          {!isDemo && note && (
+            <NoteHistory
+              noteId={note._id}
+              onRestored={handleRevisionRestored}
+              baseUpdatedAtRef={baseUpdatedAtRef}
+              autoOpen
             />
+          )}            </>}
+            {editorPanel === 'more' && <div className="editor-more-actions">
+              {isTodoList && <ChecklistOptions items={todoItems} onChange={setTodoItems} options={listOptions} onOptions={list=>setFeatures(prev=>({...prev,list}))}/>}
+              <button type="button" onClick={()=>setEditorPanel('labels')}><EditorIcon name="label"/><span>{t('editorLabels')}</span></button>
+              {canManage && <button type="button" onClick={()=>setEditorPanel('folder')}><EditorIcon name="folder"/><span>{t('editorMove')}</span></button>}
+              {!isDemo && note && <button type="button" onClick={()=>setEditorPanel('history')}><EditorIcon name="history"/><span>{t('noteHistory')}</span></button>}
             <button
               type="button"
               className={`btn-modal-checkbox ${isTodoList ? 'active' : ''}`}
@@ -1480,7 +1538,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 <path d="M9 11l3 3 6-6"/>
-              </svg>
+              </svg><span>{isTodoList ? t('switchToNote') : t('switchToList')}</span>
             </button>
             {/* v1.10.0: Code-/Monospace-Notiz — Inhalt in JetBrains Mono */}
             {!isTodoList && (
@@ -1498,81 +1556,15 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="16 18 22 12 16 6"/>
                   <polyline points="8 6 2 12 8 18"/>
-                </svg>
+                </svg><span>{t('codeMode')}</span>
               </button>
             )}
-            {note && onToggleArchive && (
-              <button
-                type="button"
-                className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (isSaving) return;
-                  setIsSaving(true);
-                  try {
-                    const updated = await onToggleArchive(note._id);
-                    if (updated) onClose();
-                  } finally {
-                    setIsSaving(false);
-                  }
-                }}
-                disabled={isSaving}
-                title={note.isArchived ? t('unarchive') : t('archive')}
-                aria-label={note.isArchived ? t('unarchive') : t('archive')}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
-                </svg>
-              </button>
-            )}
-            {note && canManage && onOpenCollaborate && (
-              <button
-                type="button"
-                className="btn-modal-collaborate"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenCollaborate(note);
-                  onClose();
-                }}
-                title={t('share')}
-                aria-label={t('share')}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-              </button>
-            )}
-            <button
-              type="button"
-              className={`btn-modal-pin ${isPinned ? 'pinned' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsPinned(!isPinned);
-              }}
-              title={isPinned ? t('unpin') : t('pin')}
-              aria-label={isPinned ? t('unpin') : t('pin')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
-              </svg>
-            </button>
-            {!isDemo && canManage && (
+          <button type="button" className="editor-format-toggle" aria-pressed={Boolean(features.drawing)} onClick={()=>setFeatures(prev=>({...prev,drawing:prev.drawing?null:{width:800,height:600,strokes:[]}}))}>{t('keepDrawing')}</button>
+          {!isTodoList && !isCode && <button type="button" className="editor-format-toggle" onClick={()=>setFeatures(prev=>({...prev,format:prev.format === 'rich'?'plain':'rich'}))}>{features.format === 'rich' ? t('keepMarkdown') : t('keepVisual')}</button>}
+          <label className="note-background-picker">{t('keepBackground')} <select value={features.background || 'none'} onChange={e=>setFeatures(prev=>({...prev,background:e.target.value}))}>
+            {['none','grid','lines','dots','leaves','sand'].map(bg=><option key={bg} value={bg}>{t(`keepBackground_${bg}`)}</option>)}
+          </select></label>            {!isDemo && canManage && (
               <>
-                <label
-                  htmlFor="image-upload-input"
-                  className="btn-modal-image-select"
-                  title={t('selectImages')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                </label>
                 {note && newImageFiles.length > 0 && (
                   <button
                     type="button"
@@ -1591,8 +1583,9 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                     )}
                   </button>
                 )}
-                <label
-                  htmlFor="pdf-upload-input"
+                <button
+                  type="button"
+                  onClick={()=>pdfInputRef.current?.click()}
                   className="btn-modal-image-select"
                   title={t('selectFiles')}
                   style={{ cursor: 'pointer' }}
@@ -1600,7 +1593,8 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                   </svg>
-                </label>
+                  <span>{t('selectFiles')}</span>
+                </button>
                 {note && newPdfFiles.length > 0 && (
                   <button
                     type="button"
@@ -1641,6 +1635,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                     <line x1="8" y1="23" x2="16" y2="23"/>
                   </svg>
                 )}
+                <span>{isRecording ? t('stopRecording') : t('startRecording')}</span>
               </button>
             )}
             {note && canManage && onDelete && (
@@ -1658,23 +1653,76 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
                 </svg>
+                <span>{t('delete')}</span>
               </button>
             )}
+              <button type="button" className="editor-discard" onClick={()=>{
+                clearTimeout(draftTimerRef.current);
+                clearDraft(note?._id || null, draftUserId);
+                onClose();
+              }} disabled={isSaving}>{t('editorDiscard')}</button>
+            </div>}
+          </EditorOptionsPopover>}
+          <div className="note-modal-toolbar">
+            {canManage && <button type="button" className="editor-tool" data-editor-options-trigger aria-label={t('reminderLabel')} title={t('reminderLabel')} aria-expanded={editorPanel==='reminder'} onClick={e=>togglePanel('reminder',e)}><EditorIcon name="reminder"/></button>}
+            {note && canManage && onOpenCollaborate && (
+              <button
+                type="button"
+                className="btn-modal-collaborate"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenCollaborate(note);
+                  onClose();
+                }}
+                title={t('share')}
+                aria-label={t('share')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </button>
+            )}
+            <ColorPicker
+              selectedColor={color}
+              onColorSelect={setColor}
+            />
+            {!isDemo && canManage && <button type="button" className="btn-modal-image-select" onClick={()=>fileInputRef.current?.click()} aria-label={t('selectImages')} title={t('selectImages')}><EditorIcon name="image"/></button>}
+            {note && onToggleArchive && (
+              <button
+                type="button"
+                className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (isSaving) return;
+                  setIsSaving(true);
+                  try {
+                    const updated = await onToggleArchive(note._id);
+                    if (updated) onClose();
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}
+                disabled={isSaving}
+                title={note.isArchived ? t('unarchive') : t('archive')}
+                aria-label={note.isArchived ? t('unarchive') : t('archive')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>
+                </svg>
+              </button>
+            )}
+            <button type="button" className="editor-tool" data-editor-options-trigger aria-label={t('editorMore')} title={t('editorMore')} aria-expanded={editorPanel==='more'} onClick={e=>togglePanel('more',e)}><EditorIcon name="more"/></button>
           </div>
           <div className="note-modal-actions">
             <button
-              className="btn-modal-cancel"
-              onClick={onClose}
+              className="btn-modal-save"
+              onClick={handleOverlayClick}
               disabled={isSaving}
             >
-              {t('cancel')}
-            </button>
-            <button
-              className="btn-modal-save"
-              onClick={handleSave}
-              disabled={isSaving || (!title.trim() && !content.trim() && !todoItems.some(item => item.text.trim()) && !images.length && !noteFiles.length && !newImageFiles.length && !newPdfFiles.length && !features.drawing?.strokes?.length)}
-            >
-              {t('save')}
+              {isSaving ? t('save') : t('close')}
             </button>
           </div>
         </div>

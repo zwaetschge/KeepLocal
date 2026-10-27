@@ -70,3 +70,24 @@ cookie expiry recovery, retained file bytes, concurrent recovery and no retry
 on permission denial. Evidence is in the parent workspace under
 `audit-evidence/csrf-fix-2026-10-27/`. The user's exact failing URL/action has
 not been supplied; this local correction has not been deployed.
+
+## Editor presentation follow-up — 2026-10-27
+
+After feedback on the always-visible history/folder/reminder/tag fields, the
+web editor now uses a compact 600px note surface with the pin beside the title
+and a single row of reminder, collaboration, palette, image, archive and more
+controls. Closing saves using the existing save/conflict/upload handling.
+Labels and scheduled reminders appear as chips. Folder selection, label editing,
+history, list options and advanced modes are available on demand. Reminder
+presets use local time (tomorrow/in one week at 08:00); manual dates remain
+editable. Discard is in More and clears the local draft.
+
+Browser checks use synthetic notes: history loads on demand; Escape dismisses
+only the popover and restores focus; clicking the content dismisses it without
+stealing typing focus; reminder, label and folder edits reach one save request;
+the PDF picker is keyboard accessible. Desktop, dark theme, 390px and 320px
+screens were rendered; narrow layouts and popover bounds were checked.
+Client 334/334, production build successful, lint zero errors/five existing
+warnings. Evidence and the reproducible browser script:
+`audit-evidence/editor-keep-2026-10-27/` in the parent workspace.
+This is a local web change; no Android rebuild or live rollout was performed.

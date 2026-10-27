@@ -808,4 +808,11 @@ export const de = {
   keepSaveCopy: 'Lokale Kopie sichern',
   keepDiscardQueued: 'Diese ausstehende Änderung verwerfen? Sichere bei Bedarf zuerst eine lokale Kopie.',
   errorSaving: 'Notiz konnte nicht gespeichert werden',
+  editorMore: 'Weitere Optionen',
+  editorLabels: 'Labels bearbeiten',
+  editorMove: 'In Ordner verschieben',
+  editorDiscard: 'Änderungen verwerfen',
+  editorLabelName: 'Labelnamen eingeben',
+  editorTomorrow: 'Morgen',
+  editorNextWeek: 'In einer Woche',
 };

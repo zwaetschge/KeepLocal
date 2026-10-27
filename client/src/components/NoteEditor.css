@@ -1,0 +1,70 @@
+/* Content first; optional controls live in anchored popovers. */
+.note-modal-overlay { background:rgb(0 0 0 / .5); backdrop-filter:none; -webkit-backdrop-filter:none; align-items:center; }
+.note-modal { max-width:600px; margin:0; border-radius:8px; box-shadow:0 8px 28px #0004; }
+.note-modal-body { padding:20px 24px 12px; gap:10px; }
+.note-modal-title { font-family:var(--font-body); font-size:20px; line-height:1.4; font-weight:500; letter-spacing:0; padding:0 40px 8px 0; }
+.note-modal-title:focus-visible { border-bottom-color:transparent; }
+.note-modal > .btn-modal-pin { position:absolute; top:14px; right:14px; width:40px; height:40px; padding:9px; border:0; background:transparent; color:var(--text-primary); border-radius:50%; cursor:pointer; }
+.note-modal > .btn-modal-pin:is(:hover,.pinned) { background:var(--hover-overlay); }
+.note-modal-content { min-height:100px; font-size:15px; line-height:1.6; }
+.note-modal .rich-content { min-height:100px; }
+.note-modal .todo-item { padding:2px 0; margin:0; border:0; background:transparent; gap:8px; }
+.note-modal .todo-item-input { padding:6px 0; font-size:15px; }
+.note-modal .todo-item > button { min-width:24px; min-height:32px; opacity:0; }
+.note-modal .todo-item:is(:hover,:focus-within) > button { opacity:1; }
+.note-modal-footer { position:relative; padding:8px 12px; border:0; border-radius:0 0 8px 8px; background:transparent; gap:8px; }
+.note-modal-toolbar { flex-wrap:nowrap; gap:4px; }
+.note-modal-toolbar > button,.note-modal-toolbar .color-picker-toggle { display:flex; align-items:center; justify-content:center; border:0; width:40px; height:40px; padding:10px; background:transparent; color:var(--text-secondary); cursor:pointer; border-radius:50%; }
+.note-modal-toolbar > button:is(:hover,[aria-expanded=true]) { background:var(--hover-overlay); }
+.note-modal-actions { flex:0 0 auto; gap:0; }
+.note-modal .btn-modal-save { min-height:40px; padding:8px 16px; border:0; border-radius:4px; box-shadow:none; background:transparent; color:var(--text-primary); font-weight:500; }
+.note-modal .btn-modal-save:hover:not(:disabled) { background:var(--hover-overlay); box-shadow:none; transform:none; }
+.note-editor-chips { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.note-editor-chips:empty { display:none; }
+.note-modal .note-modal-tags-pills { display:contents; }
+.note-editor-chip,.note-modal .tag-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; margin:0; min-height:26px; max-width:100%; font:inherit; font-size:12px; color:var(--text-secondary); background:#80808018; border:1px solid var(--border-color); border-radius:14px; cursor:pointer; }
+.note-editor-chip svg { width:14px; height:14px; flex-shrink:0; }
+.note-modal .tag-pill-text { overflow:hidden; text-overflow:ellipsis; }
+.note-modal .tag-pill-remove { opacity:0; width:12px; }
+.note-modal .tag-pill:is(:hover,:focus-visible) .tag-pill-remove { opacity:1; }
+.editor-options-popover { position:absolute; left:12px; bottom:calc(100% + 4px); width:300px; max-width:calc(100% - 24px); max-height:min(60dvh,440px); overflow-y:auto; padding:8px 0; color:var(--text-primary); background:var(--bg-paper); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 18px #0003; z-index:20; }
+.editor-options-heading { display:flex; justify-content:space-between; align-items:center; padding:4px 16px 8px; gap:8px; }
+.editor-options-heading strong { font-size:14px; font-weight:500; }
+.editor-options-heading > button { width:32px; height:32px; border:0; border-radius:50%; background:transparent; color:inherit; cursor:pointer; font-size:22px; }
+.editor-options-heading > button:hover { background:var(--hover-overlay); }
+.editor-options-fields { display:flex; flex-wrap:wrap; gap:8px; padding:0 16px 8px; }
+.editor-options-fields .note-modal-folder-row { display:flex; width:100%; align-items:center; gap:8px; margin:0; }
+.editor-options-fields input,.editor-options-fields select { min-width:0; width:100%; min-height:40px; font:inherit; font-size:14px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:4px; color:var(--text-primary); padding:8px; }
+.editor-options-fields .note-modal-tags-input-wrap { width:100%; }
+.editor-options-done { margin-left:auto; min-height:36px; padding:6px 12px; border:0; background:transparent; color:inherit; border-radius:4px; cursor:pointer; }
+.editor-more-actions { display:flex; flex-direction:column; gap:0; }
+.editor-more-actions > button,.editor-more-actions > label,.editor-more-actions > .note-background-picker { display:flex; align-items:center; justify-content:flex-start; gap:12px; width:100%; min-height:40px; border:0; border-radius:0; margin:0; padding:8px 16px; background:transparent; color:var(--text-primary); font:inherit; font-size:14px; text-align:left; cursor:pointer; }
+.editor-more-actions > button:hover,.editor-more-actions > label:hover { background:var(--hover-overlay); }
+.editor-more-actions svg { flex-shrink:0; width:18px; height:18px; }
+.editor-more-actions .note-background-picker select { margin-left:auto; max-width:135px; }
+.editor-options-popover .note-history { margin:0; padding:0 12px; border:0; }
+.editor-options-popover .note-history-toggle { border:0; background:transparent; padding:8px 4px; text-transform:none; letter-spacing:0; }
+.note-modal :is(button,input,select,label[tabindex]):focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+@media(max-width:600px) {
+  .note-modal-overlay { align-items:flex-end; padding:8px; }
+  .note-modal { min-height:0; max-height:calc(100dvh - 16px); border-radius:8px; }
+  .note-modal-body { padding:20px 16px 12px; }
+  .note-modal-footer { flex-direction:row; align-items:center; padding:6px 8px; gap:2px; border-radius:0 0 8px 8px; }
+  .note-modal-toolbar { order:0; justify-content:flex-start; gap:0; }
+  .note-modal-actions { order:0; width:auto; margin-left:auto; }
+  .note-modal-toolbar > button,.note-modal-toolbar .color-picker-toggle { width:36px; height:44px; padding:8px; }
+  .note-modal .btn-modal-save { padding-inline:10px; }
+  .note-modal .todo-item > button { opacity:1; }
+}
+.editor-reminder-preset { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:40px; border:0; padding:8px 4px; color:inherit; background:transparent; font:inherit; font-size:14px; cursor:pointer; border-radius:4px; }
+.editor-reminder-preset:hover { background:var(--hover-overlay); }
+.editor-reminder-preset span { color:var(--text-secondary); font-size:12px; }
+.note-modal-toolbar .color-picker-wrapper { position:static; }
+.note-modal-toolbar .color-picker-popup { left:12px; max-width:calc(100% - 24px); }
+.note-modal .btn-add-todo { padding:8px 0; background:transparent; }
+.editor-more-actions > details { padding:8px 16px; font-size:14px; }
+.editor-more-actions > details summary { cursor:pointer; min-height:32px; }
+.editor-more-actions > details label { display:flex; align-items:center; gap:8px; min-height:40px; }
+@media(max-width:360px) { .note-modal-toolbar > button,.note-modal-toolbar .color-picker-toggle { width:32px; } }
+.note-modal .todo-add-item { padding:8px 0; background:transparent; }
+.note-history-toggle[hidden] { display:none; }

@@ -808,4 +808,11 @@ export const en = {
   keepSaveCopy: 'Save local copy',
   keepDiscardQueued: 'Discard this pending change? Save a local copy first if needed.',
   errorSaving: 'Could not save note',
+  editorMore: 'More options',
+  editorLabels: 'Edit labels',
+  editorMove: 'Move to folder',
+  editorDiscard: 'Discard changes',
+  editorLabelName: 'Enter label name',
+  editorTomorrow: 'Tomorrow',
+  editorNextWeek: 'In one week',
 };

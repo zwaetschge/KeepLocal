@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import notesAPI from '../services/api/notesAPI';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
@@ -13,9 +13,9 @@ import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
  * Selbstständige Komponente statt NoteModal-Erweiterung: Das Modal hat schon
  * 1600+ Zeilen State; die Historie hat ihren eigenen Lade-/Fehler-Zustand.
  */
-function NoteHistory({ noteId, onRestored, baseUpdatedAtRef }) {
+function NoteHistory({ noteId, onRestored, baseUpdatedAtRef, autoOpen = false }) {
   const { t, language } = useLanguage();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [revisions, setRevisions] = useState(null);
   const [listError, setListError] = useState(null);
   // Vorschau: { savedAt, title, content, isTodoList, todoItems }
@@ -47,6 +47,8 @@ function NoteHistory({ noteId, onRestored, baseUpdatedAtRef }) {
       setBusy(false);
     }
   }, [noteId, t]);
+
+  useEffect(() => { if (autoOpen) loadRevisions(); }, [autoOpen, loadRevisions]);
 
   const handleToggle = useCallback(() => {
     setOpen((wasOpen) => {
@@ -113,6 +115,7 @@ function NoteHistory({ noteId, onRestored, baseUpdatedAtRef }) {
       <button
         type="button"
         className="note-history-toggle"
+        hidden={autoOpen}
         onClick={handleToggle}
         aria-expanded={open}
       >
