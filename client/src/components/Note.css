@@ -104,6 +104,7 @@
 }
 
 .note-content::after {
+  display: none;
   content: '';
   position: absolute;
   bottom: 0;

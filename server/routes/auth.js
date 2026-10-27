@@ -55,6 +55,8 @@ function publicAuthUser(user, includeProfile = false) {
     // Klein und unkritisch, dafür braucht die UI keine zweite Anfrage:
     // Theme, Sprache und AI-Flags folgen dem Konto statt dem Gerät.
     preferences: {
+      viewMode: user.preferences?.viewMode || 'grid',
+      visualStyle: user.preferences?.visualStyle || 'keep',
       theme: user.preferences?.theme || 'light',
       language: user.preferences?.language || null,
       aiFeatures: {
@@ -495,6 +497,12 @@ router.put('/preferences', authenticateToken, blockDemoUser('preferences'), asyn
 
     // v1.13.0: Karten als Markdown rendern — reiner Boolean, default true
     // (Bestandskonten sehen sofort gerenderte Trilium-Notizen).
+    for (const [key, values] of Object.entries({viewMode:['grid','list'], visualStyle:['keep','classic']})) {
+      if (req.body[key] !== undefined) {
+        if (!values.includes(req.body[key])) return res.status(400).json({error:'Ungueltige Ansicht'});
+        update[`preferences.${key}`] = req.body[key];
+      }
+    }
     if (renderMarkdown !== undefined) {
       if (typeof renderMarkdown !== 'boolean') {
         return res.status(400).json({ error: 'renderMarkdown muss ein Boolean sein' });

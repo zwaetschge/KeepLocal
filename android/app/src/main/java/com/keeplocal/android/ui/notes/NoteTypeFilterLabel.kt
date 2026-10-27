@@ -15,4 +15,6 @@ val NoteTypeFilter.labelRes: Int
         NoteTypeFilter.IMAGES -> R.string.filter_images
         NoteTypeFilter.REMINDERS -> R.string.filter_reminders
         NoteTypeFilter.PINNED -> R.string.filter_pinned
+        NoteTypeFilter.DRAWINGS -> R.string.filter_drawings
+        NoteTypeFilter.AUDIO -> R.string.filter_audio
     }

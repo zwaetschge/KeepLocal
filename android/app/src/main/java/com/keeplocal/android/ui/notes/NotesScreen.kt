@@ -547,6 +547,8 @@ private fun NotesPane(
     var showDeleteConfirm by remember { mutableStateOf<String?>(null) }
     var showContextMenu by remember { mutableStateOf<Note?>(null) }
     var showTagDialog by remember { mutableStateOf(false) }
+    var showExtraFilters by remember { mutableStateOf(false) }
+    var showCaptureMenu by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
     val context = LocalContext.current
@@ -759,6 +761,7 @@ private fun NotesPane(
                         }
                     },
                     actions = {
+                        IconButton(onClick={showExtraFilters=true}) {Text("☷")}
                         // Sort mode picker (v1.8.0 Nr. 9).
                         IconButton(onClick = { showSortDialog = true }) {
                             Icon(
@@ -791,7 +794,7 @@ private fun NotesPane(
         floatingActionButton = {
             if (!uiState.showArchived && !uiState.isMultiSelectMode) {
                 FloatingActionButton(
-                    onClick = onCreateNote,
+                    onClick = {showCaptureMenu=true},
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_add_note))
@@ -810,6 +813,9 @@ private fun NotesPane(
             // can't resolve BoxWithConstraints.maxWidth via implicit receiver.
             val paneMaxWidth = this@BoxWithConstraints.maxWidth
             Column(modifier = Modifier.fillMaxSize()) {
+                if(!showSearch && !uiState.isMultiSelectMode)Surface(onClick={showSearch=true},shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
+                    Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Search,contentDescription=null);Spacer(Modifier.width(12.dp));Text(stringResource(R.string.notes_search),style=MaterialTheme.typography.bodyLarge)}
+                }
                 if (uiState.syncBanner != SyncBanner.None) {
                     SyncStatusBanner(
                         banner = uiState.syncBanner,
@@ -1238,6 +1244,30 @@ private fun NotesPane(
 
     // Sort mode picker (v1.8.0 Nr. 9): custom order stays the default; the
     // others re-read the window from the Room cache instantly.
+    if(showExtraFilters) ModalBottomSheet(onDismissRequest={showExtraFilters=false}) {
+        TextButton(onClick={viewModel.setColorFilter(null);viewModel.setPersonFilter(null)}){Text(stringResource(R.string.filters_reset))}
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp)) {
+            com.keeplocal.android.domain.model.NoteColor.entries.forEach { color ->
+                IconButton(onClick={viewModel.setColorFilter(color.hex)},modifier=Modifier.size(48.dp)) {
+                    Surface(color=Color(android.graphics.Color.parseColor(color.hex)),shape=RoundedCornerShape(24.dp),modifier=Modifier.size(32.dp)) {if(uiState.colorFilter==color.hex)Text("✓")}
+                }
+            }
+        }
+        val people=uiState.noteTree.flatMap {it.flatten()}.flatMap {listOf(com.keeplocal.android.domain.model.SharedUser(it.note.owner,uiState.ownerNames[it.note.owner] ?: stringResource(R.string.note_shared_badge)))+it.note.sharedWith}.filter {it.userId.isNotBlank()}.distinctBy {it.userId}
+        people.forEach { person -> ListItem(headlineContent={Text(person.username)},modifier=Modifier.clickable {viewModel.setPersonFilter(person.userId)}) }
+    }
+    if (showCaptureMenu) {
+        ModalBottomSheet(onDismissRequest={showCaptureMenu=false}) {
+            listOf("text" to R.string.capture_text,"list" to R.string.capture_list,"image" to R.string.capture_image,"drawing" to R.string.capture_drawing).forEach { (kind,label) ->
+                ListItem(headlineContent={Text(stringResource(label))},modifier=Modifier.fillMaxWidth().clickable {
+                    com.keeplocal.android.util.IncomingIntents.prepareCapture(kind)
+                    showCaptureMenu=false
+                    onCreateNote()
+                })
+            }
+        }
+    }
+
     if (showSortDialog) {
         AlertDialog(
             onDismissRequest = { showSortDialog = false },

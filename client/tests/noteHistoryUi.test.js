@@ -58,7 +58,7 @@ test('the modal applies the restored note and refreshes the locking baseline', (
   // via rejectDemoNoteCapabilities — die UI verspricht nichts Unmögliches).
   assert.match(
     source,
-    /\{!isDemo && note && \(\s*\n\s*<NoteHistory\s*\n\s*noteId=\{note\._id\}\s*\n\s*onRestored=\{handleRevisionRestored\}\s*\n\s*baseUpdatedAtRef=\{baseUpdatedAtRef\}\s*\n\s*\/>/
+    /\{!isDemo && note && \(\s*\n\s*<NoteHistory\s*\n\s*noteId=\{note\._id\}\s*\n\s*onRestored=\{handleRevisionRestored\}\s*\n\s*baseUpdatedAtRef=\{baseUpdatedAtRef\}\s*\n\s*autoOpen\s*\n\s*\/>/
   );
 });
 

@@ -1,0 +1,42 @@
+.notes-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 16px 20px; }
+.notes-toolbar select,.notes-toolbar button { min-height:40px; max-width:190px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-primary); background:var(--bg-paper); padding:6px 10px; font:inherit; font-size:13px; cursor:pointer; }
+.toolbar-spacer { flex:1; }
+.keep-style { --font-display:var(--font-body); --radius-lg:8px; --shadow-md:none; }
+.keep-style .App-header { background:var(--bg-primary); box-shadow:none; border-bottom:1px solid var(--border-color); }
+.keep-style .App-header::after { display:none; }
+.keep-style .note { border-radius:8px; box-shadow:none; animation:none; transition:box-shadow .15s ease,border-color .15s ease; }
+.keep-style .note:hover { transform:none; box-shadow:0 2px 6px #0002; border-color:var(--border-color-strong); }
+.keep-style .note-title { font-family:var(--font-body); font-size:16px; letter-spacing:0; }
+.keep-style .section-title { font-family:var(--font-body); letter-spacing:.06em; }
+.keep-style .note-list { column-width:240px; column-count:auto; column-gap:16px; }
+.keep-style .note-modal { box-shadow:0 6px 24px #0003; border-radius:8px; }
+.keep-style .note-modal-title { font-family:var(--font-body); border:0; }
+.list-mode .note-list { column-count:1; column-width:auto; max-width:700px; margin-inline:auto; }
+.list-mode .note-content { -webkit-line-clamp:12; max-height:18em; }
+.note-background-grid { background-image:linear-gradient(#8882 1px,transparent 1px),linear-gradient(90deg,#8882 1px,transparent 1px); background-size:24px 24px; }
+.note-background-lines { background-image:repeating-linear-gradient(transparent 0 27px,#8883 27px 28px); }
+.note-background-dots { background-image:radial-gradient(#8885 1px,transparent 1px); background-size:16px 16px; }
+.note-background-leaves { background-image:radial-gradient(ellipse at 100% 0%,#6b8c6525,transparent 65%); }
+.note-background-sand { background-image:linear-gradient(135deg,#cba46a22,transparent 70%); }
+@media(max-width:600px) { .notes-toolbar { margin-inline:0; gap:6px; } .notes-toolbar select { max-width:calc(50% - 3px); flex:1 1 40%; } .keep-style .note-list { column-width:auto; column-count:1; } }
+
+.format-toolbar { display:flex; gap:4px; flex-wrap:wrap; margin:8px 0; }
+.format-toolbar button,.editor-format-toggle { border:0; background:var(--bg-secondary); color:var(--text-primary); border-radius:6px; min-width:40px; min-height:40px; padding:8px; cursor:pointer; }
+.rich-content { min-height:160px; white-space:pre-wrap; overflow-wrap:anywhere; outline:0; padding:12px 0; color:var(--text-primary); font:inherit; }
+.rich-content:focus-visible { outline:2px solid var(--accent-color); outline-offset:4px; }
+.note-background-picker { display:inline-flex; align-items:center; gap:8px; padding:8px; }
+.note-background-picker select { color:var(--text-primary); background:var(--bg-paper); border:1px solid var(--border-color); padding:8px; border-radius:6px; }
+.todo-list-container details { padding:8px 0; }
+.todo-list-container details label { display:flex; align-items:center; gap:8px; min-height:40px; }
+.todo-item > button { min-width:32px; min-height:40px; border:0; color:var(--text-secondary); background:transparent; cursor:pointer; }
+
+.drawing-canvas { display:block; width:100%; border:1px solid var(--border-color); border-radius:8px; touch-action:none; cursor:crosshair; }
+.drawing-preview { width:100%; max-height:240px; display:block; }
+.drawing-editor { margin-block:12px; }
+
+.note-modal[data-background=grid] { background-image:linear-gradient(#8882 1px,transparent 1px),linear-gradient(90deg,#8882 1px,transparent 1px); background-size:24px 24px; }
+.note-modal[data-background=lines] { background-image:repeating-linear-gradient(transparent 0 27px,#8883 27px 28px); }
+.note-modal[data-background=dots] { background-image:radial-gradient(#8885 1px,transparent 1px); background-size:16px 16px; }
+.note-modal[data-background=leaves] { background-image:radial-gradient(ellipse at 100% 0%,#6b8c6525,transparent 65%); }
+.note-modal[data-background=sand] { background-image:linear-gradient(135deg,#cba46a22,transparent 70%); }
+.image-ocr-btn { position:absolute; left:4px; bottom:4px; background:var(--bg-paper); color:var(--text-primary); border:1px solid var(--border-color); border-radius:6px; min-height:36px; padding:4px 8px; }

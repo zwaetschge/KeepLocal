@@ -258,6 +258,16 @@ class MediaRepositoryImpl @Inject constructor(
         target
     }
 
+    override suspend fun uploadRecording(noteId:String,audioFile:File):Result<Note> = withContext(Dispatchers.IO) {
+        Result.catching {
+            val part=MultipartBody.Part.createFormData("audio",audioFile.name,audioFile.asRequestBody("audio/mp4".toMediaTypeOrNull()))
+            val response=api.uploadRecording(noteId,part)
+            if(!response.isSuccessful)throw failure(response)
+            val note=response.body()?.toDomain() ?: throw IOException("Leere Antwort")
+            cacheNote(note);note
+        }
+    }
+
     override suspend fun transcribeAudio(noteId: String, audioFile: File): Result<TranscriptionResult> =
         withContext(Dispatchers.IO) {
             Result.catching {

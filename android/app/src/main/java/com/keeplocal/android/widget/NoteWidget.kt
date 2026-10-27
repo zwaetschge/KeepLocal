@@ -13,12 +13,14 @@ import androidx.glance.GlanceModifier
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.CheckBox
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.updateAll
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.LocalSize
@@ -142,16 +144,9 @@ class NoteWidget : GlanceAppWidget() {
                     if (note.isTodoList) {
                         Spacer(modifier = GlanceModifier.height(6.dp))
                         note.todoItems.take(checklistShown).forEach { item ->
-                            Text(
-                                text = (if (item.isCompleted) "✓ " else "☐ ") + item.text,
-                                style = TextStyle(
-                                    color = ColorProvider(
-                                        if (item.isCompleted) ink.onCardVariant else ink.onCard
-                                    ),
-                                    fontSize = 12.sp
-                                ),
-                                maxLines = 1
-                            )
+                            CheckBox(checked=item.isCompleted,text=item.text,
+                                onCheckedChange=actionRunCallback<NoteWidgetCheckAction>(actionParametersOf(NOTE_ID_KEY to note.id,ITEM_ID_KEY to item.id,ITEM_CHECKED_KEY to !item.isCompleted)),
+                                style=TextStyle(color=ColorProvider(ink.onCard),fontSize=12.sp))
                         }
                         if (note.todoItems.size > checklistShown) {
                             Text(
@@ -199,9 +194,26 @@ class NoteWidget : GlanceAppWidget() {
     }
 }
 
+private val ITEM_ID_KEY = ActionParameters.Key<String>("item_id")
+private val ITEM_CHECKED_KEY = ActionParameters.Key<Boolean>("item_checked")
 private val NOTE_ID_KEY = ActionParameters.Key<String>("note_id")
 
 private fun parametersOf(noteId: String): ActionParameters = actionParametersOf(NOTE_ID_KEY to noteId)
+
+class NoteWidgetCheckAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val noteId=parameters[NOTE_ID_KEY] ?: return
+        val itemId=parameters[ITEM_ID_KEY] ?: return
+        val checked=parameters[ITEM_CHECKED_KEY] ?: return
+        val entry=EntryPointAccessors.fromApplication(context.applicationContext,NoteWidgetEntryPoint::class.java)
+        val current=entry.noteDao().getNoteById(noteId)?.toDomain() ?: return
+        val index=current.todoItems.indexOfFirst{it.id==itemId};if(index<0 || current.todoItems[index].isCompleted==checked)return
+        val next=current.copy(todoItems=com.keeplocal.android.domain.model.toggleChecklist(current.todoItems,index))
+        entry.noteRepository().updateNote(next)
+        NoteWidget().update(context,glanceId)
+        PinnedNotesWidget().updateAll(context)
+    }
+}
 
 class NoteWidgetOpenAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
@@ -222,5 +234,6 @@ class NoteWidgetReceiver : GlanceAppWidgetReceiver() {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface NoteWidgetEntryPoint {
+    fun noteRepository(): com.keeplocal.android.domain.repository.NoteRepository
     fun noteDao(): NoteDao
 }

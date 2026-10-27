@@ -95,11 +95,11 @@ test('model index definition and migration target agree', () => {
   const model = fs.readFileSync(path.join(__dirname, '../models/Note.js'), 'utf8');
 
   assert.match(model, /name: 'note_text_search'/);
-  assert.match(model, /weights: \{ title: 5, 'todoItems\.text': 2, content: 1 \}/);
+  assert.match(model, /weights: \{ title: 5, 'todoItems\.text': 2, content: 1, 'features\.ocrText': 1 \}/);
   assert.match(model, /default_language: 'none'/);
 
   assert.equal(TARGET_INDEX_NAME, 'note_text_search');
-  assert.deepEqual(TARGET_WEIGHTS, { title: 5, content: 1, 'todoItems.text': 2 });
+  assert.deepEqual(TARGET_WEIGHTS, { title: 5, content: 1, 'todoItems.text': 2, 'features.ocrText': 1 });
   assert.equal(TARGET_LANGUAGE, 'none');
 });
 

@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import {serviceWorkerBuild} from './build-tools/serviceWorkerBuild.mjs';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), serviceWorkerBuild()],
   // Keep the legacy API variable available without exposing every
   // REACT_APP_* value to browser code.
   envPrefix: ['VITE_', 'REACT_APP_API_URL'],

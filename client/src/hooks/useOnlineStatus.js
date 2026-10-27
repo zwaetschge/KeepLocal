@@ -1,3 +1,4 @@
+import {outbox} from '../services/api/offlineNotes';
 import { useEffect, useRef, useState } from 'react';
 import { createOnlineTracker } from '../utils/onlineStatus.mjs';
 
@@ -53,7 +54,7 @@ export function useOnlineRefresh({ enabled = true, onReconnect = null } = {}) {
     }
     if (!wasOfflineRef.current) return;
     wasOfflineRef.current = false;
-    if (enabled) callbackRef.current?.();
+    if (enabled) outbox.flush().then(()=>callbackRef.current?.());
   }, [isOnline, enabled]);
 
   return isOnline;

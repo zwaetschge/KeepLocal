@@ -99,3 +99,10 @@ data.
 
 Never commit `demo.env`, cookies, JWT/CSRF secrets, OAuth credentials, or private
 host configuration.
+
+The bundled demo also admits its exact published frontend origin when `DEMO_MODE=true`,
+including older containers whose `ALLOWED_ORIGINS` only names the API host.
+`DEMO_FRONTEND_ORIGIN` can replace that default with another exact HTTPS origin.
+Private installations do not inherit this entry; forwarded host headers and wildcard
+Vercel preview domains do not grant access. A running old image needs an ordinary
+release rollout before this server change takes effect.

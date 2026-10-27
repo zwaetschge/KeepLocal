@@ -243,9 +243,10 @@ test('die meta-Route ist vor /:id registriert und reicht since durch', () => {
   const singleAt = routes.indexOf("router.get('/:id'");
   assert.ok(metaAt > -1 && metaAt < singleAt, '/meta muss vor /:id registriert sein');
   assert.ok(treeAt < singleAt);
-  assert.match(routes, /getNoteTree\(req\.user\._id, req\.query\.since\)/);
+  assert.match(routes, /getNoteTree\(req\.user\._id, req\.query\.since, req\.query\.personal === 'true'\)/);
   // v1.14.0: includeMeta kam dazu (Folgeseiten sparen sich Counts + Tag-Cloud).
-  assert.match(routes, /folderId,\s*\n\s*since,\s*\n\s*\/\/ v1\.14\.0[^\n]*\n\s*includeMeta: req\.query\.includeMeta\s*\n\s*\}\);/);
+  assert.match(routes, /folderId,\s*\n\s*since,/);
+  for(const key of ['includeMeta','type','color','person','personal'])assert.match(routes,new RegExp(`${key}: ?req\\.query\\.${key}`));
 });
 
 // ---------------------------------------------------------------------------

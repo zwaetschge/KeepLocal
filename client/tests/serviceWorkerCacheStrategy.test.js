@@ -35,12 +35,12 @@ test('service worker uses network-first handling before generic cache lookup for
   );
 
   const navigationBlock = serviceWorker.slice(navigationIndex, genericCacheLookupIndex);
-  assert.match(navigationBlock, /fetch\(event\.request\)/);
+  assert.match(navigationBlock, /fetch\(event\.request, \{ cache: 'no-store' \}\)/);
 });
 
 test('service worker cache name is bumped so old app-shell caches are discarded', () => {
   assert.doesNotMatch(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v7['"]/);
-  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v8['"]/);
+  assert.match(serviceWorker, /CACHE_NAME\s*=\s*['"]keeplocal-v9-__KEEPLOCAL_BUILD_ID__['"]/);
   assert.match(serviceWorker, /cacheName\.startsWith\(['"]keeplocal-['"]\)/);
 });
 
@@ -144,9 +144,9 @@ test('controllerchange wird erst im Update-Klick armdiert, nicht global (v1.16.0
     'der Listener hängt im Klick, VOR dem postMessage'
   );
   const cleanup = updatePrompt.slice(updatePrompt.indexOf('return () =>'));
-  assert.doesNotMatch(
+  assert.match(
     cleanup,
     /removeEventListener\('controllerchange'/,
-    'kein globaler Listener mehr, der entfernt werden müsste'
+    'ein nach dem Update-Klick gesetzter Listener wird beim Unmount entfernt'
   );
 });

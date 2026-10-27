@@ -288,6 +288,7 @@ router.get('/', async (req, res, next) => {
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
+      type: req.query.type, color: req.query.color, person: req.query.person, personal:req.query.personal,
       search,
       tag,
       page: page || 1,
@@ -335,9 +336,15 @@ router.get('/', async (req, res, next) => {
  *       200:
  *         description: Baum-Knoten
  */
+require('../noteExtras')(router,{writeGuard:requireApiKeyWrite,versioned:true});
+
+router.get('/facets', async (req, res, next) => {
+  try { res.json({success:true,data:await notesService.getNotePeople(req.user._id)}); } catch (e) { next(e); }
+});
+
 router.get('/tree', async (req, res, next) => {
   try {
-    const nodes = await notesService.getNoteTree(req.user._id, req.query.since);
+    const nodes = await notesService.getNoteTree(req.user._id, req.query.since, req.query.personal === 'true');
     res.json({ success: true, data: nodes });
   } catch (error) {
     next(error);
@@ -398,7 +405,7 @@ router.get('/export/markdown', async (req, res, next) => {
     });
   }
   try {
-    const archive = await notesService.buildMarkdownExport(req.user._id);
+    const archive = await notesService.buildMarkdownExport(req.user._id, req.query.personal === 'true');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="keeplocal-export.zip"');
     res.end(archive);
@@ -499,7 +506,7 @@ router.post('/import/markdown', requireApiKeyWrite, async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const note = await notesService.getNoteById(req.params.id, req.user._id);
+    const note = await notesService.getNoteById(req.params.id, req.user._id, req.query.personal === 'true');
     res.json({
       success: true,
       data: note
@@ -745,7 +752,7 @@ router.post('/:id/restore', requireApiKeyWrite, async (req, res, next) => {
  */
 router.post('/:id/pin', requireApiKeyWrite, async (req, res, next) => {
   try {
-    const note = await notesService.togglePinNote(req.params.id, req.user._id);
+    const note = await notesService.togglePinNote(req.params.id, req.user._id, req.query.personal === 'true');
     res.json({
       success: true,
       data: note
@@ -781,7 +788,7 @@ router.post('/:id/pin', requireApiKeyWrite, async (req, res, next) => {
  */
 router.post('/:id/archive', requireApiKeyWrite, async (req, res, next) => {
   try {
-    const note = await notesService.toggleArchiveNote(req.params.id, req.user._id);
+    const note = await notesService.toggleArchiveNote(req.params.id, req.user._id, req.query.personal === 'true');
     res.json({
       success: true,
       data: note
@@ -927,7 +934,7 @@ router.delete('/:id/images/:filename', requireApiKeyWrite, blockDemoUploads, not
     const nameWithoutExt = path.basename(req.params.filename, ext);
     await fs.promises.rm(path.join(imagesDir(), `${nameWithoutExt}-thumb.webp`), { force: true });
 
-    res.json({ success: true, data: note });
+    res.json({ success: true, data: req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note });
   } catch (error) {
     if (error.statusCode === 404 || error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ success: false, error: 'Notiz oder Bild nicht gefunden' });
@@ -974,7 +981,7 @@ router.delete('/:id/files/:filename', requireApiKeyWrite, blockDemoUploads, note
     const note = await notesService.removeFile(req.params.id, req.user._id, req.params.filename);
     await fs.promises.rm(path.join(filesDir(), req.params.filename), { force: true });
 
-    res.json({ success: true, data: note });
+    res.json({ success: true, data: req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note });
   } catch (error) {
     if (error.statusCode === 404 || error.kind === 'ObjectId') {
       return res.status(httpStatus.NOT_FOUND).json({ success: false, error: 'Notiz oder Anhang nicht gefunden' });

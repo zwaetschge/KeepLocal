@@ -3,6 +3,8 @@ export const LANGUAGES = ['de', 'en'];
 
 export const DEFAULT_SETTINGS = {
   theme: 'light',
+  viewMode: 'grid',
+  visualStyle: 'keep',
   aiFeatures: {
     voiceTranscription: false
   },
@@ -75,6 +77,8 @@ export function normalizeSettings(value) {
     : DEFAULT_SETTINGS.transcriptionLanguage;
 
   return {
+    viewMode: source.viewMode === 'list' ? 'list' : 'grid',
+    visualStyle: source.visualStyle === 'classic' ? 'classic' : 'keep',
     theme: THEMES.includes(source.theme) ? source.theme : DEFAULT_SETTINGS.theme,
     aiFeatures: {
       voiceTranscription: aiFeatures.voiceTranscription === true
@@ -105,6 +109,8 @@ export function settingsFromUser(user) {
 export function preferencesFromSettings(settings) {
   const normalized = normalizeSettings(settings);
   return {
+    viewMode: normalized.viewMode,
+    visualStyle: normalized.visualStyle,
     theme: normalized.theme,
     aiFeatures: { voiceTranscription: normalized.aiFeatures.voiceTranscription },
     transcriptionLanguage: normalized.transcriptionLanguage,
@@ -125,7 +131,7 @@ export function preferencesFromSettings(settings) {
 export function settingsEqual(a, b) {
   const left = normalizeSettings(a);
   const right = normalizeSettings(b);
-  return left.theme === right.theme
+  return left.viewMode === right.viewMode && left.visualStyle === right.visualStyle && left.theme === right.theme
     && left.transcriptionLanguage === right.transcriptionLanguage
     && left.renderMarkdown === right.renderMarkdown
     && left.aiFeatures.voiceTranscription === right.aiFeatures.voiceTranscription

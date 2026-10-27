@@ -7,6 +7,7 @@ export { API_BASE_URL };
 
 // Store CSRF token in memory (not in cookie!)
 let csrfToken = null;
+let csrfInitialization = null;
 
 // Session-Expiry (P16): Name des globalen Events, das bei einem 401 gefeuert
 // wird. Der AuthContext hört darauf und loggt den Nutzer mit Hinweis aus.
@@ -41,8 +42,8 @@ function createHttpError(payload, status) {
  * Fehler aus einer rohen Response bauen — mit `code`, `status`, `data` und
  * `Retry-After`.
  *
- * Warum exportiert: Die beiden Multipart-Pfade (Bild-Upload, Transkription)
- * rufen `fetch()` direkt, weil FormData keinen JSON-Wrapper verträgt. Sie warfen
+ * Warum exportiert: Multipart-Pfade nutzen den rohen CSRF-Transport, weil
+ * FormData keinen JSON-Wrapper verträgt. Sie warfen
  * ein nacktes `new Error(serverText)`: `resolveApiErrorMessage` sah kein `code`
  * und toastete den deutschen Server-Satz in der englischen UI — obwohl
  * `errTranscriptionBusy`, `errImageLimitReached` und `errAiUnavailable` längst
@@ -73,6 +74,37 @@ export function setCsrfToken(token) {
   csrfToken = token;
 }
 
+/** Cookie-authenticated transport shared by JSON, auth and FormData calls. */
+export async function fetchWithCsrf(url, options = {}) {
+  const unsafe = CSRF_METHODS.includes((options.method || 'GET').toUpperCase());
+  if (unsafe && !getCsrfToken()) await initializeCSRF();
+
+  let sentToken;
+  const send = () => {
+    options.signal?.throwIfAborted();
+    const headers = new Headers(options.headers);
+    sentToken = getCsrfToken();
+    if (unsafe && sentToken) headers.set('X-CSRF-Token', sentToken);
+    return fetch(url, { ...options, headers, credentials: 'include' });
+  };
+
+  let response = await send();
+  if (unsafe && response.status === 403) {
+    // Only replay a CSRF rejection, which happens before the route executes.
+    // Permission errors must never repeat a state-changing operation.
+    const payload = await response.clone().json().catch(() => null);
+    if (payload?.code === 'CSRF_INVALID' || payload?.error === 'Ungueltiges CSRF-Token') {
+      // Another concurrent request may already have recovered this token.
+      if (!getCsrfToken() || getCsrfToken() === sentToken) {
+        setCsrfToken(null);
+        await initializeCSRF();
+      }
+      if (getCsrfToken()) response = await send();
+    }
+  }
+  return response;
+}
+
 /**
  * Base fetch with cookie authentication and CSRF protection.
  *
@@ -90,19 +122,12 @@ export async function fetchWithAuth(url, options = {}) {
   const { signal, cleanup, timedOut } = createRequestSignal({ timeoutMs, signal: externalSignal });
 
   const doFetch = async () => {
-    const csrf = getCsrfToken();
-
     const headers = {
       'Content-Type': 'application/json',
       ...fetchOptions.headers,
     };
 
-    // Add CSRF token for state-changing operations
-    if (csrf && CSRF_METHODS.includes(fetchOptions.method)) {
-      headers['X-CSRF-Token'] = csrf;
-    }
-
-    return fetch(`${API_BASE_URL}${url}`, {
+    return fetchWithCsrf(`${API_BASE_URL}${url}`, {
       ...fetchOptions,
       headers,
       credentials: 'include',
@@ -111,19 +136,7 @@ export async function fetchWithAuth(url, options = {}) {
   };
 
   try {
-    let response = await doFetch();
-
-    // A 403 with a CSRF mismatch means the in-memory token no longer matches
-    // the cookie (e.g. the cookie expired after 8h while the session lives on,
-    // or a previous logout cleared the cookie but not our token). Fetch a fresh
-    // token once and retry instead of failing every mutation until a reload.
-    if (response.status === 403 && CSRF_METHODS.includes(fetchOptions.method)) {
-      setCsrfToken(null);
-      await initializeCSRF();
-      if (getCsrfToken()) {
-        response = await doFetch();
-      }
-    }
+    const response = await doFetch();
 
     // Handle 401 Unauthorized - token expired or invalid.
     // Event (gedrosselt) feuern, damit der AuthContext die Session beenden kann.
@@ -182,18 +195,30 @@ export async function parseResponse(response) {
  * @returns {Promise<void>}
  */
 export async function initializeCSRF() {
-  try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.CSRF_TOKEN}`, {
-      credentials: 'include',
-    });
-
-    if (response.ok) {
-      const data = await parseResponse(response);
-      setCsrfToken(data.csrfToken);
-    }
-  } catch (error) {
-    console.error('Failed to fetch CSRF token:', error);
+  // React startup, auth and uploads can arrive together without a cookie yet.
+  // One shared request keeps the returned header token and browser cookie paired.
+  if (!csrfInitialization) {
+    csrfInitialization = (async () => {
+      const { signal, cleanup } = createRequestSignal();
+      try {
+        const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.CSRF_TOKEN}`, {
+          credentials: 'include',
+          cache: 'no-store',
+          signal,
+        });
+        if (response.ok) {
+          const data = await parseResponse(response);
+          setCsrfToken(data.csrfToken);
+        }
+      } catch (error) {
+        console.error('Failed to fetch CSRF token:', error);
+      } finally {
+        cleanup();
+      }
+    })();
+    csrfInitialization.finally(() => { csrfInitialization = null; });
   }
+  return csrfInitialization;
 }
 
 /**

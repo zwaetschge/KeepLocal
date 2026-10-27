@@ -18,8 +18,8 @@ test('demo login uses the cookie and CSRF protected auth flow', () => {
   assert.match(api, /demoLogin:\s*async\s*\(\)\s*=>/);
   assert.match(api, /API_ENDPOINTS\.AUTH\.DEMO/);
   assert.match(api, /method:\s*['"]POST['"]/);
-  assert.match(api, /credentials:\s*['"]include['"]/);
-  assert.match(api, /authCsrfHeaders\(\)/);
+  assert.match(api, /fetchWithCsrf/);
+  assert.match(readClientFile('src/services/api/apiUtils.js'), /credentials:\s*['"]include['"]/);
   assert.match(api, /requireUserPayload/);
   assert.match(context, /const demoLogin = async \(\) =>/);
   assert.match(context, /setUser\(response\.user\)/);
@@ -58,7 +58,7 @@ test('authenticated demo mode stays visibly labelled and removes restricted entr
   assert.match(note, /\{canManage && onOpenCollaborate && \(/);
   assert.match(modal, /useLinkPreview\(content, !isTodoList && !isDemo\)/);
   assert.match(modal, /!isDemo && note && images/);
-  assert.match(modal, /!isDemo && note && settings\.aiFeatures\.voiceTranscription/);
+  assert.match(modal, /!isDemo && note && \(/);
 });
 
 test('demo call to action has a visible keyboard focus treatment', () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './ColorPicker.css';
 import { getColorVar } from '../utils/colorMapper';
@@ -21,6 +21,19 @@ const colors = [
 function ColorPicker({ selectedColor, onColorSelect }) {
   const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
+  const popup=useRef(null), trigger=useRef(null);
+  useLayoutEffect(()=>{
+    if(isOpen && popup.current?.getBoundingClientRect().right>window.innerWidth-8){popup.current.style.left='auto';popup.current.style.right='0';}
+  },[isOpen]);
+  useEffect(()=>{
+    if(!isOpen)return undefined;
+    const close=event=>{
+      if(event.key==='Escape'){event.stopPropagation();setIsOpen(false);trigger.current?.focus();}
+      else if(event.type==='pointerdown'&&!popup.current?.contains(event.target)&&!trigger.current?.contains(event.target))setIsOpen(false);
+    };
+    document.addEventListener('pointerdown',close);document.addEventListener('keydown',close,true);
+    return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',close,true);};
+  },[isOpen]);
 
   const handleColorSelect = (color) => {
     onColorSelect(color);
@@ -32,6 +45,8 @@ function ColorPicker({ selectedColor, onColorSelect }) {
       <button
         type="button"
         className="color-picker-toggle"
+        ref={trigger}
+        aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen(!isOpen);
@@ -40,14 +55,13 @@ function ColorPicker({ selectedColor, onColorSelect }) {
         aria-label={t('openColorPicker')}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/>
-          <line x1="16" y1="8" x2="2" y2="22"/>
-          <line x1="17.5" y1="15" x2="9" y2="15"/>
+          <path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H13a1.5 1.5 0 0 1 0-3h3a5 5 0 0 0 5-5c0-3-4-5-9-5z"/>
+          <circle cx="7" cy="10" r=".8"/><circle cx="10" cy="7" r=".8"/><circle cx="15" cy="7" r=".8"/>
         </svg>
       </button>
 
       {isOpen && (
-        <div className="color-picker-popup">
+        <div className="color-picker-popup" ref={popup}>
           <div className="color-picker-grid">
             {colors.map((color) => (
               <button

@@ -1,18 +1,5 @@
 import { API_BASE_URL, API_ENDPOINTS, ERROR_MESSAGES } from '../../constants/api';
-import { fetchWithAuth, getCsrfToken, setCsrfToken, initializeCSRF, parseResponse } from './apiUtils';
-
-async function authCsrfHeaders() {
-  if (!getCsrfToken()) {
-    await initializeCSRF();
-  }
-
-  const csrfToken = getCsrfToken();
-  if (!csrfToken) {
-    throw new Error('Sicherheits-Token konnte nicht geladen werden');
-  }
-
-  return { 'X-CSRF-Token': csrfToken };
-}
+import { fetchWithAuth, fetchWithCsrf, setCsrfToken, initializeCSRF, parseResponse } from './apiUtils';
 
 /**
  * POST with one CSRF recovery retry. The in-memory token can go stale without
@@ -21,27 +8,13 @@ async function authCsrfHeaders() {
  * mutation until a manual reload. Refetch the token once and retry instead.
  */
 async function postWithCsrfRetry(url, body) {
-  const doFetch = async () => {
-    const csrfHeaders = await authCsrfHeaders();
-    return fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: body === undefined
-        ? csrfHeaders
-        : { 'Content-Type': 'application/json', ...csrfHeaders },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      credentials: 'include',
-    });
-  };
-
-  let response = await doFetch();
-  if (response.status === 403) {
-    setCsrfToken(null);
-    await initializeCSRF();
-    if (getCsrfToken()) {
-      response = await doFetch();
-    }
-  }
-  return response;
+  return fetchWithCsrf(`${API_BASE_URL}${url}`, {
+    method: 'POST',
+    ...(body === undefined ? {} : {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  });
 }
 
 /**

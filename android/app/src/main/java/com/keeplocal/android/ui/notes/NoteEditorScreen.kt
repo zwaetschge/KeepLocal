@@ -107,6 +107,9 @@ fun NoteEditorContent(
     onOpenNote: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showImageTools by remember { mutableStateOf(false) }
+    var showBackgrounds by remember {mutableStateOf(false)}
+    var showDrawing by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
     var showReminderSheet by remember { mutableStateOf(false) }
@@ -120,7 +123,7 @@ fun NoteEditorContent(
     // Blank notes (new or restored draft) start in the raw field so the
     // placeholder stays visible. Find-in-note paints its hits into the raw
     // field, so an open find bar forces raw view too.
-    val markdownEnabled = uiState.renderMarkdown && !uiState.isTodoList && !uiState.isCode
+    val markdownEnabled = uiState.renderMarkdown && !uiState.isTodoList && !uiState.isCode && uiState.features.format != "rich"
     var showRawContent by remember(uiState.id) {
         mutableStateOf(uiState.id == null || !markdownEnabled)
     }
@@ -180,6 +183,14 @@ fun NoteEditorContent(
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(5)
     ) { uris -> viewModel.onImagesPicked(uris) }
+    LaunchedEffect(uiState.captureKind) {
+        when(uiState.captureKind) {
+            "image" -> imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            "drawing" -> showDrawing=true
+        }
+        if(uiState.captureKind!=null)viewModel.clearCaptureRequest()
+    }
+
 
     // SAF document picker for PDF attachments (v1.14.0 Nr. 5): no storage
     // permission needed, the ViewModel enforces the 25-per-note budget.
@@ -234,6 +245,15 @@ fun NoteEditorContent(
     } else {
         NoteColorUtil.colorFor(uiState.color)
     }
+
+    if(showImageTools) ModalBottomSheet(onDismissRequest={showImageTools=false}) {
+        uiState.images.forEachIndexed { index,image ->
+            ListItem(headlineContent={Text(stringResource(R.string.ocr_image_index,index+1))},modifier=Modifier.fillMaxWidth().clickable {viewModel.extractImageText(image);showImageTools=false})
+        }
+    }
+    if(showDrawing) com.keeplocal.android.ui.components.NoteDrawingEditor(
+        value=uiState.features.drawing ?: com.keeplocal.android.domain.model.NoteDrawing(),
+        onChange={drawing->viewModel.setFeatures(uiState.features.copy(drawing=drawing))},onClose={showDrawing=false},images=uiState.images)
 
     Scaffold(
         modifier = Modifier
@@ -568,61 +588,18 @@ fun NoteEditorContent(
 
             // Content or Todo list
             if (uiState.isTodoList) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    itemsIndexed(uiState.todoItems, key = { _, item -> item.id }) { index, item ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                        ) {
-                            Checkbox(
-                                checked = item.isCompleted,
-                                onCheckedChange = { viewModel.toggleTodoItemCompleted(index) }
-                            )
-                            TextField(
-                                value = item.text,
-                                onValueChange = { viewModel.updateTodoItem(index, it) },
-                                modifier = Modifier.weight(1f),
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
-                                ),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                keyboardActions = KeyboardActions(onNext = { viewModel.addTodoItem() })
-                            )
-                            if (item.text.isEmpty()) {
-                                IconButton(onClick = { viewModel.removeTodoItem(index) }) {
-                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
-                    item {
-                        Row {
-                            TextButton(
-                                onClick = viewModel::addTodoItem,
-                                modifier = Modifier.padding(start = 40.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.editor_add_todo_item))
-                            }
-                            // Clean up completed items (v1.8.0 Nr. 5).
-                            if (uiState.todoItems.any { it.isCompleted }) {
-                                TextButton(onClick = viewModel::cleanupTodoItems) {
-                                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.checklist_cleanup))
-                                }
-                            }
-                        }
-                    }
-                }
+                com.keeplocal.android.ui.components.ChecklistEditor(
+                    items=uiState.todoItems,options=uiState.features.list,
+                    onOptions={viewModel.setFeatures(uiState.features.copy(list=it))},onText=viewModel::updateTodoItem,
+                    onToggle=viewModel::toggleTodoItemCompleted,onMove=viewModel::moveTodoItem,onIndent=viewModel::indentTodoItem,
+                    onDelete=viewModel::removeTodoItem,onAdd=viewModel::addTodoItem,onCleanup=viewModel::cleanupTodoItems,
+                    modifier=Modifier.fillMaxWidth().weight(1f))
+            } else if (uiState.features.format == "rich" && !uiState.isCode) {
+                com.keeplocal.android.ui.components.RichNoteField(
+                    text=uiState.content,marks=uiState.features.marks,
+                    onChange={text,marks -> viewModel.updateContent(text);viewModel.setFeatures(uiState.features.copy(format="rich",marks=marks))},
+                    modifier=Modifier.fillMaxWidth().weight(1f)
+                )
             } else if (showMarkdownPreview) {
                 // Rendered markdown (v1.18.0): the preview replaces the raw
                 // field; wiki links and URLs are tappable inline, so the chip
@@ -751,12 +728,13 @@ fun NoteEditorContent(
                 )
             }
 
+            com.keeplocal.android.ui.components.AudioAttachments(uiState.files.filter{it.mimeType?.startsWith("audio/")==true},viewModel.mediaRepositoryForPlayback(),onError={viewModel.reportMediaError(it)},onDelete=viewModel::deleteFile)
             // PDF attachments (v1.14.0 Nr. 5): chips open in the system
             // viewer (cache download — the file route needs the session
             // cookie), trailing X deletes.
             if (uiState.files.isNotEmpty() || uiState.uploadingFileCount > 0) {
                 FileAttachmentRow(
-                    files = uiState.files,
+                    files = uiState.files.filter {it.mimeType?.startsWith("audio/")!=true},
                     uploadingCount = uiState.uploadingFileCount,
                     onOpenFile = { file ->
                         viewerScope.launch {
@@ -781,6 +759,7 @@ fun NoteEditorContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -801,6 +780,15 @@ fun NoteEditorContent(
                         )
                     }
                 }
+                if(uiState.images.isNotEmpty()) IconButton(onClick={showImageTools=true}) {Text("OCR")}
+                IconButton(onClick={showDrawing=true}) {Text("✎")}
+                Box {
+                    TextButton(onClick={showBackgrounds=true}){Text(stringResource(R.string.note_background))}
+                    DropdownMenu(showBackgrounds,{showBackgrounds=false}){
+                        listOf("none","grid","lines","dots","leaves","sand").forEach {key->DropdownMenuItem(text={Text(stringResource(when(key){"grid"->R.string.background_grid;"lines"->R.string.background_lines;"dots"->R.string.background_dots;"leaves"->R.string.background_leaves;"sand"->R.string.background_sand;else->R.string.background_none}))},onClick={viewModel.setFeatures(uiState.features.copy(background=key));showBackgrounds=false})}
+                    }
+                }
+                IconButton(onClick={viewModel.setFeatures(uiState.features.copy(format=if(uiState.features.format=="rich") "plain" else "rich"))}) {Text("Aa")}
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = { filePicker.launch(arrayOf("application/pdf")) },
@@ -818,7 +806,7 @@ fun NoteEditorContent(
                 Spacer(modifier = Modifier.width(8.dp))
                 // Hidden — not disabled — while the account-wide dictation
                 // switch is off (aiFeatures.voiceTranscription).
-                if (uiState.showMic) {
+                run {
                     AudioRecordButton(
                         isRecording = uiState.isRecording,
                         isTranscribing = uiState.isTranscribing,
@@ -842,16 +830,16 @@ fun NoteEditorContent(
                         }
                     )
                 }
+            }
                 uiState.mediaHint?.let { hint ->
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = hint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp)
                     )
                 }
-            }
+
 
             // Link Previews
             if (uiState.linkPreviews.isNotEmpty()) {

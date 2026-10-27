@@ -18,25 +18,28 @@ fun NoteDto.toDomain(): Note = Note(
     sharedWith = sharedWith?.map { it.toDomain() } ?: emptyList(),
     images = images?.map { it.toDomain() } ?: emptyList(),
     files = files?.map { it.toDomain() } ?: emptyList(),
-    owner = owner,
+    owner = resolvedOwnerId(),
     position = position,
     createdAt = createdAt?.let { parseInstant(it) } ?: Instant.now(),
     updatedAt = updatedAt?.let { parseInstant(it) } ?: Instant.now(),
+    baseUpdatedAt = updatedAt?.let { parseInstant(it) },
     deletedAt = deletedAt?.let { parseInstant(it) },
     remindAt = remindAt?.let { parseInstantOrNull(it) },
     parentId = parentId,
-    isCode = isCode
+    isCode = isCode,
+    features = features ?: NoteFeatures()
 )
 
 fun TodoItemDto.toDomain(): TodoItem = TodoItem(
     id = resolvedId(),
     text = text,
     isCompleted = isCompleted,
-    position = position
+    position = position,
+    indent = indent
 )
 
 fun SharedUserDto.toDomain(): SharedUser = SharedUser(
-    userId = userId,
+    userId = userId.ifBlank {mongoId},
     username = username
 )
 
@@ -123,7 +126,8 @@ fun Note.toCreateDto(): CreateNoteDto = CreateNoteDto(
     tags = tags.ifEmpty { null },
     remindAt = remindAt?.toString(),
     parentId = parentId,
-    isCode = isCode
+    isCode = isCode,
+    features = features
 )
 
 fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
@@ -139,14 +143,16 @@ fun Note.toUpdateDto(): UpdateNoteDto = UpdateNoteDto(
     remindAt = NullableString(remindAt?.toString()),
     // Same full-state contract for the tree position and the code flag.
     parentId = NullableString(parentId),
-    isCode = isCode
+    isCode = isCode,
+    features = features
 )
 
 fun TodoItem.toDto(): TodoItemDto = TodoItemDto(
     id = id,
     text = text,
     isCompleted = isCompleted,
-    position = position
+    position = position,
+    indent = indent
 )
 
 
@@ -178,7 +184,7 @@ fun buildMarkdownImportItems(parsed: MarkdownNoteParser.ParsedImport): List<Impo
         ImportMarkdownItemDto(
             path = file.parentPath ?: "",
             title = file.title,
-            content = if (file.isTodoList) {
+            content = file.rawMarkdown ?: if (file.isTodoList) {
                 val checkboxes = file.todoItems.joinToString("\n") { item ->
                     "- [${if (item.isCompleted) "x" else " "}] ${item.text}"
                 }

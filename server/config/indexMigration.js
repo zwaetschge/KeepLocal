@@ -13,11 +13,11 @@
  * legacy version cannot be detected by "has no weights".
  */
 
-const TEXT_INDEX_KEYS = ['title', 'content', 'todoItems.text'];
+const TEXT_INDEX_KEYS = ['title', 'content', 'todoItems.text', 'features.ocrText'];
 
 /** Must match the definition in models/Note.js. */
 const TARGET_INDEX_NAME = 'note_text_search';
-const TARGET_WEIGHTS = { title: 5, content: 1, 'todoItems.text': 2 };
+const TARGET_WEIGHTS = { title: 5, content: 1, 'todoItems.text': 2, 'features.ocrText': 1 };
 const TARGET_LANGUAGE = 'none';
 
 /**
@@ -31,8 +31,7 @@ function isNoteTextIndex(indexDefinition) {
   // index was created without explicit weights).
   if (!key || key._fts !== 'text' || key._ftsx !== 1) return false;
   const fields = Object.keys(indexDefinition.weights || {});
-  return fields.length === TEXT_INDEX_KEYS.length
-    && TEXT_INDEX_KEYS.every(field => fields.includes(field));
+  return [3,4].includes(fields.length) && ['title','content','todoItems.text'].every(field=>fields.includes(field)) && fields.every(field=>TEXT_INDEX_KEYS.includes(field));
 }
 
 /**
@@ -40,6 +39,7 @@ function isNoteTextIndex(indexDefinition) {
  * @returns {boolean} true when the index already matches the current schema
  */
 function isCurrentTextIndex(indexDefinition) {
+  if (Object.keys(indexDefinition.weights || {}).length !== TEXT_INDEX_KEYS.length)return false;
   if (indexDefinition.name !== TARGET_INDEX_NAME) return false;
   if (indexDefinition.default_language !== TARGET_LANGUAGE) return false;
   const weights = indexDefinition.weights;

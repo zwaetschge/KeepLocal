@@ -176,6 +176,7 @@ async function validateImageFiles(files) {
 }
 
 module.exports = {
+  detectAudioMagic: header=>AUDIO_SIGNATURES.some(matches=>matches(header)),
   detectImageMagic,
   validateImageFile,
   validateImageFiles,

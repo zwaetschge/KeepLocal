@@ -1,3 +1,7 @@
+const {detectAudioMagic}=require('../utils/magicNumberValidator');
+const organization = require('./noteOrganization');
+const { validateFeatures, applySearchFilters } = require('../utils/noteFeatures');
+const { hasNoteSubstance } = require('../utils/noteSubstance');
 /**
  * Notes Service
  * Business logic for note operations
@@ -98,19 +102,11 @@ function normalizePositiveInteger(value, fallback, maximum) {
   return Math.min(parsed, maximum);
 }
 
-function validateNoteContent({ isTodoList, todoItems, content }) {
-  if (isTodoList) {
-    const hasValidTodoItems = Array.isArray(todoItems) &&
-      todoItems.some(item => typeof item?.text === 'string' && item.text.trim());
-    if (!hasValidTodoItems) {
-      throw clientError('Todo-Liste muss mindestens ein Element enthalten');
-    }
-    return;
-  }
-
-  if (typeof content !== 'string' || !content.trim()) {
-    throw clientError('Inhalt ist erforderlich');
-  }
+function validateNoteContent(note) {
+  if (hasNoteSubstance(note)) return;
+  throw clientError(note.isTodoList
+    ? 'Todo-Liste muss mindestens ein Element enthalten'
+    : 'Inhalt ist erforderlich');
 }
 
 function isHttpUrl(value) {
@@ -126,6 +122,9 @@ function validateNoteFields(noteData) {
   if (!noteData || typeof noteData !== 'object' || Array.isArray(noteData)) {
     throw clientError('Ungueltige Notizdaten');
   }
+
+  if (noteData.clientRequestId !== undefined && (typeof noteData.clientRequestId !== 'string' || !/^[\w-]{1,64}$/.test(noteData.clientRequestId))) throw clientError('Ungueltige Anfrage-ID');
+  if (noteData.features !== undefined) validateFeatures(noteData.features, noteData.content?.length ?? 10000);
 
   if (noteData.title !== undefined && (typeof noteData.title !== 'string' || noteData.title.length > 200)) {
     throw clientError('Titel darf maximal 200 Zeichen lang sein');
@@ -161,7 +160,9 @@ function validateNoteFields(noteData) {
       typeof item.text !== 'string' ||
       item.text.length > 500 ||
       (item.completed !== undefined && typeof item.completed !== 'boolean') ||
-      (item.order !== undefined && !Number.isInteger(item.order))
+      (item.order !== undefined && !Number.isInteger(item.order)) ||
+      (item.id !== undefined && (typeof item.id !== 'string' || !/^[\w-]{1,64}$/.test(item.id))) ||
+      (item.indent !== undefined && ![0,1].includes(item.indent))
     ));
     if (invalidItem) throw clientError('Ungueltiger Todo-Eintrag');
   }
@@ -483,7 +484,8 @@ function buildNotesQuery({ userId, search, tag, isArchived = false, deleted = fa
  * @param {Object} params - Query parameters
  * @returns {Promise<Object>} Notes and pagination info
  */
-async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId, since, includeMeta = true } = {}) {
+async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived = 'false', deleted = 'false', folderId, since, includeMeta = true, type, color, person, personal = false } = {}) {
+  if (personal === true || personal === 'true') return organization.getPersonalNotes({userId,search,tag,page,limit,archived,deleted,folderId,since,includeMeta,type,color,person});
   const safePage = normalizePositiveInteger(page, 1, Number.MAX_SAFE_INTEGER);
   const safeLimit = normalizePositiveInteger(limit, 50, 100);
   const isArchived = archived === true || archived === 'true';
@@ -523,6 +525,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
       // Gleiches case-insensitive Exakt-Matching wie buildNotesQuery (v1.15.0).
       trashQuery.tags = { $regex: new RegExp(`^${tag.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
     }
+    applySearchFilters(trashQuery, {type, color, person});
     const skip = (safePage - 1) * safeLimit;
     // includeMeta=false (v1.14.0): Folgeseiten brauchen die globalen Zähler
     // nicht — die Sidebar hat sie von Seite 1. Spart zwei countDocuments.
@@ -571,6 +574,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
   }
 
   const query = buildNotesQuery({ userId, search, tag, isArchived });
+  applySearchFilters(query, {type, color, person});
   const activeQuery = buildNotesQuery({ userId, isArchived: false });
   const archivedQuery = buildNotesQuery({ userId, isArchived: true });
 
@@ -695,7 +699,7 @@ async function getAllNotes({ userId, search, tag, page = 1, limit = 50, archived
  * @returns {Promise<Object>} Note object
  * @throws {Error} If note not found or no access
  */
-async function getNoteById(noteId, userId) {
+async function getNoteById(noteId, userId, personal = false) {
   const note = await Note.findOne({
     _id: noteId,
     deletedAt: null,
@@ -716,7 +720,7 @@ async function getNoteById(noteId, userId) {
     throw error;
   }
 
-  return note;
+  return personal ? organization.projectNote(note,userId) : note;
 }
 
 /**
@@ -744,15 +748,20 @@ async function getEditableNoteById(noteId, userId) {
  */
 async function createNote(noteData, userId) {
   validateNoteFields(noteData);
+  if (noteData.clientRequestId) {
+    const existing=await Note.findOne({userId,clientRequestId:noteData.clientRequestId});
+    if(existing)return existing;
+  }
   const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, parentId, isCode } = noteData;
   const normalizedIsTodoList = isTodoList === true;
-  const normalizedContent = normalizedIsTodoList ? '' : (typeof content === 'string' ? content.trim() : '');
+  const normalizedContent = normalizedIsTodoList ? '' : (typeof content === 'string' ? (noteData.features?.format==='rich'?content:content.trim()) : '');
   const normalizedTodoItems = normalizedIsTodoList && Array.isArray(todoItems) ? todoItems : [];
 
   validateNoteContent({
     isTodoList: normalizedIsTodoList,
     todoItems: normalizedTodoItems,
-    content: normalizedContent
+    content: normalizedContent,
+    title: noteData.title, features: noteData.features
   });
 
   // Baum: Existenz/Eigentum/Zyklusfreiheit des Eltern-Knotens (null = Wurzel).
@@ -778,11 +787,19 @@ async function createNote(noteData, userId) {
     remindAt: normalizeRemindAt(remindAt),
     parentId: parentId ?? null,
     isCode: isCode === true,
+    ...(noteData.clientRequestId && {clientRequestId:noteData.clientRequestId}),
+    features: noteData.features || {},
     userId: userId
   });
 
-  const savedNote = await newNote.save();
-  return savedNote;
+  try { return await newNote.save(); }
+  catch(error) {
+    if(error.code===11000 && noteData.clientRequestId) {
+      const existing=await Note.findOne({userId,clientRequestId:noteData.clientRequestId});
+      if(existing)return existing;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -925,6 +942,7 @@ async function reorderNotes(userId, orderedIds) {
  */
 async function updateNote(noteId, noteData, userId) {
   validateNoteFields(noteData);
+  const personal = noteData.personalOrganization === true;
   const { title, content, color, isPinned, tags, isTodoList, todoItems, linkPreviews, remindAt, order, parentId, isCode, isArchived } = noteData;
 
   // Manuelle Reihenfolge: Vor diesem Fix wurde ein mitgeschicktes `order`
@@ -963,7 +981,7 @@ async function updateNote(noteId, noteData, userId) {
     // die Notiz aus der aktiven Ansicht des Besitzers verschwindet. Ein
     // mitgeschickter unveränderter Wert ist ein No-Op — Clients, die das
     // komplette Objekt senden, kassieren deshalb keinen 403er.
-    if (isArchived !== undefined && isArchived !== Boolean(note.isArchived)) {
+    if (!personal && isArchived !== undefined && isArchived !== Boolean(note.isArchived)) {
       throw clientError('Nur der Besitzer kann die Notiz archivieren');
     }
     effectiveParentId = undefined;
@@ -989,26 +1007,30 @@ async function updateNote(noteId, noteData, userId) {
     storedUpdatedAt &&
     storedUpdatedAt.getTime() - baseUpdatedAt.getTime() > CONFLICT_TOLERANCE_MS
   ) {
-    throwNoteConflict(note);
+    throwNoteConflict(personal ? await organization.projectNote(note,userId) : note);
   }
 
   const nextIsTodoList = isTodoList !== undefined ? isTodoList : note.isTodoList;
   const nextTodoItems = todoItems !== undefined ? todoItems : note.todoItems;
   const nextContent = content !== undefined
-    ? (nextIsTodoList ? '' : (content?.trim() || ''))
+    ? (nextIsTodoList ? '' : ((noteData.features?.format || note.features?.format)==='rich'?(content || ''):(content?.trim() || '')))
     : (nextIsTodoList ? '' : note.content);
 
+  if(noteData.features!==undefined)validateFeatures(noteData.features,nextContent?.length || 0);
   validateNoteContent({
     isTodoList: nextIsTodoList,
     todoItems: nextTodoItems,
-    content: nextContent
+    content: nextContent,
+    title: title !== undefined ? title : note.title,
+    images: note.images, files: note.files, features: noteData.features ?? note.features
   });
 
   const $set = {};
+  if (noteData.features !== undefined) $set.features = noteData.features;
   if (title !== undefined) $set.title = title;
-  if (color !== undefined) $set.color = color;
-  if (isPinned !== undefined) $set.isPinned = isPinned;
-  if (tags !== undefined) $set.tags = tags;
+  if (!personal && color !== undefined) $set.color = color;
+  if (!personal && isPinned !== undefined) $set.isPinned = isPinned;
+  if (!personal && tags !== undefined) $set.tags = tags;
   if (linkPreviews !== undefined) $set.linkPreviews = linkPreviews;
   if (isTodoList !== undefined) $set.isTodoList = isTodoList;
 
@@ -1046,7 +1068,7 @@ async function updateNote(noteId, noteData, userId) {
   // kann den IST-Zustand fensterfremder Notizen nicht kennen — ein Toggle
   // ($not) haette den vorhandenen Zustand UMGEKEHRT. Der Besitzer-Gate steht
   // weiter oben.
-  if (effectiveIsArchived !== undefined) {
+  if (!personal && effectiveIsArchived !== undefined) {
     $set.isArchived = effectiveIsArchived;
   }
 
@@ -1065,7 +1087,8 @@ async function updateNote(noteId, noteData, userId) {
   const contentChanged = (content !== undefined || isTodoList !== undefined) && nextContent !== previousContent;
   const todoChanged = (todoItems !== undefined || isTodoList !== undefined)
     && JSON.stringify(nextTodoItems || []) !== JSON.stringify(note.todoItems || []);
-  const $pushRevision = (titleChanged || contentChanged || todoChanged)
+  const featuresChanged = noteData.features !== undefined && JSON.stringify(note.features || {}) !== JSON.stringify(noteData.features);
+  const $pushRevision = (titleChanged || contentChanged || todoChanged || featuresChanged)
     ? {
         revisions: {
           $each: [{
@@ -1073,6 +1096,7 @@ async function updateNote(noteId, noteData, userId) {
             content: previousContent,
             isTodoList: note.isTodoList === true,
             todoItems: note.todoItems || [],
+            features: note.features || {},
             savedAt: note.updatedAt || new Date(),
             editorId: note.lastEditedBy || note.userId
           }],
@@ -1103,9 +1127,11 @@ async function updateNote(noteId, noteData, userId) {
       error.statusCode = 404;
       throw error;
     }
-    throwNoteConflict(fresh);
+    throwNoteConflict(personal ? await organization.projectNote(fresh,userId) : fresh);
   }
 
+  if(typeof updatedNote.populate==='function')await updatedNote.populate([{path:'userId',select:'username email'},{path:'sharedWith',select:'username email'}]);
+  if (personal) { await organization.saveOrganization(updatedNote,userId,noteData); return organization.projectNote(updatedNote,userId); }
   return updatedNote;
 }
 
@@ -1333,7 +1359,8 @@ async function getNoteRevision(noteId, userId, savedAt) {
     title: revision.title || '',
     content: revision.content || '',
     isTodoList: revision.isTodoList === true,
-    todoItems: revision.todoItems || []
+    todoItems: revision.todoItems || [],
+    features: revision.features || {}
   };
 }
 
@@ -1360,6 +1387,7 @@ function notFoundError() {
 async function restoreNoteRevision(noteId, userId, savedAt, baseUpdatedAt) {
   const revision = await getNoteRevision(noteId, userId, savedAt);
   return updateNote(noteId, {
+    features: revision.features || {},
     title: revision.title,
     content: revision.content,
     todoItems: revision.todoItems,
@@ -1376,7 +1404,7 @@ async function restoreNoteRevision(noteId, userId, savedAt, baseUpdatedAt) {
  * @param {string} userId
  * @returns {Promise<Array>} Flache Liste mit _id, parentId, title, order, Flags
  */
-async function getNoteTree(userId, since) {
+async function getNoteTree(userId, since, personal = false) {
   // Seit v1.13.0 inklusive geteilter Notizen ($or sharedWith): Die Liste
   // zeigte sie schon laengst, der Baum liess sie unsichtbar. `shared`
   // markiert fremde Knoten; deren Eltern (Notizen des Besitzers) fehlen in
@@ -1390,7 +1418,7 @@ async function getNoteTree(userId, since) {
       throw clientError('since muss ein ISO-8601-Zeitpunkt sein');
     }
   }
-  const notes = await Note.find({
+  let notes = await Note.find({
     $or: [{ userId }, { sharedWith: userId }],
     deletedAt: null,
     // $gte aus demselben Grund wie im Listing (s. dort): Bulk-Timestamps.
@@ -1400,6 +1428,7 @@ async function getNoteTree(userId, since) {
     .sort({ isPinned: -1, order: -1, updatedAt: -1, _id: -1 })
     .lean();
 
+  if(personal)notes=await organization.projectMany(notes,userId);
   return notes.map((note) => ({
     id: note._id,
     parentId: note.parentId ?? null,
@@ -1585,12 +1614,13 @@ function clampImportedTimestamp(value, now = new Date()) {
  * @param {string} userId
  * @returns {Promise<Buffer>} ZIP-Archiv
  */
-async function buildMarkdownExport(userId) {
-  const notes = await Note.find({ userId, deletedAt: null })
-    .select('parentId title content isTodoList todoItems tags isCode order isArchived isPinned createdAt updatedAt color remindAt images.filename files.filename files.originalName files.mimetype')
+async function buildMarkdownExport(userId, personal = false) {
+  let notes = await Note.find({ userId, deletedAt: null })
+    .select('userId features parentId title content isTodoList todoItems tags isCode order isArchived isPinned createdAt updatedAt color remindAt images.filename files.filename files.originalName files.mimetype')
     .sort({ order: -1, updatedAt: -1 })
     .lean();
 
+  if(personal)notes=await organization.projectMany(notes,userId);
   const byId = new Map(notes.map((note) => [String(note._id), note]));
   const childrenOf = new Map();
   for (const note of notes) {
@@ -1657,6 +1687,7 @@ async function buildMarkdownExport(userId) {
     if (note.remindAt) lines.push(`remindAt: ${yamlScalar(new Date(note.remindAt).toISOString())}`);
     if (note.createdAt) lines.push(`created: ${yamlScalar(new Date(note.createdAt).toISOString())}`);
     if (note.updatedAt) lines.push(`updated: ${yamlScalar(new Date(note.updatedAt).toISOString())}`);
+    if(Object.keys(note.features || {}).length || (note.todoItems || []).some(item=>item.id || item.indent) || note.images?.length || note.files?.length)lines.push(`keepLocalData: ${Buffer.from(JSON.stringify({features:note.features || {},content:note.content || '',todoItems:note.todoItems || [],isTodoList:note.isTodoList===true,assets:[...(note.images || []).map(a=>({kind:'images',oldFilename:a.filename,path:rewriteRules.find(r=>r[0]===`/uploads/images/${a.filename}`)?.[1]})),...(note.files || []).map(a=>({kind:'files',oldFilename:a.filename,path:rewriteRules.find(r=>r[0]===`/uploads/files/${a.filename}`)?.[1]}))]})).toString('base64')}`);
     lines.push('---', '');
     return lines.join('\n');
   };
@@ -1787,8 +1818,8 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     // v1.15 galt sie fuer den Roh-String UND parseMarkdownFrontmatter schnitt
     // ihn vorher auf 10 KB: Eine randvolle 10-KB-Notiz liess sich exportieren,
     // aber nicht wieder importieren (400), und die Body-Spitze fiel still weg.
-    if (raw.content !== undefined && raw.content.length > 20000) {
-      throw clientError(`items[${index}].content ist länger als 20.000 Zeichen`);
+    if (raw.content !== undefined && raw.content.length > 600000) {
+      throw clientError(`items[${index}].content ist länger als 600.000 Zeichen`);
     }
 
     // Frontmatter (v1.13.0): Der koerpertragene Metadaten-Block aus dem
@@ -1870,6 +1901,18 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
       }
     }
 
+    let features={};
+    if(meta.keeplocaldata){
+      let packed;try{packed=JSON.parse(Buffer.from(meta.keeplocaldata,'base64').toString('utf8'));}catch(_){throw clientError('Ungueltige KeepLocal-Daten');}
+      if(typeof packed.isTodoList==='boolean')isTodoList=packed.isTodoList;
+      features=packed.features || {};validateFeatures(features,typeof packed.content==='string'?packed.content.length:10000);
+      if(typeof packed.content==='string'){if(packed.content.length>10000)throw clientError('Inhalt zu lang');content=packed.content;}
+      if(assetMap){
+        for(const ref of packed.assets || []){const asset=assetMap.get(ref.path);if(!asset)continue;(asset.kind==='images'?attachedImages:attachedFiles).set(asset.url,asset);if(features.drawing?.imageFilename===ref.oldFilename)features.drawing.imageFilename=asset.filename;}
+        for(const [zipPath,asset] of assetMap){const original=(packed.assets || []).find(a=>a.path===zipPath);if(original)content=content.split(`/uploads/${original.kind}/${original.oldFilename}`).join(asset.url);}
+      }
+      if(isTodoList && Array.isArray(packed.todoItems)){validateNoteFields({todoItems:packed.todoItems});todoItems=packed.todoItems;}
+    }
     const color = NOTE_COLORS.has(String(meta.color)) ? String(meta.color) : '#ffffff';
     // Zukunfts-Daten clampen (v1.15.0, siehe clampImportedTimestamp) und
     // Monotonie herstellen: created darf nie nach updated liegen — Sortierung
@@ -1886,6 +1929,7 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
       isFolderIndex: raw.isFolderIndex === true,
       title: (resolvedTitle ? String(resolvedTitle).trim().slice(0, 200) : 'Notiz'),
       content,
+      features,
       tags,
       isTodoList,
       todoItems,
@@ -2047,6 +2091,7 @@ async function importMarkdownNotes(userId, rawItems, { demoLimit = null, assetMa
     const newNotes = noteItems.map((item, index) => ({
       title: item.title,
       content: item.content,
+      features: item.features || {},
       tags: item.tags,
       isTodoList: item.isTodoList === true,
       todoItems: item.todoItems || [],
@@ -2218,13 +2263,15 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
         // Alles andere (HTML/EXE/…, egal wie benannt) bleibt abgewiesen.
         const isPdf = bytes.length >= 5 && bytes.subarray(0, 5).toString('latin1') === '%PDF-';
         const imageFormat = isPdf ? null : detectImageMagic(bytes.subarray(0, 16));
-        if (!isPdf && !imageFormat) {
+        const audioMime=({'.wav':'audio/wav','.mp3':'audio/mpeg','.ogg':'audio/ogg','.m4a':'audio/mp4','.mp4':'audio/mp4','.webm':'audio/webm'})[extension];
+        const isAudio=!isPdf && !imageFormat && audioMime && detectAudioMagic(bytes.subarray(0,16));
+        if (!isPdf && !imageFormat && !isAudio) {
           throw clientError(`Anhang ${name}: nur PDF- oder Bild-Dateien erlaubt (Magic-Bytes-Prüfung)`);
         }
         // Endung folgt dem erkannten Inhalt — secureFileServe leitet den
         // Content-Type daraus ab, ein umbenanntes „bild.pdf“ (JPEG-Inhalt)
         // darf nicht als PDF ausgeliefert werden.
-        const safeExtension = isPdf ? '.pdf' : `.${imageFormat === 'jpeg' ? 'jpg' : imageFormat}`;
+        const safeExtension = isAudio ? extension : isPdf ? '.pdf' : `.${imageFormat === 'jpeg' ? 'jpg' : imageFormat}`;
         const filename = `${crypto.randomBytes(24).toString('hex')}${safeExtension}`;
         fs.writeFileSync(path.join(filesDir(), filename), bytes);
         written.push(path.join(filesDir(), filename));
@@ -2233,7 +2280,7 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
           originalName: typeof meta.originalName === 'string' && meta.originalName.trim()
             ? meta.originalName.slice(0, 255)
             : path.basename(name),
-          mimetype: typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype
+          mimetype: isAudio ? audioMime : typeof meta.mimetype === 'string' && meta.mimetype ? meta.mimetype
             : (isPdf ? 'application/pdf' : `image/${imageFormat === 'jpeg' ? 'jpeg' : imageFormat}`),
           size: bytes.length
         });
@@ -2282,7 +2329,7 @@ async function importMarkdownZip(userId, zipBuffer, { demoLimit = null } = {}) {
 // geteilte, nicht geloeschte Notizen (aktiv UND archiviert, wie die App zaehlt).
 const TAG_OPERATION_ACTIONS = new Set(['rename', 'merge', 'delete']);
 
-async function applyTagOperation({ userId, action, from, to }) {
+async function applyTagOperation({ userId, action, from, to, personal = false }) {
   if (!TAG_OPERATION_ACTIONS.has(action)) {
     throw clientError('action muss rename, merge oder delete sein');
   }
@@ -2319,6 +2366,17 @@ async function applyTagOperation({ userId, action, from, to }) {
   const sources = target === null ? fromTags : fromTags.filter(tag => tag !== target);
   if (sources.length === 0) return { action, modified: 0 };
 
+  if(personal){
+    const rows=await organization.projectMany(await Note.find(baseQuery).select('userId tags updatedAt').lean(),userId);
+    let modified=0;
+    for(const row of rows){
+      if(!(row.tags || []).some(tag=>sources.includes(tag.toLowerCase())))continue;
+      const tags=(row.tags || []).filter(tag=>!sources.includes(tag.toLowerCase()));
+      if(target && !tags.some(tag=>tag.toLowerCase()===target))tags.push(target);
+      await updateNote(String(row._id),{personalOrganization:true,tags,baseUpdatedAt:row.updatedAt},userId);modified++;
+    }
+    return {action,modified};
+  }
   const editedAt = new Date();
   // Case-Insensitivitaet (v1.15.0): Der Bestand kann gemischte Schreibweisen
   // tragen ("Projekt" neben "projekt" — der Import lowercased seit jeher, der
@@ -2363,7 +2421,11 @@ async function applyTagOperation({ userId, action, from, to }) {
  * @param {string} userId - User ID (for authorization)
  * @returns {Promise<Object>} Updated note
  */
-async function togglePinNote(noteId, userId) {
+async function togglePinNote(noteId, userId, personal = false) {
+  if (personal) {
+    const note=await getNoteById(noteId,userId,true);
+    return updateNote(noteId,{isPinned:!note.isPinned,personalOrganization:true,baseUpdatedAt:note.updatedAt},userId);
+  }
   // Atomarer Toggle per Update-Pipeline statt Read-Modify-Write: Zwei schnelle
   // Klicks oder zwei Tabs konnten vorher einen Toggle still verlieren, weil
   // beide denselben Stand lasen und der letzte Schreibende gewann.
@@ -2393,7 +2455,11 @@ async function togglePinNote(noteId, userId) {
  * @param {string} userId - User ID (for authorization)
  * @returns {Promise<Object>} Updated note
  */
-async function toggleArchiveNote(noteId, userId) {
+async function toggleArchiveNote(noteId, userId, personal = false) {
+  if (personal) {
+    const note=await getNoteById(noteId,userId,true);
+    return updateNote(noteId,{isArchived:!note.isArchived,personalOrganization:true,baseUpdatedAt:note.updatedAt},userId);
+  }
   // Wie togglePinNote: atomarer Pipeline-Toggle, kein Read-Modify-Write.
   // Archivieren bleibt besitzer-exklusiv (kein noteEditQuery).
   const lastEditedBy = mongoose.isValidObjectId(userId)
@@ -2686,7 +2752,17 @@ async function removeFile(noteId, userId, filename) {
   return note;
 }
 
+async function getNotePeople(userId) {
+  const ids = await Note.aggregate([
+    {$match: {$or:[{userId: new mongoose.Types.ObjectId(String(userId))},{sharedWith:new mongoose.Types.ObjectId(String(userId))}], deletedAt:null}},
+    {$project:{people:{$concatArrays:[['$userId'], '$sharedWith']}}},
+    {$unwind:'$people'}, {$group:{_id:'$people'}}
+  ]);
+  return {people:await User.find({_id:{$in:ids.map(i=>i._id)}}).select('_id username').lean()};
+}
+
 module.exports = {
+  getNotePeople,
   getAllNotes,
   getNoteById,
   getEditableNoteById,

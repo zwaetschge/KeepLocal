@@ -1,5 +1,6 @@
 package com.keeplocal.android.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
@@ -40,5 +41,7 @@ data class NoteEntity(
     val isCode: Boolean = false,
     // PDF attachments serialized as JSON (v1.14.0 Nr. 5), same pattern as
     // imagesJson: DEFAULT '[]' keeps the v6 migration one ADD COLUMN.
-    val filesJson: String = "[]"
+    val filesJson: String = "[]",
+    @ColumnInfo(defaultValue = "'{}'") val featuresJson: String = "{}",
+    @ColumnInfo(defaultValue = "''") val ocrText: String = ""
 )

@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter
  */
 object NoteExportFormatter {
 
+    private val featuresAdapter by lazy {com.squareup.moshi.Moshi.Builder().build().adapter(com.keeplocal.android.domain.model.NoteFeatures::class.java)}
     private val iso: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 
     const val UNTITLED = "Ohne Titel"
@@ -81,6 +82,7 @@ object NoteExportFormatter {
         append(",\"isPinned\":").append(note.isPinned)
         append(",\"isArchived\":").append(note.isArchived)
         append(",\"isTodoList\":").append(note.isTodoList)
+        append(",\"features\":").append(featuresAdapter.toJson(note.features))
         append(",\"tags\":[")
         note.tags.forEachIndexed { index, tag ->
             if (index > 0) append(',')
@@ -89,7 +91,7 @@ object NoteExportFormatter {
         append("],\"todoItems\":[")
         note.todoItems.forEachIndexed { index, item ->
             if (index > 0) append(',')
-            append("{\"text\":").append(jsonString(item.text))
+            append("{\"id\":").append(jsonString(item.id)).append(",\"indent\":").append(item.indent).append(",\"text\":").append(jsonString(item.text))
                 .append(",\"completed\":").append(item.isCompleted)
                 .append(",\"position\":").append(item.position)
                 .append('}')

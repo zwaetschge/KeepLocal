@@ -42,4 +42,30 @@
             <extra android:name="keeplocal.extra.OPEN_TRASH" android:value="true" />
         </intent>
     </shortcut>
+    <shortcut
+        android:shortcutId="new_list"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/capture_list"
+        android:shortcutLongLabel="@string/capture_list">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.keeplocal.android"
+            android:targetClass="com.keeplocal.android.ui.MainActivity">
+            <extra android:name="keeplocal.extra.NEW_NOTE" android:value="true" />
+        <extra android:name="keeplocal.extra.CAPTURE_KIND" android:value="list" /></intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_image"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/capture_image"
+        android:shortcutLongLabel="@string/capture_image">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.keeplocal.android"
+            android:targetClass="com.keeplocal.android.ui.MainActivity">
+            <extra android:name="keeplocal.extra.NEW_NOTE" android:value="true" />
+        <extra android:name="keeplocal.extra.CAPTURE_KIND" android:value="image" /></intent>
+    </shortcut>
 </shortcuts>

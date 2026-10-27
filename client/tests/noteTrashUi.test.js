@@ -61,7 +61,7 @@ test('the sidebar exposes the trash entry with its count', () => {
   assert.match(sidebar, /className=\{`sidebar-item \$\{showTrash \? 'active' : ''\}`\}/);
   // The "all notes" entry must leave the trash view.
   assert.match(sidebar, /onShowNotes/);
-  assert.match(sidebar, /!selectedTag && !showArchived && !showTrash \? 'active' : ''/);
+  assert.match(sidebar, /!selectedTag && !showArchived && !showTrash && !remindersActive \? 'active' : ''/);
 });
 
 test('trash cards offer restore and purge only', () => {

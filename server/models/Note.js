@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
 const noteSchema = new mongoose.Schema({
+  clientRequestId: { type: String, maxlength: 64 },
+  features: { type: mongoose.Schema.Types.Mixed, default: {} },
   title: {
     type: String,
     default: '',
@@ -10,7 +12,6 @@ const noteSchema = new mongoose.Schema({
   content: {
     type: String,
     default: '',
-    trim: true,
     maxlength: 10000
   },
   color: {
@@ -75,6 +76,8 @@ const noteSchema = new mongoose.Schema({
     default: false
   },
   todoItems: [{
+    id: { type: String, maxlength: 64 },
+    indent: { type: Number, default: 0, min: 0, max: 1 },
     text: {
       type: String,
       required: true,
@@ -129,6 +132,7 @@ const noteSchema = new mongoose.Schema({
     content: { type: String, default: '' },
     isTodoList: { type: Boolean, default: false },
     todoItems: { type: Array, default: [] },
+    features: { type: mongoose.Schema.Types.Mixed, default: {} },
     savedAt: { type: Date, required: true },
     editorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
   }],
@@ -173,6 +177,8 @@ const noteSchema = new mongoose.Schema({
   timestamps: true // Erstellt automatisch createdAt und updatedAt
 });
 
+noteSchema.index({userId:1,clientRequestId:1},{unique:true,partialFilterExpression:{clientRequestId:{$type:'string'}}});
+
 // Index für schnellere Suche - weighted text index over title, content and todo
 // items. `default_language: 'none'` keeps the tokenizer neutral: with the
 // previous default ('english') German words were not stemmed but English
@@ -180,10 +186,10 @@ const noteSchema = new mongoose.Schema({
 // Note: MongoDB allows one text index per collection, so config/indexMigration.js
 // drops the legacy unweighted index before mongoose creates this one.
 noteSchema.index(
-  { title: 'text', content: 'text', 'todoItems.text': 'text' },
+  { title: 'text', content: 'text', 'todoItems.text': 'text', 'features.ocrText': 'text' },
   {
     name: 'note_text_search',
-    weights: { title: 5, 'todoItems.text': 2, content: 1 },
+    weights: { title: 5, 'todoItems.text': 2, content: 1, 'features.ocrText': 1 },
     default_language: 'none'
   }
 );
@@ -246,22 +252,15 @@ noteSchema.index(
 
 // Validation: Ensure either content or todo items exist
 noteSchema.pre('save', function(next) {
-  if (this.isTodoList) {
-    // For todo lists, ensure at least one non-empty todo item exists
-    const hasValidTodoItems = this.todoItems &&
-      this.todoItems.length > 0 &&
-      this.todoItems.some(item => item.text && item.text.trim());
-
-    if (!hasValidTodoItems) {
-      return next(new Error('Todo-Liste muss mindestens ein Element enthalten'));
-    }
-  } else {
-    // For regular notes, ensure content is not empty
-    if (!this.content || this.content.trim() === '') {
-      return next(new Error('Inhalt ist erforderlich'));
-    }
+  const { hasNoteSubstance } = require('../utils/noteSubstance');
+  if (!hasNoteSubstance(this)) {
+    return next(new Error(this.isTodoList
+      ? 'Todo-Liste muss mindestens ein Element enthalten' : 'Inhalt ist erforderlich'));
   }
   next();
 });
 
+noteSchema.post('findOneAndDelete',async function(note){if(note?._id)await require('./NoteOrganization').deleteMany({noteId:note._id});});
+noteSchema.pre('deleteMany',async function(){this._organizationNoteIds=(await this.model.find(this.getFilter()).select('_id').lean()).map(n=>n._id);});
+noteSchema.post('deleteMany',async function(){if(this._organizationNoteIds?.length)await require('./NoteOrganization').deleteMany({noteId:{$in:this._organizationNoteIds}});});
 module.exports = mongoose.model('Note', noteSchema);

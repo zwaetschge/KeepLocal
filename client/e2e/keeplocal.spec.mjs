@@ -43,7 +43,7 @@ async function api(request, method, url, body) {
 }
 
 async function noteTotal(page) {
-  const response = await page.request.get('/api/notes?page=1&limit=100&archived=false');
+  const response = await page.request.get('/api/notes?personal=true&page=1&limit=100&archived=false');
   const body = await response.json();
   return body.pagination.total;
 }
@@ -51,6 +51,37 @@ async function noteTotal(page) {
 async function expectAppHealthy(page) {
   await expect(page.locator('.App')).toBeVisible();
   await expect(page.locator('body')).not.toContainText(errorBoundaryText);
+}
+
+// Follow the Keep capture/menus instead of relying on the retired form layout.
+const CONTENT = '.note-modal-content, .rich-content';
+async function openNewEditor(page) {
+  if (await page.locator('.note-form-button').isVisible()) await page.click('.note-form-button');
+  await page.locator('.quick-capture-actions').getByRole('button', { name: /Full editor|Vollständiger Editor/ }).click();
+  await expect(page.locator('.note-modal')).toBeVisible();
+}
+async function editorMore(page) {
+  await page.locator('.note-modal-toolbar').getByRole('button', { name: /More options|Weitere Optionen/ }).click();
+}
+async function discardEditor(page) {
+  await editorMore(page);
+  await page.locator('.editor-discard').click();
+}
+async function openSettings(page) {
+  await page.locator('.keep-account summary').click();
+  await page.locator('.keep-account-panel').getByRole('button', { name: /Settings|Einstellungen/ }).click();
+}
+async function cycleTheme(page) {
+  await openSettings(page);
+  const select = page.locator('.appearance-settings select').first();
+  const themes = ['light', 'dark', 'oled', 'eink', 'doodle'];
+  await select.selectOption(themes[(themes.indexOf(await select.inputValue()) + 1) % themes.length]);
+  await page.keyboard.press('Escape');
+}
+async function expectContent(page, value) {
+  const content = page.locator(CONTENT);
+  if (await content.getAttribute('contenteditable') === 'true') await expect(content).toHaveText(value);
+  else await expect(content).toHaveValue(value);
 }
 
 test.describe.serial('KeepLocal production smoke', () => {
@@ -85,18 +116,17 @@ test.describe.serial('KeepLocal production smoke', () => {
 
   test('a note with < and & is stored verbatim and rendered unescaped', async () => {
     await page.click('.note-form-button');
-    await expect(page.locator('.note-modal')).toBeVisible();
-    await page.fill('.note-modal-title', NOTE_TITLE);
-    await page.fill('.note-modal-content', SPECIAL_CONTENT);
-    await expect(page.locator('.btn-modal-save')).toBeEnabled();
-    await page.click('.btn-modal-save');
-    await expect(page.locator('.note-modal')).toHaveCount(0);
+    await page.fill('.note-form-title', NOTE_TITLE);
+    await page.fill('.note-form-content', SPECIAL_CONTENT);
+    await expect(page.locator('.quick-capture-actions button').last()).toBeEnabled();
+    await page.locator('.quick-capture-actions button').last().click();
+    await expect(page.locator('.note-form-button')).toBeVisible();
 
     const card = page.locator('[role="article"]', { hasText: NOTE_TITLE });
     await expect(card.locator('.note-content')).toContainText('Preis < 100 EUR & Tom <3 Jerry');
     await expect(card.locator('.note-content')).not.toContainText('&amp;');
 
-    const list = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const list = await (await page.request.get('/api/notes?personal=true&page=1&limit=50&archived=false')).json();
     const stored = list.notes.find((note) => note.title === NOTE_TITLE);
     expect(stored, 'note was not persisted').toBeTruthy();
     expect(stored.content).toBe(SPECIAL_CONTENT);
@@ -104,10 +134,10 @@ test.describe.serial('KeepLocal production smoke', () => {
 
   test('closing the editor keeps the app alive (unmount crash regression)', async () => {
     for (const close of ['cancel', 'escape']) {
-      await page.click('.note-form-button');
+      await openNewEditor(page);
       await expect(page.locator('.note-modal')).toBeVisible();
       if (close === 'cancel') {
-        await page.click('.btn-modal-cancel');
+        await discardEditor(page);
       } else {
         await page.keyboard.press('Escape');
       }
@@ -122,10 +152,12 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     await page.setInputFiles('#image-upload-input', UPLOAD_FIXTURE);
     await expect(page.locator('.new-images-preview .image-preview')).toHaveCount(1);
+    await editorMore(page);
     await page.click('.btn-modal-image-upload');
+    await page.keyboard.press('Escape');
     await expect(page.locator('.note-modal-images .image-preview')).toHaveCount(1, { timeout: 25000 });
 
-    await page.click('.note-modal-content');
+    await page.click(CONTENT);
     await page.keyboard.type(' + nach Upload');
     await page.click('.btn-modal-save');
 
@@ -139,7 +171,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.locator('[role="article"]', { hasText: NOTE_TITLE }).click();
     await expect(page.locator('.note-modal')).toBeVisible();
 
-    await page.click('.note-modal-content');
+    await page.click(CONTENT);
     await page.keyboard.type(' EDIT');
     await page.keyboard.press('Control+n');
     await page.waitForTimeout(800);
@@ -147,7 +179,9 @@ test.describe.serial('KeepLocal production smoke', () => {
     // The editor must still be in "edit existing note" mode: owner-only tools
     // (archive/delete) disappear as soon as noteModal.note becomes null.
     await expect(page.locator('.note-modal-title')).toHaveValue(NOTE_TITLE);
+    await editorMore(page);
     await expect(page.locator('.btn-modal-delete')).toBeVisible();
+    await page.keyboard.press('Escape');
 
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
@@ -161,10 +195,10 @@ test.describe.serial('KeepLocal production smoke', () => {
     };
     page.on('response', onResponse);
 
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', 'Link-Notiz');
-    await page.fill('.note-modal-content', 'Siehe https://example.com/keeplocal-e2e fuer Details');
+    await page.fill(CONTENT, 'Siehe https://example.com/keeplocal-e2e fuer Details');
     // The hook debounces 1s and the fetch may legitimately fail offline; the
     // point is that it must not be a 5xx.
     await page.waitForTimeout(9000);
@@ -193,6 +227,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.empty-state')).toBeVisible();
 
     await page.click('.search-clear');
+    await page.locator('.search-input').press('Escape');
     await expect(page.locator('[role="article"]', { hasText: NOTE_TITLE })).toBeVisible();
   });
 
@@ -202,12 +237,15 @@ test.describe.serial('KeepLocal production smoke', () => {
       ['Brot-Rezept', 'Mehl, Wasser, Salz', 'suchtest'],
       ['Einkauf', 'Bitte Brot kaufen und Apfel mitnehmen', 'suchtest'],
     ]) {
-      await page.click('.note-form-button');
+      await openNewEditor(page);
       await expect(page.locator('.note-modal')).toBeVisible();
       await page.fill('.note-modal-title', title);
-      await page.fill('.note-modal-content', content);
+      await page.fill(CONTENT, content);
+      await editorMore(page);
+      await page.locator('.editor-more-actions').getByRole('button', { name: /labels/i }).click();
       await page.fill('.note-modal-tags-input', tag);
       await page.keyboard.press('Enter');
+      await page.keyboard.press('Escape');
       await page.click('.btn-modal-save');
       await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
     }
@@ -262,10 +300,10 @@ test.describe.serial('KeepLocal production smoke', () => {
   test('drag and drop inside a section persists the manual order', async () => {
     const titles = ['Order A', 'Order B', 'Order C'];
     for (const title of titles) {
-      await page.click('.note-form-button');
+      await openNewEditor(page);
       await expect(page.locator('.note-modal')).toBeVisible();
       await page.fill('.note-modal-title', title);
-      await page.fill('.note-modal-content', `Inhalt von ${title}`);
+      await page.fill(CONTENT, `Inhalt von ${title}`);
       await page.click('.btn-modal-save');
       await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
     }
@@ -293,7 +331,7 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     // The server must agree: order values were stored and survive a reload.
     const orders = await page.evaluate(async () => {
-      const response = await fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' });
+      const response = await fetch('/api/notes?personal=true&page=1&limit=100&archived=false', { credentials: 'include' });
       const body = await response.json();
       return body.notes
         .filter((note) => ['Order A', 'Order B', 'Order C'].includes(note.title))
@@ -312,16 +350,17 @@ test.describe.serial('KeepLocal production smoke', () => {
     const TRASH_TITLE = 'Trash-Notiz';
 
     // A note of its own, so the sharing test below keeps its fixture.
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', TRASH_TITLE);
-    await page.fill('.note-modal-content', 'wird gleich geloescht');
+    await page.fill(CONTENT, 'wird gleich geloescht');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
 
     const deleteNote = async () => {
       const card = page.locator('[role="article"]', { hasText: TRASH_TITLE });
       await card.hover();
+      await card.locator('.more-btn').click();
       await card.locator('.delete-btn').click();
       await expect(page.locator('.confirm-dialog')).toBeVisible();
       await page.locator('.confirm-dialog .btn-confirm').click();
@@ -371,8 +410,8 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     const afterPurge = await page.evaluate(async () => {
       const [active, trash] = await Promise.all([
-        fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' }).then(r => r.json()),
-        fetch('/api/notes?page=1&limit=100&deleted=true', { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/notes?personal=true&page=1&limit=100&archived=false', { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/notes?personal=true&page=1&limit=100&deleted=true', { credentials: 'include' }).then(r => r.json()),
       ]);
       return {
         active: active.notes.some(n => n.title === 'Trash-Notiz'),
@@ -386,7 +425,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.locator('.sidebar-item[aria-label="All Notes"]').click();
     await expect(page.locator('.App')).toBeVisible();
     const trashCount = await page.evaluate(async () => {
-      const r = await fetch('/api/notes?page=1&limit=1&archived=false', { credentials: 'include' });
+      const r = await fetch('/api/notes?personal=true&page=1&limit=1&archived=false', { credentials: 'include' });
       return (await r.json()).counts.trash;
     });
     if (trashCount > 0) {
@@ -456,17 +495,17 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     const sharedCard = friendPage.locator('[role="article"]', { hasText: NOTE_TITLE });
     await expect(sharedCard).toBeVisible({ timeout: 20000 });
-    // Owner-only actions must not be offered to a collaborator.
+    // Organization is personal; deletion and sharing remain owner-only.
     await sharedCard.hover();
-    await expect(sharedCard.locator('.archive-btn')).toHaveCount(0);
+    await expect(sharedCard.locator('.archive-btn')).toBeVisible();
     await expect(sharedCard.locator('.delete-btn')).toHaveCount(0);
 
     await sharedCard.click();
     await expect(friendPage.locator('.note-modal')).toBeVisible();
     await expect(friendPage.locator('.note-modal-shared-hint')).toBeVisible();
     await expect(friendPage.locator('.btn-modal-delete')).toHaveCount(0);
-    await expect(friendPage.locator('.btn-modal-archive')).toHaveCount(0);
-    await friendPage.click('.note-modal-content');
+    await expect(friendPage.locator('.btn-modal-archive')).toBeVisible();
+    await friendPage.click(CONTENT);
     await friendPage.keyboard.type(' + von e2efriend');
     await friendPage.click('.btn-modal-save');
     await expect(friendPage.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
@@ -477,13 +516,14 @@ test.describe.serial('KeepLocal production smoke', () => {
     // The owner sees the collaborator's change after a refresh.
     await page.reload();
     await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
-    const list = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const list = await (await page.request.get('/api/notes?personal=true&page=1&limit=50&archived=false')).json();
     const shared = list.notes.find((note) => note.title === NOTE_TITLE);
     expect(shared.content).toContain('von e2efriend');
   });
 
   test('logout and login again without a reload works (CSRF lifecycle)', async () => {
-    await page.click('.btn-logout');
+    await page.locator('.keep-account summary').click();
+    await page.locator('.keep-account-panel').getByRole('button', { name: /Logout|Abmelden/ }).click();
     await expect(page.locator('form input[type="password"]')).toBeVisible({ timeout: 20000 });
 
     // Error codes: the API answers in German, the UI must translate via the
@@ -502,9 +542,9 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
 
     // A mutation right after the re-login must not fail with a stale CSRF token.
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
-    await page.fill('.note-modal-content', 'Notiz nach Re-Login');
+    await page.fill(CONTENT, 'Notiz nach Re-Login');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
     await expect(page.locator('[role="article"]', { hasText: 'Notiz nach Re-Login' })).toBeVisible();
@@ -535,14 +575,14 @@ test.describe.serial('KeepLocal production smoke', () => {
       .poll(async () => (await page.locator('.sidebar').boundingBox())?.x, { timeout: 8000 })
       .toBeLessThan(0);
 
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
 
     // A tall note must not push the footer (Cancel/Save) out of the viewport:
     // the dialog body scrolls, the footer stays reachable.
     await page.fill('.note-modal-title', 'Mobile-Notiz');
     await page.fill(
-      '.note-modal-content',
+      CONTENT,
       Array.from({ length: 60 }, (_unused, index) => `Zeile ${index + 1} mit etwas Text zum Fuellen`).join('\n')
     );
     await page.waitForTimeout(400);
@@ -568,10 +608,10 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.waitForTimeout(400);
 
     // Fixture: eine Notiz, die gleich in den Papierkorb wandert.
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', MOBILE_TRASH_TITLE);
-    await page.fill('.note-modal-content', 'mobil wiederherstellen');
+    await page.fill(CONTENT, 'mobil wiederherstellen');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
 
@@ -579,8 +619,9 @@ test.describe.serial('KeepLocal production smoke', () => {
     // müssen dauerhaft sichtbar sein (Top-30 Nr. 20), sonst ist display:none.
     const card = page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE });
     await expect(card).toBeVisible({ timeout: 20000 });
-    await expect(card.locator('.delete-btn')).toBeVisible();
-    await card.locator('.delete-btn').click();
+    await expect(card.locator('.more-btn')).toBeVisible();
+    await card.locator('.more-btn').click();
+      await card.locator('.delete-btn').click();
     await expect(page.locator('.confirm-dialog')).toBeVisible();
     await page.locator('.confirm-dialog .btn-confirm').click();
     await expect(page.locator('[role="article"]', { hasText: MOBILE_TRASH_TITLE })).toHaveCount(0, { timeout: 20000 });
@@ -644,13 +685,13 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.App')).toBeVisible();
     await runAxe('notes list');
 
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await runAxe('note editor');
-    await page.click('.btn-modal-cancel');
+    await discardEditor(page);
     await expect(page.locator('.note-modal')).toHaveCount(0);
 
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await runAxe('settings');
     await page.keyboard.press('Escape');
@@ -665,14 +706,14 @@ test.describe.serial('KeepLocal production smoke', () => {
     const bodyTheme = () => page.evaluate(() => document.body.className);
     const themeBefore = await bodyTheme();
     for (const expected of ['dark-mode', 'oled-mode', 'eink-mode', 'doodle-mode']) {
-      await page.click('.theme-toggle');
+      await cycleTheme(page);
       await expect.poll(bodyTheme, { timeout: 5000 }).toBe(expected);
       await runAxe(`notes list · ${expected.replace('-mode', '')}`);
     }
     // deterministischen Zustand für die Folge-Tests wiederherstellen
     for (let step = 0; step < 5; step += 1) {
       if ((await bodyTheme()) === themeBefore) break;
-      await page.click('.theme-toggle');
+      await cycleTheme(page);
       await page.waitForTimeout(300);
     }
     expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
@@ -687,7 +728,7 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     // AdminConsole: Statistik-Karten und Nutzer-Tabelle (Nr. 27: die
     // Screen-Liste war vor diesem Fix Notes/Editor/Settings).
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.click('.btn-admin-console');
     await expect(page.locator('.admin-console')).toBeVisible();
@@ -698,9 +739,9 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     // Die AdminConsole bringt eigene dark/oled-Overrides mit — ihr Kontrast
     // ist theme-abhängig, deshalb ein zweiter Lauf im dunkelsten Theme.
-    await page.click('.theme-toggle');
+    await cycleTheme(page);
     await expect.poll(bodyTheme, { timeout: 5000 }).toBe('dark-mode');
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.click('.btn-admin-console');
     await expect(page.locator('.admin-console')).toBeVisible();
@@ -711,7 +752,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     // zurück zum Ausgangs-Theme für die Folge-Tests
     for (let step = 0; step < 5; step += 1) {
       if ((await bodyTheme()) === themeBefore) break;
-      await page.click('.theme-toggle');
+      await cycleTheme(page);
       await page.waitForTimeout(300);
     }
     expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
@@ -752,7 +793,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     const langBefore = await page.evaluate(() => document.documentElement.lang);
 
     // 1) Switching the theme stores it on the account (debounced write-back).
-    await page.click('.theme-toggle');
+    await cycleTheme(page);
     await expect.poll(bodyTheme, { timeout: 5000 }).not.toBe(themeBefore);
     const themeAfter = await bodyTheme();
     await expect
@@ -771,7 +812,7 @@ test.describe.serial('KeepLocal production smoke', () => {
       .toBe(themeAfter);
 
     // 3) The UI language is an account preference as well.
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.locator('.settings-language .language-toggle').click();
     await expect(page.locator('.language-popup')).toBeVisible();
@@ -801,7 +842,7 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     for (let step = 0; step < 5; step += 1) {
       if ((await bodyTheme()) === themeBefore) break;
-      await page.click('.theme-toggle');
+      await cycleTheme(page);
       await page.waitForTimeout(300);
     }
     expect(await bodyTheme(), 'theme restored').toBe(themeBefore);
@@ -812,10 +853,10 @@ test.describe.serial('KeepLocal production smoke', () => {
 
   test('a collaborator can add an image and the owner sees who edited last', async ({ browser }) => {
     const TITLE = 'Bild-Notiz';
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', TITLE);
-    await page.fill('.note-modal-content', 'für den Mitbearbeiter');
+    await page.fill(CONTENT, 'für den Mitbearbeiter');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
 
@@ -843,11 +884,13 @@ test.describe.serial('KeepLocal production smoke', () => {
     await friend.locator('[role="article"]', { hasText: TITLE }).click();
     await expect(friend.locator('.note-modal')).toBeVisible();
     await expect(friend.locator('#image-upload-input')).toHaveCount(1, 'collaborators may upload images');
-    await friend.locator('.note-modal-content').click();
+    await friend.locator(CONTENT).click();
     await friend.keyboard.type(' + Bild vom Mitbearbeiter');
     await friend.setInputFiles('#image-upload-input', UPLOAD_FIXTURE);
     await expect(friend.locator('.new-images-preview .image-preview')).toHaveCount(1);
+    await editorMore(friend);
     await friend.locator('.btn-modal-image-upload').click();
+    await friend.keyboard.press('Escape');
     await expect(friend.locator('.note-modal-images .image-preview')).toHaveCount(1, { timeout: 25000 });
     await friend.locator('.btn-modal-save').click();
     await expect(friend.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
@@ -864,21 +907,21 @@ test.describe.serial('KeepLocal production smoke', () => {
 
   test('an edit from elsewhere raises the conflict banner in an open editor', async () => {
     const TITLE = 'Konflikt-Notiz';
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', TITLE);
-    await page.fill('.note-modal-content', 'Ausgangszustand');
+    await page.fill(CONTENT, 'Ausgangszustand');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
 
     await page.locator('[role="article"]', { hasText: TITLE }).click();
     await expect(page.locator('.note-modal')).toBeVisible();
-    await page.locator('.note-modal-content').click();
+    await page.locator(CONTENT).click();
     await page.keyboard.type(' + lokaler Tippfehler');
 
     // Another client changes the same note while this editor is open.
     const noteId = await page.evaluate(async (title) => {
-      const response = await fetch('/api/notes?page=1&limit=100&archived=false', { credentials: 'include' });
+      const response = await fetch('/api/notes?personal=true&page=1&limit=100&archived=false', { credentials: 'include' });
       const body = await response.json();
       return body.notes.find((note) => note.title === title)?._id;
     }, TITLE);
@@ -898,15 +941,15 @@ test.describe.serial('KeepLocal production smoke', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.locator('.note-modal-conflict')).toBeVisible({ timeout: 30000 });
     // The local edit is still in the textarea — nothing was overwritten.
-    await expect(page.locator('.note-modal-content')).toContainText('lokaler Tippfehler');
+    await expect(page.locator(CONTENT)).toContainText('lokaler Tippfehler');
 
     // Loading the server version asks before discarding local changes.
     await page.locator('.btn-conflict-load').click();
     await expect(page.locator('.confirm-dialog')).toBeVisible();
     await page.locator('.confirm-dialog .btn-confirm').click();
-    await expect(page.locator('.note-modal-content')).toHaveValue('AENDERUNG VON AUSSEN', { timeout: 15000 });
+    await expectContent(page, 'AENDERUNG VON AUSSEN');
     await expect(page.locator('.note-modal-conflict')).toHaveCount(0);
-    await page.locator('.btn-modal-cancel').click();
+    await discardEditor(page);
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
   });
 
@@ -916,10 +959,10 @@ test.describe.serial('KeepLocal production smoke', () => {
   test('removing a friend revokes access to notes shared before', async ({ browser }) => {
     const TITLE = 'Geteilt vor dem Entfreunden';
 
-    await page.click('.note-form-button');
+    await openNewEditor(page);
     await expect(page.locator('.note-modal')).toBeVisible();
     await page.fill('.note-modal-title', TITLE);
-    await page.fill('.note-modal-content', 'Der Zugriff muss mit der Freundschaft enden');
+    await page.fill(CONTENT, 'Der Zugriff muss mit der Freundschaft enden');
     await page.click('.btn-modal-save');
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
 
@@ -937,7 +980,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.collaborate-modal')).toHaveCount(0);
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 15000 });
 
-    const listBefore = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const listBefore = await (await page.request.get('/api/notes?personal=true&page=1&limit=50&archived=false')).json();
     const sharedNote = listBefore.notes.find((note) => note.title === TITLE);
     expect(sharedNote, 'the note must exist before unfriending').toBeTruthy();
     const sharedIds = sharedNote.sharedWith.map((user) => String(user._id ?? user));
@@ -955,6 +998,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(friendPage.locator('[role="article"]', { hasText: TITLE })).toBeVisible({ timeout: 20000 });
 
     // Remove the friend through the UI (sidebar -> friends -> remove -> confirm).
+    await page.locator('.sidebar-extras summary').click();
     await page.locator('.sidebar-item', { hasText: /Friends|Freunde/ }).click();
     await expect(page.locator('.friends-modal')).toBeVisible();
     await page.locator('.friends-modal .friend-item', { hasText: FRIEND.username }).locator('.btn-remove').click();
@@ -965,7 +1009,7 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('.friends-modal')).toHaveCount(0, { timeout: 15000 });
 
     // The share is gone server-side …
-    const listAfter = await (await page.request.get('/api/notes?page=1&limit=50&archived=false')).json();
+    const listAfter = await (await page.request.get('/api/notes?personal=true&page=1&limit=50&archived=false')).json();
     const noteAfter = listAfter.notes.find((note) => note._id === noteId);
     expect(noteAfter.sharedWith, 'the ex-friend must be removed from sharedWith').toEqual([]);
 
@@ -986,41 +1030,46 @@ test.describe.serial('KeepLocal production smoke', () => {
   // typed into the editor — the state lived only in React.
   test('an editor draft survives a reload and can be restored or discarded', async () => {
     const DRAFT_TEXT = `Entwurf nach Reload ${Date.now()}`;
+    await openNewEditor(page);
+    await page.fill('.note-modal-title', 'Entwurfsbasis');
+    await page.fill(CONTENT, '');
+    await page.click('.btn-modal-save');
+    await expect(page.locator('.note-modal')).toHaveCount(0);
 
-    await page.click('.note-form-button');
+    await page.locator('[role="article"]', { hasText: 'Entwurfsbasis' }).click();
     await expect(page.locator('.note-modal')).toBeVisible();
-    await page.locator('.note-modal-content').click();
+    await page.locator(CONTENT).click();
     await page.keyboard.type(DRAFT_TEXT);
 
     // No save: the reload stands in for a crash, a tab close or a 401 logout.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
 
-    await page.click('.note-form-button');
+    await page.locator('[role="article"]', { hasText: 'Entwurfsbasis' }).click();
     await expect(page.locator('.note-modal')).toBeVisible();
     await expect(page.locator('.note-modal-draft')).toBeVisible({ timeout: 10000 });
     await page.locator('.btn-draft-restore').click();
-    await expect(page.locator('.note-modal-content')).toHaveValue(DRAFT_TEXT, { timeout: 10000 });
+    await expectContent(page, DRAFT_TEXT);
     await expect(page.locator('.note-modal-draft')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText(errorBoundaryText);
 
     // Discard path: changed content, another reload, then refuse the draft.
-    await page.locator('.note-modal-content').click();
+    await page.locator(CONTENT).click();
     await page.keyboard.type(' + weitere Änderung');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('.App')).toBeVisible({ timeout: 25000 });
-    await page.click('.note-form-button');
+    await page.locator('[role="article"]', { hasText: 'Entwurfsbasis' }).click();
     await expect(page.locator('.note-modal-draft')).toBeVisible({ timeout: 10000 });
     await page.locator('.btn-draft-discard').click();
     await expect(page.locator('.note-modal-draft')).toHaveCount(0);
-    await expect(page.locator('.note-modal-content')).toHaveValue('');
+    await expectContent(page, '');
 
     // Nothing may be offered again after discarding.
-    await page.locator('.btn-modal-cancel').click();
+    await discardEditor(page);
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
-    await page.click('.note-form-button');
+    await page.locator('[role="article"]', { hasText: 'Entwurfsbasis' }).click();
     await expect(page.locator('.note-modal-draft')).toHaveCount(0);
-    await page.locator('.btn-modal-cancel').click();
+    await discardEditor(page);
     await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 20000 });
     await expectAppHealthy(page);
   });
@@ -1036,20 +1085,20 @@ test.describe.serial('KeepLocal production smoke', () => {
       await expect(page.locator('.offline-banner')).toContainText(/Keine Verbindung|No connection/i);
       await expect(page.locator('.offline-banner')).toHaveAttribute('role', 'status');
 
-      // Saving while offline must say "connection", not "error updating note".
-      await page.click('.note-form-button');
-      await expect(page.locator('.note-modal')).toBeVisible();
+      // Saving offline closes only after the durable outbox accepts the write.
+      await openNewEditor(page);
       await page.fill('.note-modal-title', 'Offline-Notiz');
-      await page.fill('.note-modal-content', 'darf nicht still verschwinden');
+      await page.fill(CONTENT, 'darf nicht still verschwinden');
       await page.click('.btn-modal-save');
-      await expect(page.locator('.toast')).toBeVisible({ timeout: 15000 });
-      await expect(page.locator('.toast').first()).toContainText(/Keine Verbindung|No connection|offline/i);
-      await page.locator('.btn-modal-cancel').click();
       await expect(page.locator('.note-modal')).toHaveCount(0, { timeout: 15000 });
-
+      await expect(page.locator('[role="article"]', { hasText: 'Offline-Notiz' })).toBeVisible();
+      expect(await page.evaluate(() => indexedDB.databases().then(dbs => dbs.some(db => db.name === 'keeplocal-notes')))).toBe(true);
       await context.setOffline(false);
       await expect(page.locator('.offline-banner')).toHaveCount(0, { timeout: 15000 });
-      await expect(page.locator('.toast').first()).toContainText(/Wieder verbunden|Back online/i, { timeout: 15000 });
+      await expect.poll(async () => {
+        const response = await page.request.get('/api/notes?personal=true&page=1&limit=100&archived=false');
+        return (await response.json()).notes.filter(note => note.title === 'Offline-Notiz').length;
+      }, { timeout: 20000 }).toBe(1);
       await expect(page.locator('.App')).toBeVisible();
       await expect(page.locator('body')).not.toContainText(errorBoundaryText);
     } finally {
@@ -1062,12 +1111,12 @@ test.describe.serial('KeepLocal production smoke', () => {
   test('changing the password keeps this session and invalidates the old password', async ({ browser }) => {
     const nextPassword = 'E2eAdminChanged1x';
 
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.fill('#current-password', ADMIN.password);
     await page.fill('#new-password', nextPassword);
     await page.fill('#confirm-new-password', nextPassword);
-    await page.click('.btn-change-password');
+    await page.locator('.settings-password-form .btn-change-password').click();
 
     await expect(page.locator('.settings-error')).toHaveCount(0);
     // The queue can hold more than one toast, so match the specific one.
@@ -1082,12 +1131,12 @@ test.describe.serial('KeepLocal production smoke', () => {
     await expect(page.locator('[role="article"]').first()).toBeVisible();
 
     // Wrong current password is rejected.
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.fill('#current-password', 'DefinitelyWrong1x');
     await page.fill('#new-password', 'AnotherOne1x');
     await page.fill('#confirm-new-password', 'AnotherOne1x');
-    await page.click('.btn-change-password');
+    await page.locator('.settings-password-form .btn-change-password').click();
     await expect(page.locator('.settings-error')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.settings-modal')).toHaveCount(0);
@@ -1111,7 +1160,7 @@ test.describe.serial('KeepLocal production smoke', () => {
 
   test('an admin reset token can be redeemed once from the login screen', async ({ browser }) => {
     // Admin console -> users -> reset token for the collaborator.
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.locator('.settings-modal button', { hasText: /Open admin console|Admin-Konsole öffnen/ }).click();
     await expect(page.locator('.admin-console-overlay')).toBeVisible();
@@ -1219,7 +1268,7 @@ test.describe.serial('KeepLocal production smoke', () => {
 
     // --- Admin-Confirm: der erste Escape bricht nur den Confirm ab, die
     // Konsole bleibt; der zweite schließt die Konsole.
-    await page.click('.user-name.clickable');
+    await openSettings(page);
     await expect(page.locator('.settings-modal')).toBeVisible();
     await page.locator('.settings-modal button', { hasText: /Open admin console|Admin-Konsole öffnen/ }).click();
     await expect(page.locator('.admin-console-overlay')).toBeVisible();

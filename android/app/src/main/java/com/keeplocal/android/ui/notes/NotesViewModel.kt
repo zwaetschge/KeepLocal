@@ -69,6 +69,8 @@ data class NotesScreenState(
     /** Type restriction while searching (v1.9.0 Nr. 7); ALL = no clause. */
     val typeFilter: NoteTypeFilter = NoteTypeFilter.ALL,
     val selectedTag: String? = null,
+    val colorFilter: String? = null,
+    val personFilter: String? = null,
     val showArchived: Boolean = false,
     val selectedNoteIds: Set<String> = emptySet(),
     val isMultiSelectMode: Boolean = false,
@@ -183,13 +185,13 @@ class NotesViewModel @Inject constructor(
         // resolve it against the own user id and the friends list.
         viewModelScope.launch {
             getCurrentUserUseCase().getOrNull()?.let { user ->
-                _uiState.update { it.copy(currentUserId = user.id) }
+                _uiState.update { it.copy(currentUserId = user.id,ownerNames=it.ownerNames+(user.id to user.username)) }
             }
         }
         viewModelScope.launch {
             val friends = getFriendsUseCase().getOrNull().orEmpty()
             if (friends.isNotEmpty()) {
-                _uiState.update { it.copy(ownerNames = friends.associate { it.id to it.username }) }
+                _uiState.update { it.copy(ownerNames = it.ownerNames+friends.associate { it.id to it.username }) }
             }
         }
         viewModelScope.launch {
@@ -266,7 +268,7 @@ class NotesViewModel @Inject constructor(
                 tag = state.selectedTag,
                 archived = state.showArchived,
                 sortMode = state.sortMode,
-                limit = state.listLimit,
+                limit = if(state.colorFilter!=null || state.personFilter!=null) null else state.listLimit,
                 filter = state.typeFilter,
                 scope = state.folderScope
             ).collect { result ->
@@ -276,7 +278,10 @@ class NotesViewModel @Inject constructor(
     }
 
     private fun applyNotesResult(result: Result<List<Note>>) {
-        val data = result.getOrNull()
+        val filterState=_uiState.value
+        val full=result.getOrNull()
+        val filtered=full?.filter { note -> (filterState.colorFilter==null || note.color.hex==filterState.colorFilter) && (filterState.personFilter==null || note.owner==filterState.personFilter || note.sharedWith.any {it.userId==filterState.personFilter}) }
+        val data=filtered?.take(filterState.listLimit)
         val errorMsg = if (result is Result.Error) result.message else null
         _uiState.update {
             it.copy(
@@ -353,7 +358,7 @@ class NotesViewModel @Inject constructor(
                 search = state.searchQuery.ifBlank { null },
                 archived = state.showArchived,
                 sortMode = state.sortMode,
-                limit = newLimit,
+                limit = if(_uiState.value.colorFilter!=null || _uiState.value.personFilter!=null) null else newLimit,
                 filter = state.typeFilter,
                 scope = state.folderScope
             ).collect { result -> applyNotesResult(result) }
@@ -523,6 +528,8 @@ class NotesViewModel @Inject constructor(
     }
 
     /** Restricts the visible list to one note type (v1.9.0 Nr. 7). */
+    fun setColorFilter(color: String?) {_uiState.update {it.copy(colorFilter=color)};loadNotes()}
+    fun setPersonFilter(person: String?) {_uiState.update {it.copy(personFilter=person)};loadNotes()}
     fun setTypeFilter(filter: NoteTypeFilter) {
         if (_uiState.value.typeFilter == filter) return
         _uiState.update { it.copy(typeFilter = filter) }

@@ -113,7 +113,9 @@ test('PUT /api/auth/preferences stores whitelisted fields with dotted paths', as
       renderMarkdown: true,
       tagColors: {},
       savedSearches: [],
-      journalFolderId: null
+      journalFolderId: null,
+      viewMode: 'grid',
+      visualStyle: 'keep'
     });
     assert.deepEqual(state.updates[0].update.$set, {
       'preferences.theme': 'oled',
@@ -200,7 +202,9 @@ test('GET /api/auth/me reports preferences with safe defaults', async () => {
       renderMarkdown: true,
       tagColors: {},
       savedSearches: [],
-      journalFolderId: null
+      journalFolderId: null,
+      viewMode: 'grid',
+      visualStyle: 'keep'
     });
     assert.equal(body.user.password, undefined);
     assert.equal(body.user.sessionVersion, undefined);

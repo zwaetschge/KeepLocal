@@ -43,6 +43,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
             <!-- Launcher shortcuts: new note, search, trash. -->
             <meta-data
                 android:name="android.app.shortcuts"
@@ -96,6 +106,11 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".widget.CollectionWidgetConfigActivity" android:exported="true" android:theme="@style/Theme.KeepLocal" />
+        <receiver android:name=".widget.QuickCaptureWidgetReceiver" android:exported="false" android:label="@string/quick_capture_widget_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_capture_widget_info" />
+        </receiver>
         <!-- Quick-settings tile: jump straight into a new note. -->
         <service
             android:name=".widget.NewNoteTileService"

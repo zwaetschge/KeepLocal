@@ -3,6 +3,8 @@ import ThemeToggle from './ThemeToggle';
 import Logo from './Logo';
 import { useLanguage } from '../contexts/LanguageContext';
 import './Sidebar.css';
+import KeepIcon from './KeepIcon';
+import {useModalA11y} from '../hooks/useModalA11y';
 
 /** Farbauswahl für Tags (v1.10.0) — 12 unterscheidbare Farben, synchronisiert
  *  über die Konto-Preferences (wie die Notizfarben, aber pro Tag-Name). */
@@ -223,6 +225,7 @@ function Sidebar({
   selectedTag,
   onTagSelect,
   noteCount,
+  collapsed, onCollapsedChange, onShowReminders, remindersActive,
   archivedCount,
   showArchived,
   onShowArchivedToggle,
@@ -261,7 +264,11 @@ function Sidebar({
   upcomingReminders = [],
   onOpenReminder,
 }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const isCollapsed=collapsed ?? internalCollapsed;
+  const setIsCollapsed=onCollapsedChange || setInternalCollapsed;
+  const [showLabelEditor,setShowLabelEditor]=useState(false);
+  const {containerRef:labelsRef,titleId:labelsTitle}=useModalA11y({active:showLabelEditor,onClose:()=>setShowLabelEditor(false)});
   const { t } = useLanguage();
 
   // Nr. 28 (Top-30): der mobile Drawer verhält sich tastaturtechnisch wie ein
@@ -300,7 +307,9 @@ function Sidebar({
       const current = document.activeElement;
       if (drawer.contains(current)) return true;
       if (current && current !== opener) return true;
-      const target = drawer.querySelector('button, a[href]');
+      const target = [...drawer.querySelectorAll('button:not(:disabled), a[href]')]
+        .find(element => element.getClientRects().length > 0
+          && getComputedStyle(element).visibility !== 'hidden');
       target?.focus();
       return Boolean(target && drawer.contains(document.activeElement));
     };
@@ -406,7 +415,7 @@ function Sidebar({
 
       <nav className="sidebar-nav">
         <button
-          className={`sidebar-item ${!selectedTag && !showArchived && !showTrash ? 'active' : ''}`}
+          className={`sidebar-item ${!selectedTag && !showArchived && !showTrash && !remindersActive ? 'active' : ''}`}
           onClick={() => {
             onTagSelect(null);
             if (onShowNotes) onShowNotes();
@@ -415,13 +424,65 @@ function Sidebar({
           }}
           aria-label={t('allNotes')}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-          </svg>
+          <KeepIcon name="note"/>
           <span>{t('notes')}</span>
           <span className="count">{noteCount}</span>
         </button>
 
+        <button type="button" className={`sidebar-item ${remindersActive ? 'active' : ''}`} onClick={()=>{onShowReminders?.();onMobileClose();}} aria-label={t('layoutReminders')}><KeepIcon name="reminder"/><span>{t('layoutReminders')}</span></button>
+        {allTags.length > 0 && (
+          <>
+            <div className="sidebar-divider"></div>
+
+            {/* Tag-Farben (v1.10.0): Palette für den ausgewählten Tag — Farbe
+                landet sofort in den Preferences und damit auf allen Geräten. */}
+            {selectedTag && onTagColorSelect && (
+              <div className="sidebar-tag-palette" role="group" aria-label={t('tagColorTitle', { tag: selectedTag })}>
+                {TAG_COLOR_PALETTE.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className={`sidebar-tag-color ${tagColors[selectedTag] === hex ? 'selected' : ''}`}
+                    style={{ backgroundColor: hex }}
+                    onClick={() => onTagColorSelect(selectedTag, tagColors[selectedTag] === hex ? null : hex)}
+                    title={t('tagColorTitle', { tag: selectedTag })}
+                    aria-label={t('tagColorTitle', { tag: selectedTag })}
+                    aria-pressed={tagColors[selectedTag] === hex}
+                  />
+                ))}
+                {tagColors[selectedTag] && (
+                  <button
+                    type="button"
+                    className="sidebar-tag-color sidebar-tag-color-none"
+                    onClick={() => onTagColorSelect(selectedTag, null)}
+                    title={t('tagColorNone')}
+                    aria-label={t('tagColorNone')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+            {allTags.map((tag) => (
+              <TagRow
+                key={tag.name}
+                tag={tag}
+                tagNames={allTags.map((entry) => entry.name)}
+                selected={selectedTag === tag.name}
+                color={tagColors[tag.name]}
+                busy={Boolean(tagManageBusy)}
+                onSelect={onTagSelect}
+                onManage={onTagManage}
+                onMobileClose={onMobileClose}
+                t={t}
+              />
+            ))}
+          </>
+        )}
+        <button type="button" className="sidebar-item" onClick={()=>setShowLabelEditor(true)} aria-label={t('editorLabels')}><KeepIcon name="edit"/><span>{t('editorLabels')}</span></button>
         <button
           className={`sidebar-item ${showArchived ? 'active' : ''}`}
           onClick={() => {
@@ -455,6 +516,7 @@ function Sidebar({
           </button>
         )}
 
+        <details className="sidebar-extras"><summary><KeepIcon name="more"/><span>{t('editorMore')}</span></summary>
         {/* Journal „Heute" (v1.10.0): öffnet (oder legt an) die Tages-Notiz
             im konfigurierten Journal-Ordner — dieselbe Notiz wie in der App. */}
         {onOpenToday && (
@@ -622,60 +684,15 @@ function Sidebar({
           </>
         )}
 
-        {allTags.length > 0 && (
-          <>
-            <div className="sidebar-divider"></div>
-            <div className="sidebar-section-title">Labels</div>
-            {/* Tag-Farben (v1.10.0): Palette für den ausgewählten Tag — Farbe
-                landet sofort in den Preferences und damit auf allen Geräten. */}
-            {selectedTag && onTagColorSelect && (
-              <div className="sidebar-tag-palette" role="group" aria-label={t('tagColorTitle', { tag: selectedTag })}>
-                {TAG_COLOR_PALETTE.map((hex) => (
-                  <button
-                    key={hex}
-                    type="button"
-                    className={`sidebar-tag-color ${tagColors[selectedTag] === hex ? 'selected' : ''}`}
-                    style={{ backgroundColor: hex }}
-                    onClick={() => onTagColorSelect(selectedTag, tagColors[selectedTag] === hex ? null : hex)}
-                    title={t('tagColorTitle', { tag: selectedTag })}
-                    aria-label={t('tagColorTitle', { tag: selectedTag })}
-                    aria-pressed={tagColors[selectedTag] === hex}
-                  />
-                ))}
-                {tagColors[selectedTag] && (
-                  <button
-                    type="button"
-                    className="sidebar-tag-color sidebar-tag-color-none"
-                    onClick={() => onTagColorSelect(selectedTag, null)}
-                    title={t('tagColorNone')}
-                    aria-label={t('tagColorNone')}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-            {allTags.map((tag) => (
-              <TagRow
-                key={tag.name}
-                tag={tag}
-                tagNames={allTags.map((entry) => entry.name)}
-                selected={selectedTag === tag.name}
-                color={tagColors[tag.name]}
-                busy={Boolean(tagManageBusy)}
-                onSelect={onTagSelect}
-                onManage={onTagManage}
-                onMobileClose={onMobileClose}
-                t={t}
-              />
-            ))}
-          </>
-        )}
+        </details>
       </nav>
     </aside>
+    {showLabelEditor && <div className="label-manager-overlay" onClick={()=>setShowLabelEditor(false)}><div ref={labelsRef} className="label-manager" role="dialog" aria-modal="true" aria-labelledby={labelsTitle} tabIndex={-1} onClick={event=>event.stopPropagation()}>
+      <header><h2 id={labelsTitle}>{t('editorLabels')}</h2><button type="button" onClick={()=>setShowLabelEditor(false)} aria-label={t('close')}><KeepIcon name="close"/></button></header>
+      {allTags.length===0 && <p>{t('layoutNoLabels')}</p>}
+      {allTags.map(tag=><TagRow key={tag.name} tag={tag} tagNames={allTags.map(entry=>entry.name)} selected={false} color={tagColors[tag.name]} busy={Boolean(tagManageBusy)} onSelect={()=>{}} onManage={onTagManage} onMobileClose={()=>{}} t={t}/>)}
+      <footer><button type="button" onClick={()=>setShowLabelEditor(false)}>{t('close')}</button></footer>
+    </div></div>}
     </>
   );
 }

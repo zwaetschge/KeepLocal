@@ -1,9 +1,15 @@
+import {toggleChecklist} from '../utils/checklist.mjs';
+import {DrawingPreview} from './DrawingEditor';
+import {RichTextPreview} from './RichTextEditor';
 import React, { useState, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { isNoteOwner, lastEditorName } from '../utils/noteAccess.mjs';
 import './Note.css';
+import KeepIcon from './KeepIcon';
+import ColorPicker from './ColorPicker';
+import EditorOptionsPopover from './EditorOptionsPopover';
 import ConfirmDialog from './ConfirmDialog';
 import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
@@ -21,13 +27,14 @@ function formatReminderDate(value) {
 }
 
 function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
+  const [cardMenu,setCardMenu]=useState(false);
+  const menuTrigger=useRef(null);
+  const cardImages=useRef(null);
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
-  // Geteilte Notizen sind gemeinsam editierbar (Inhalt/Titel/Tags/Farbe/Pin),
-  // aber Archivieren, Teilen und Löschen bleiben beim Besitzer — der Server
-  // lehnt alles andere mit 404 ab, also dürfen die Buttons gar nicht erst
-  // für Mitbearbeiter erscheinen.
+  // Organization (including archive) is personal; sharing and deletion remain
+  // owner-only while participants can edit shared content.
   const canManage = isNoteOwner(note, user);
   const editorName = lastEditorName(note);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -47,7 +54,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
   // v1.13.0 Nr. 2: Karten als Markdown rendern (Trilium-Bestand). marked ist
   // lazy geladen — bis zur ersten Antwort (und für Code-Notizen, die
   // dicktengleich bleiben sollen) zeigt die Karte den gewohnten Plain-Text.
-  const markdownEnabled = settings.renderMarkdown !== false && !note.isCode;
+  const markdownEnabled = settings.renderMarkdown !== false && !note.isCode && note.features?.format !== 'rich';
   const markdownHtml = useMarkdownHtml(note.content || '', markdownEnabled, { highlight });
   const contentHtml = markdownHtml ?? plainHtml;
 
@@ -150,9 +157,14 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
   const handleTodoItemToggle = (itemIndex) => {
     if (!note.todoItems || (!onUpdate && !onUpdateInline)) return;
 
-    const toggled = (items) => items.map((item, index) => (
-      index === itemIndex ? { ...item, completed: !item.completed } : item
-    ));
+    const item=note.todoItems[itemIndex];
+    if(!item)return;
+    const stableId=item.id || item._id;
+    const desired=!item.completed;
+    const toggled=(items)=>{
+      const index=stableId?items.findIndex(row=>(row.id || row._id)===stableId):itemIndex;
+      return index<0?items:toggleChecklist(items,index,desired);
+    };
 
     // v1.17.0 (W1): Todo-Toggle als Inline-Editierung mit baseUpdatedAt +
     // Reload+Retry — ein paralleler Edit (anderer Tab/Gerät) 409-t vorher,
@@ -167,7 +179,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
 
   return (
     <div
-      className={`note ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
+      className={`note note-background-${note.features?.background || 'none'} ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
       style={{
         backgroundColor: getColorVar(note.color),
         '--note-bg-color': getColorVar(note.color),
@@ -183,6 +195,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
         }
       }}
       role="article"
+      data-note-id={note._id}
       tabIndex={0}
       aria-label={note.title || t('note') || 'Notiz'}
       aria-busy={Boolean(operation)}
@@ -193,6 +206,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      <DrawingPreview drawing={note.features?.drawing} images={note.images || []}/>
       <div className="note-content-wrapper">
         {/* v1.10.0: Mehrfachauswahl — die Checkbox erscheint dauerhaft, sobald
             eine Auswahl läuft, sonst beim Hover/Fokus der Karte. */}
@@ -215,7 +229,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
         {note.isTodoList && note.todoItems && note.todoItems.length > 0 ? (
           <div className="note-todo-list">
             {note.todoItems.map((item, index) => (
-              <div key={index} className="note-todo-item">
+              <div key={item.id || item._id || index} className="note-todo-item" style={{marginInlineStart:item.indent?18:0}}>
                 <input
                   type="checkbox"
                   className="note-todo-checkbox"
@@ -234,6 +248,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
           </div>
         ) : (
           <>
+            {note.features?.format === 'rich' && !note.isCode ? <p ref={contentRef} className="note-content"><RichTextPreview text={note.content || ''} marks={note.features.marks || []} highlight={highlight}/></p> : (
             <p
               ref={contentRef}
               className={`note-content${markdownHtml ? ' markdown' : ''}`}
@@ -245,6 +260,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
                 }
               }}
             />
+            )}
             {note.linkPreviews && note.linkPreviews.length > 0 && (
               <div className="note-link-previews">
                 {note.linkPreviews.map((preview, index) => (
@@ -397,10 +413,10 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
             aria-label={note.isPinned ? t('unpin') : t('pin')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
+              <path d="M9 3h6v6l3 3v2H6v-2l3-3V3zM12 14v8"/>
             </svg>
           </button>
-          {canManage && (
+          {onToggleArchive && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -435,6 +451,13 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
               </svg>
             </button>
           )}
+          {canManage && <button type="button" className="action-btn reminder-btn" aria-label={t('reminderLabel')} title={t('reminderLabel')} onClick={e=>{e.stopPropagation();onOpenModal?.(note,{editorPanel:'reminder'});}}><KeepIcon name="reminder" size={18}/></button>}
+          <div className="card-color-action" onClick={e=>e.stopPropagation()}><ColorPicker selectedColor={note.color} onColorSelect={color=>onUpdate(note._id,{color})}/></div>
+          {canManage && !user?.isDemo && <button type="button" className="action-btn image-btn" aria-label={t('addImage')} title={t('addImage')} onClick={e=>{e.stopPropagation();cardImages.current?.click();}}><KeepIcon name="image" size={18}/></button>}
+          <button type="button" ref={menuTrigger} className="action-btn more-btn" data-editor-options-trigger aria-label={t('editorMore')} title={t('editorMore')} aria-expanded={cardMenu} onClick={e=>{e.stopPropagation();setCardMenu(value=>!value);}}><KeepIcon name="more" size={18}/></button>
+          {cardMenu && <div onClick={e=>e.stopPropagation()}><EditorOptionsPopover title={t('editorMore')} onOutside={()=>setCardMenu(false)} onClose={()=>{setCardMenu(false);menuTrigger.current?.focus();}}><div className="editor-more-actions">
+            <button type="button" onClick={()=>{setCardMenu(false);onOpenModal?.(note,{editorPanel:'labels'});}}>{t('editorLabels')}</button>
+            <button type="button" onClick={()=>{setCardMenu(false);onOpenModal?.(note,{editorPanel:'more'});}}>{t('fullEditor')}</button>
           {canManage && (
             <button
               onClick={(e) => {
@@ -449,13 +472,19 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
               </svg>
+              <span>{t('delete')}</span>
             </button>
           )}
+          </div></EditorOptionsPopover></div>}
             </>
           )}
         </div>
       </div>
 
+      {canManage && !user?.isDemo && !inTrash && <input ref={cardImages} type="file" accept="image/*" multiple hidden onClick={event=>event.stopPropagation()} onChange={event=>{
+        const imageFiles=Array.from(event.target.files||[]).slice(0,5);event.target.value='';
+        if(imageFiles.length)onOpenModal?.(note,{imageFiles});
+      }}/>}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title={inTrash ? t('confirmPurgeTitle') : t('confirmDeleteNoteTitle')}

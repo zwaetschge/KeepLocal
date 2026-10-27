@@ -325,12 +325,32 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `picking images for unsaved note only shows hint`() = runTest {
-        val viewModel = createViewModel()
+    fun `picking images creates an unsaved note then uploads without losing editor text`() = runTest {
+        val image=NoteImage(filename="a.webp",url="/uploads/images/a.webp")
+        coEvery {createNoteUseCase(any())} returns Result.Success(testNote)
+        coEvery {mediaRepository.uploadImages(testNote.id,any())} returns Result.Success(testNote.copy(images=listOf(image)))
+        val viewModel=createViewModel()
+        viewModel.updateTitle("New image note")
+        viewModel.updateContent("My draft")
         viewModel.onImagesPicked(listOf(mockk()))
+        advanceUntilIdle()
+        coVerify(exactly=1){createNoteUseCase(match{it.title=="New image note" && it.content=="My draft"})}
+        coVerify(exactly=1){mediaRepository.uploadImages(testNote.id,any())}
+        assertEquals(listOf(image),viewModel.uiState.value.images)
+        assertEquals("My draft",viewModel.uiState.value.content)
+        assertFalse(viewModel.uiState.value.isNewNote)
+    }
 
-        assertNotNull(viewModel.uiState.value.mediaHint)
-        coVerify(exactly = 0) { mediaRepository.uploadImages(any(), any()) }
+    @Test
+    fun `failed creation keeps the image note draft and does not upload to an unknown id`() = runTest {
+        coEvery {createNoteUseCase(any())} returns Result.Error("offline")
+        val viewModel=createViewModel()
+        viewModel.updateTitle("Keep my draft")
+        viewModel.onImagesPicked(listOf(mockk()))
+        runCurrent()
+        assertEquals("Keep my draft",viewModel.uiState.value.title)
+        assertEquals("offline",viewModel.uiState.value.errorMessage)
+        coVerify(exactly=0){mediaRepository.uploadImages(any(),any())}
     }
 
     @Test

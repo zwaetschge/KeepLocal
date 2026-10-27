@@ -132,7 +132,7 @@ test('the app shows the banner offline and refreshes on reconnect', () => {
   assert.match(hook, /export function useOnlineRefresh\(\{ enabled = true, onReconnect = null \} = \{\}\)/);
   assert.match(hook, /wasOfflineRef\.current = true;/);
   assert.match(hook, /callbackRef\.current = onReconnect;/, 'the callback lives in a ref so the effect does not re-run per render');
-  assert.match(hook, /if \(enabled\) callbackRef\.current\?\.\(\);/);
+  assert.match(hook, /if \(enabled\) outbox\.flush\(\)\.then\(\(\)=>callbackRef\.current\?\.\(\)\);/);
   assert.doesNotMatch(app, /wasOfflineRef/, 'App.jsx must not carry the reconnect state machine');
 });
 

@@ -1,16 +1,20 @@
+import {useKeepKeys} from './hooks/useKeepKeys';
+import OutboxStatus from './components/OutboxStatus';
 import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import './App.css';
+import './KeepStyle.css';
+import KeepHeader from './components/KeepHeader';
+import NotesToolbar from './components/NotesToolbar';
 import './DoodleTheme.css';
-import NoteForm from './components/NoteForm';
+import './KeepLayout.css';
+import NoteForm from './components/QuickCapture';
 import { NotesSkeleton, EmptyState, NotesSection, TrashHeader } from './components/AppStates';
-import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
 import ToastStack, { toastBus } from './components/ToastStack';
 import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
-import Logo from './components/Logo';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -20,7 +24,6 @@ import OfflineBanner from './components/OfflineBanner';
 import BulkActionBar from './components/BulkActionBar';
 import FolderScopeBar from './components/FolderScopeBar';
 import { applyThemeToDocument, getBrowserPathname } from './utils/browserEnvironment.mjs';
-
 // Code-Splitting (P14): schwere Routen/Modals erst bei Bedarf laden. Nr. 26
 // zieht die drei großen Modals nach (NoteModal-CSS: 33 kB im Initial-Chunk).
 const AdminConsole = React.lazy(() => import('./components/AdminConsole.jsx'));
@@ -29,7 +32,6 @@ const OAuthCallback = React.lazy(() => import('./components/OAuthCallback.jsx'))
 const NoteModal = React.lazy(() => import('./components/NoteModal.jsx'));
 const FriendsModal = React.lazy(() => import('./components/FriendsModal.jsx'));
 const CollaborateModal = React.lazy(() => import('./components/CollaborateModal.jsx'));
-
 // Inline-Styles (App.css bleibt bei diesem Refactoring unangetastet)
 const REFRESHING_STYLE = { opacity: 0.6, transition: 'opacity 0.2s ease' };
 const SESSION_BANNER_STYLE = {
@@ -41,7 +43,6 @@ const SESSION_BANNER_STYLE = {
 const LAZY_FALLBACK = (
   <div className="loading" role="status" aria-live="polite"><div className="loading-spinner" aria-hidden="true"></div></div>
 );
-
 function AppContent() {
   const {
     user, isLoggedIn, loading: authLoading, setupNeeded, sessionExpired,
@@ -53,9 +54,12 @@ function AppContent() {
   // Journal-Ordner reisen auf demselben Weg mit.
   const { settings, setTheme, setTagColor, updateSettings, setSavedSearches } = useSettings();
   const theme = settings.theme;
-
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+  const [searchDiscovery,setSearchDiscovery]=useState(false);
   // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({});
+  const [people, setPeople] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
@@ -71,10 +75,8 @@ function AppContent() {
   // history.replaceState('/') würde sonst für die Dauer von /api/auth/me das
   // Login-Formular aufblitzen.
   const [oauthCallback, setOauthCallback] = useState(() => getBrowserPathname() === '/oauth/callback');
-
   const noteFormRef = useRef(null);
   const searchBarRef = useRef(null);
-
   // Stabil, damit der Fetch-Effekt im Hook nicht bei jedem Render neu triggert.
   // Meldungen laufen über den toastBus: <ToastStack /> (App-Root) rendert die
   // Queue als Portal, jede Meldung behält ihren eigenen Timer und geht nicht
@@ -82,7 +84,6 @@ function AppContent() {
   const showToast = useCallback((message, type = 'info', options = null) => {
     toastBus.publish(message, type, options?.duration, options?.action);
   }, []);
-
   const {
     notes, loading, refreshing, pagination, noteCounts, allTags, operationLoading,
     pinnedNotes, otherNotes, emptyStateReason, fetchNotes,
@@ -96,9 +97,14 @@ function AppContent() {
     manageTag, findOrCreateTodayNote, draggedNoteId, pendingFriendRequests,
   } = useNotesManager({
     api: notesAPI, isLoggedIn, authLoading, showToast, t,
-    showArchived, showTrash, selectedTag, searchTerm,
+    showArchived, showTrash, selectedTag, searchTerm, filters,
   });
-
+  useEffect(() => {
+    if (!isLoggedIn) { setPeople([]); setFilters({}); return; }
+    let cancelled = false;
+    notesAPI.getFacets().then(data => { if (!cancelled) setPeople(data.people || []); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isLoggedIn,noteTree]);
   // Offline war der stillste Zustand der App: Der 60-s-Poll lief mit
   // `silent: true` weiter, Speichern zeigte nur „Error updating note", und die
   // Liste blieb ohne Hinweis stehen. Der Banner macht den Zustand sichtbar, beim
@@ -112,17 +118,14 @@ function AppContent() {
   });
   // PWA-Update-Prompt: Toast mit „Jetzt laden“ statt lautlosem skipWaiting.
   useUpdatePrompt({ showToast, t });
-
   // Initialize CSRF token on mount
   useEffect(() => {
     initializeCSRF();
   }, []);
-
   // Theme anwenden (Persistenz übernimmt der SettingsContext)
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
-
   // Nr. 26: Stabile Identitäten — ohne sie läuft React.memo auf Note/NoteList
   // ins Leere, weil AppContent bei jedem Zustands-Tick neue Handler-Objekte
   // erzeugt und die Karten damit trotzdem alle neu rendern.
@@ -133,17 +136,16 @@ function AppContent() {
   // Ein offener Editor darf nicht von "Neue Notiz" übernommen werden (Speichern
   // legte ein Duplikat an). v1.18.0: Wiki-Links im offenen Editor sind explizite
   // Navigation und ersetzen die Notiz — Entwürfe sind pro Notiz gesichert.
-  const openNoteModal = useCallback((note = null) => {
+  const openNoteModal = useCallback((note = null, initial = {}) => {
     setNoteModal(prev => (!prev.isOpen
       || (note && String(prev.note?._id ?? 'new') !== String(note._id)))
-      ? { isOpen: true, note } : prev);
+      ? { isOpen: true, note, initial } : prev);
   }, []);
   const closeNoteModal = useCallback(() => setNoteModal({ isOpen: false, note: null }), []);
   const handleModalSave = useCallback(async (noteData) => (
     noteModal.note ? updateNote(noteModal.note._id, noteData) : createNote(noteData)
   ), [noteModal.note, updateNote, createNote]);
   const handleSearch = useCallback((search) => setSearchTerm(search), []);
-
   // Die drei Ansichten (Notizen, Archiv, Papierkorb) schließen sich aus, genau
   // wie ein Tag-Filter den Papierkorb verlässt.
   const selectView = useCallback((view) => {
@@ -155,7 +157,6 @@ function AppContent() {
     if (tag) setShowTrash(false);
     setSelectedTag(tag);
   }, []);
-
   // v1.10.0: Ordner-Baum, Journal, gespeicherte Suchen, Wiki-Links — die
   // Ableitungen und Handler leben im eigenen Hook, damit App.jsx Verdrahtung
   // bleibt (Zeilen-Guard: tests/notesManagerLogic.test.js). Seit v1.16.0 auch
@@ -172,7 +173,6 @@ function AppContent() {
     setSearchTerm, setSelectedTag, setShowTrash, setShowArchived,
     clearFolderScope,
   });
-
   // Nr. 26: listActions in useMemo — ein neues Objekt-Literal pro Render hätte
   // die memoisierten Karten bei jedem AppContent-Tick neu gerendert. Muss vor
   // den Early Returns stehen (Hook-Regeln).
@@ -199,19 +199,17 @@ function AppContent() {
       highlight: searchTerm,
       operationLoading,
     }), [showTrash, restoreNote, purgeNote, operationLoading, deleteNote, updateNote, updateNoteInline, togglePinNote, toggleArchiveNote, user?.isDemo, openCollaborateModal, openNoteModal, handleDragStart, handleDragEnd, handleDragOver, handleDrop, selectedIds, toggleNoteSelection, handleTagSelect, settings.tagColors, searchTerm]);
-
   // Theme umschalten: light -> dark -> oled -> eink -> doodle -> light
   const toggleTheme = () => {
     const next = { light: 'dark', dark: 'oled', oled: 'eink', eink: 'doodle', doodle: 'light' };
     setTheme(next[theme] || 'light');
   };
-
   // Logout — der Notiz-Zustand räumt der Hook beim isLoggedIn-Wechsel selbst ab
   const handleLogout = async () => {
     await logout();
     showToast(t('loggedOut'), 'info');
   };
-
+  useKeepKeys({enabled:isLoggedIn && !noteModal.isOpen && !showTrash,noteFormRef,searchBarRef,onSelect:toggleNoteSelection,onArchive:toggleArchiveNote,onOpen:openNoteModal,notes});
   useKeyboardShortcuts({
     // v1.16.0: Strg+N reserviert der Browser (Chrome/Edge) — die Seite sieht das
     // keydown nie; nur Strg+Alt+n kommt durch.
@@ -220,12 +218,10 @@ function AppContent() {
     'Ctrl+k': toggleTheme,
     'Ctrl+Shift+L': () => handleLogout(),
   }, isLoggedIn);
-
   const handleLogin = async (email, password) => { await login(email, password); showToast(t('loggedIn'), 'success'); };
   const handleDemoLogin = async () => { await demoLogin(); showToast(t('loginSuccess'), 'success'); };
   const handleRegister = async (username, email, password) => { await register(username, email, password); showToast(t('registerSuccess'), 'success'); };
   const handleSetup = async (username, email, password) => { await setup(username, email, password); showToast(t('adminAccountCreated'), 'success'); };
-
   // Handle OAuth callback route
   if (oauthCallback) {
     return (
@@ -245,7 +241,6 @@ function AppContent() {
       </Suspense>
     );
   }
-
   // Show loading screen while checking auth
   if (authLoading) {
     return (
@@ -254,7 +249,6 @@ function AppContent() {
       </div>
     );
   }
-
   // Show setup if initial setup is needed
   if (setupNeeded) {
     return (
@@ -264,7 +258,6 @@ function AppContent() {
       </>
     );
   }
-
   // Show login/register if not authenticated
   if (!isLoggedIn) {
     return (
@@ -284,7 +277,6 @@ function AppContent() {
       </>
     );
   }
-
   // Main app (authenticated)
   const emptyStateContent = showTrash
     ? (pinnedNotes.length === 0 && otherNotes.length === 0
@@ -295,52 +287,17 @@ function AppContent() {
       noTagResults: { emoji: '🏷️', title: t('noNotesWithTag'), hint: t('selectOtherTagOrCreate') },
       noSearchResults: { emoji: '🔍', title: t('noNotesFound'), hint: t('tryDifferentSearch') },
     }[emptyStateReason];
-
   return (
-    <div className="App">
+    <div className={`App keep-layout ${sidebarCollapsed ? 'rail-collapsed' : ''} ${searchDiscovery && !searchTerm ? 'search-discovery-open' : ''} ${settings.visualStyle === 'keep' ? 'keep-style' : ''} ${settings.viewMode === 'list' ? 'list-mode' : ''}`}>
       {/* Nr. 28 (Top-30): erster Tab-Stop der App — überspringt Header und
           Sidebar und springt direkt zur Notizliste. */}
       <a className="skip-link" href="#main-content">{t('skipToContent')}</a>
-      <header className="App-header">
-        <div className="header-content">
-          <button
-            className="mobile-menu-toggle"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label={t('openMenu')}
-            aria-expanded={isMobileMenuOpen}
-            aria-controls="app-sidebar"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18M3 6h18M3 18h18"/>
-            </svg>
-          </button>
-          <Logo size={36} />
-          <SearchBar onSearch={handleSearch} searchTerm={searchTerm} ref={searchBarRef} aria-label={t('searchNotes')} />
-          <div className="user-info">
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            {user?.isDemo ? (
-              <div className="demo-user-identity" title={t('demoBannerTitle')}>
-                <svg className="demo-user-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="12" cy="8" r="4"/>
-                  <path d="M4 21a8 8 0 0116 0"/>
-                </svg>
-                <span className="user-name">{user?.username}</span>
-                <span className="demo-user-badge">{t('demoBadge')}</span>
-              </div>
-            ) : (
-              <button className="user-name clickable" onClick={() => setShowSettings(true)}
-                title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
-                aria-label={t('settings')}>
-                👤 {user?.username}
-              </button>
-            )}
-            <button onClick={handleLogout} className="btn-logout" title={t('logout')} aria-label={t('logout')}>
-              {t('logout')}
-            </button>
-          </div>
-        </div>
-      </header>
-
+      <KeepHeader user={user} searchTerm={searchTerm} onSearch={handleSearch} searchRef={searchBarRef}
+        onSearchFocus={()=>setSearchDiscovery(true)} onSearchDismiss={()=>setSearchDiscovery(false)}
+        onMenu={()=>window.matchMedia('(max-width:768px)').matches ? setIsMobileMenuOpen(value=>!value) : setSidebarCollapsed(value=>!value)}
+        isMobileOpen={isMobileMenuOpen} collapsed={sidebarCollapsed}
+        onRefresh={()=>fetchNotes(searchTerm,pagination.page,{background:true})} refreshing={refreshing}
+        settings={settings} onPreferences={updateSettings} onSettings={()=>setShowSettings(true)} onLogout={handleLogout}/>
       {user?.isDemo && (
         <section className="demo-banner" aria-label={t('demoBannerTitle')}>
           <strong>{t('demoBannerTitle')}</strong>
@@ -349,9 +306,10 @@ function AppContent() {
           <span>{t('demoBannerReset')}</span>
         </section>
       )}
-
       <div className="App-container">
-        <Sidebar
+        <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed}
+          onShowReminders={()=>{setFilters({...filters,type:'reminders'});setSearchDiscovery(false);}}
+          remindersActive={filters.type==='reminders'}
           allTags={allTags} selectedTag={selectedTag} onTagSelect={handleTagSelect}
           noteCount={noteCounts.active}
           onSettingsClick={user?.isDemo ? undefined : () => setShowSettings(true)}
@@ -359,7 +317,7 @@ function AppContent() {
           isMobileOpen={isMobileMenuOpen} onMobileClose={() => setIsMobileMenuOpen(false)}
           archivedCount={noteCounts.archived} showArchived={showArchived}
           onShowArchivedToggle={() => selectView(showArchived ? 'notes' : 'archived')}
-          onShowNotes={() => selectView('notes')}
+          onShowNotes={() => {setFilters({});selectView('notes');setSearchDiscovery(false);}}
           trashCount={noteCounts.trash} showTrash={showTrash}
           onShowTrashToggle={() => selectView(showTrash ? 'notes' : 'trash')}
           onEmptyTrash={emptyTrash}
@@ -377,7 +335,6 @@ function AppContent() {
           onTagManage={handleTagManage} tagManageBusy={Boolean(operationLoading.bulk)}
           pendingFriendRequests={pendingFriendRequests} upcomingReminders={upcomingReminders} onOpenReminder={handleOpenNoteById}
         />
-
         {/* tabIndex=-1 (Skip-Link-Standard): Fragment-Ziel sonst ohne echten Fokus. */}
         <main id="main-content" tabIndex={-1} className="App-main" role="main" aria-busy={refreshing}
           style={refreshing ? REFRESHING_STYLE : undefined}>
@@ -400,10 +357,11 @@ function AppContent() {
                   onClear={() => selectFolder(folderScope)}
                 />
               )}
-              <NoteForm onOpenModal={() => openNoteModal()} ref={noteFormRef} />
+              <NoteForm onOpenModal={openNoteModal} onCreate={createNote} onSaved={() => fetchNotes(searchTerm, 1, { background: true })} parentId={folderScope === 'root' ? null : folderScope} ref={noteFormRef} />
             </>
           )}
-
+          <OutboxStatus />
+          <NotesToolbar filters={filters} onFilter={value=>{setFilters(value);setSearchDiscovery(false);}} tags={allTags} selectedTag={selectedTag} onTag={value=>{handleTagSelect(value);setSearchDiscovery(false);}} people={people} settings={settings} onSettings={updateSettings} open={searchDiscovery && !searchTerm} onOpen={()=>setSearchDiscovery(true)} onClose={()=>setSearchDiscovery(false)}/>
           {/* v1.10.0: Mehrfachauswahl — Aktionsleiste über der Liste */}
           {!showTrash && selectedIds.size > 0 && (
             <BulkActionBar
@@ -419,7 +377,6 @@ function AppContent() {
               onCancel={clearSelection}
             />
           )}
-
           {/* P15b: erster Load zeigt Skeletons; Hintergrund-Refresh dimmt die Liste nur */}
           {loading && notes.length === 0 ? (
             <NotesSkeleton />
@@ -453,9 +410,7 @@ function AppContent() {
           )}
         </main>
       </div>
-
       <ThemeToggle theme={theme} onToggle={toggleTheme} aria-label={t('toggleTheme')} />
-
       {showAdminConsole && user?.isAdmin && !user?.isDemo && (
         <Suspense fallback={LAZY_FALLBACK}>
           <AdminConsole onClose={() => setShowAdminConsole(false)} />
@@ -466,6 +421,7 @@ function AppContent() {
           <NoteModal
             key={noteModal.note?._id ?? 'new'}
             note={noteModal.note}
+            initialNote={noteModal.initial}
             serverNote={noteModal.note ? (notes.find(item => item._id === noteModal.note._id) || noteModal.note) : null}
             onSave={handleModalSave} onClose={closeNoteModal} onRestored={() => fetchNotes(searchTerm, pagination.page, { background: true })}
             onToggleArchive={toggleArchiveNote} onDelete={deleteNote} onOpenCollaborate={user?.isDemo ? undefined : openCollaborateModal}
@@ -477,7 +433,6 @@ function AppContent() {
           />
         </Suspense>
       )}
-
       {!user?.isDemo && (
         <Suspense fallback={LAZY_FALLBACK}>
           <FriendsModal isOpen={showFriendsModal} onClose={() => setShowFriendsModal(false)}
@@ -487,7 +442,6 @@ function AppContent() {
             note={collaborateNote} onNoteUpdate={handleNoteShared} />
         </Suspense>
       )}
-
       {showSettings && !user?.isDemo && (
         <Suspense fallback={LAZY_FALLBACK}>
           <Settings onClose={() => setShowSettings(false)} isAdmin={user?.isAdmin}
@@ -495,11 +449,9 @@ function AppContent() {
             folders={folderOptions} onDataImported={handleDataImported} />
         </Suspense>
       )}
-
     </div>
   );
 }
-
 // Wrap with providers
 function App() {
   return (
@@ -515,5 +467,4 @@ function App() {
     </AuthProvider>
   );
 }
-
 export default App;

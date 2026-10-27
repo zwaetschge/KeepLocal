@@ -32,7 +32,9 @@ export function useUpdatePrompt({ showToast, t }) {
     };
 
     const onUpdateAvailable = (event) => {
-      pendingWorker = event?.detail?.sw ?? null;
+      const nextWorker = event?.detail?.sw ?? null;
+      if (!nextWorker || nextWorker === pendingWorker) return;
+      pendingWorker = nextWorker;
       showToast(t('updateAvailable'), 'info', {
         // Lange, aber nicht ewig: Nach einer Minute hat sich das Update
         // vermutlich erledigt (Tab-Neustart holt es ohnehin).
@@ -48,7 +50,13 @@ export function useUpdatePrompt({ showToast, t }) {
     };
 
     window.addEventListener('keeplocal:update-available', onUpdateAvailable);
+    let disposed = false;
+    navigator.serviceWorker.getRegistration?.().then(registration => {
+      if (!disposed && registration?.waiting) onUpdateAvailable({ detail: { sw: registration.waiting } });
+    }).catch(() => {});
     return () => {
+      disposed = true;
+      navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
       window.removeEventListener('keeplocal:update-available', onUpdateAvailable);
     };
   }, [showToast, t]);

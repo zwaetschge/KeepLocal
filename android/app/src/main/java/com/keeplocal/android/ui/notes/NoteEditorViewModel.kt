@@ -13,6 +13,9 @@ import com.keeplocal.android.domain.model.NoteColor
 import com.keeplocal.android.domain.model.NoteImage
 import com.keeplocal.android.domain.model.NoteFile
 import com.keeplocal.android.domain.model.SharedUser
+import com.keeplocal.android.domain.model.normalizeChecklist
+import com.keeplocal.android.domain.model.moveChecklist
+import com.keeplocal.android.domain.model.toggleChecklist
 import com.keeplocal.android.domain.model.TodoItem
 import com.keeplocal.android.domain.model.TranscriptionException
 import com.keeplocal.android.domain.repository.MediaLimits
@@ -42,6 +45,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -68,7 +73,9 @@ data class NoteEditorState(
     val uploadingImageCount: Int = 0,
     // PDF attachments (v1.14.0 Nr. 5) — previously dropped in every mapping.
     val files: List<NoteFile> = emptyList(),
+    val features: com.keeplocal.android.domain.model.NoteFeatures = com.keeplocal.android.domain.model.NoteFeatures(format="rich"),
     val uploadingFileCount: Int = 0,
+    val captureKind: String? = null,
     val isRecording: Boolean = false,
     val recordingElapsedMs: Long = 0L,
     val isTranscribing: Boolean = false,
@@ -197,7 +204,7 @@ class NoteEditorViewModel @Inject constructor(
             if (shared != null) {
                 applySharedText(shared)
                 IncomingIntents.consumeSharedText()
-            } else {
+            } else if(IncomingIntents.captureRequest.value==null) {
                 // Nothing shared — a surviving draft from a killed new-note
                 // editor takes over instead.
                 viewModelScope.launch { restoreDraftIfMatching(null) }
@@ -205,6 +212,11 @@ class NoteEditorViewModel @Inject constructor(
         }
         if (initialParentId != null && noteId == null) {
             _uiState.update { it.copy(parentId = initialParentId) }
+        }
+        if (noteId == null) IncomingIntents.captureRequest.value?.let { request ->
+            _uiState.update { it.copy(captureKind=request.kind,isTodoList=request.kind=="list",features=if(request.kind=="drawing") it.features.copy(drawing=com.keeplocal.android.domain.model.NoteDrawing()) else it.features) }
+            IncomingIntents.consumeCapture()
+            if(request.images.isNotEmpty()) { clearCaptureRequest();onImagesPicked(request.images) }
         }
         observeVoiceTranscription()
         observeRenderMarkdown()
@@ -257,6 +269,8 @@ class NoteEditorViewModel @Inject constructor(
     private fun observeDraftAutosave() {
         viewModelScope.launch {
             uiState
+                .map { it.copy(draftSavedAt=0L) }
+                .distinctUntilChanged()
                 .debounce { state -> if (state.hasChanges) DRAFT_DEBOUNCE_MS else 0L }
                 .collect { state ->
                     if (!state.hasChanges) return@collect
@@ -267,10 +281,11 @@ class NoteEditorViewModel @Inject constructor(
                             content = state.content,
                             colorHex = state.color.hex,
                             isTodoList = state.isTodoList,
-                            todoItems = state.todoItems.map { DraftTodoItem(it.text, it.isCompleted) },
+                            todoItems = state.todoItems.map { DraftTodoItem(it.text, it.isCompleted,it.id,it.indent) },
                             tags = state.tags,
                             isCode = state.isCode,
                             parentId = state.parentId,
+                            features = state.features,
                             savedAt = System.currentTimeMillis()
                         )
                     )
@@ -294,11 +309,12 @@ class NoteEditorViewModel @Inject constructor(
             state.copy(
                 title = draft.title,
                 content = draft.content,
+                features = draft.features,
                 color = NoteColor.fromHex(draft.colorHex),
                 isTodoList = draft.isTodoList,
                 todoItems = if (draft.isTodoList && draft.todoItems.isNotEmpty()) {
                     draft.todoItems.mapIndexed { index, item ->
-                        TodoItem(UUID.randomUUID().toString(), item.text, item.isCompleted, index)
+                        TodoItem(item.id.ifBlank {UUID.randomUUID().toString()}, item.text, item.isCompleted, index,item.indent)
                     }
                 } else {
                     emptyList()
@@ -358,6 +374,7 @@ class NoteEditorViewModel @Inject constructor(
                         sharedWith = note.sharedWith,
                         images = note.images,
                         files = note.files,
+                            features = note.features,
                         baseUpdatedAt = note.baseUpdatedAt,
                         remindAt = note.remindAt,
                         isCode = note.isCode,
@@ -563,7 +580,7 @@ class NoteEditorViewModel @Inject constructor(
         val state = _uiState.value
         val cleaned = ChecklistProgress.cleanup(state.todoItems)
         if (cleaned.size != state.todoItems.size) {
-            _uiState.update { it.copy(todoItems = cleaned, hasChanges = true) }
+            _uiState.update { it.copy(todoItems = normalizeChecklist(cleaned), hasChanges = true) }
         }
     }
 
@@ -587,25 +604,19 @@ class NoteEditorViewModel @Inject constructor(
             if (index < items.size) {
                 items[index] = items[index].copy(text = text)
             }
-            state.copy(todoItems = items, hasChanges = true)
+            state.copy(todoItems = normalizeChecklist(items), hasChanges = true)
         }
     }
 
     fun toggleTodoItemCompleted(index: Int) {
-        _uiState.update { state ->
-            val items = state.todoItems.toMutableList()
-            if (index < items.size) {
-                items[index] = items[index].copy(isCompleted = !items[index].isCompleted)
-            }
-            state.copy(todoItems = items, hasChanges = true)
-        }
+        _uiState.update { state -> state.copy(todoItems=toggleChecklist(state.todoItems,index),hasChanges=true) }
     }
 
     fun addTodoItem() {
         _uiState.update { state ->
             val items = state.todoItems.toMutableList()
-            items.add(TodoItem(UUID.randomUUID().toString(), "", false, items.size))
-            state.copy(todoItems = items, hasChanges = true)
+            items.add(if(state.features.list.addToTop)0 else items.size,TodoItem(UUID.randomUUID().toString(), "", false, items.size))
+            state.copy(todoItems = normalizeChecklist(items), hasChanges = true)
         }
     }
 
@@ -613,7 +624,7 @@ class NoteEditorViewModel @Inject constructor(
         _uiState.update { state ->
             val items = state.todoItems.toMutableList()
             if (index < items.size) items.removeAt(index)
-            state.copy(todoItems = items, hasChanges = true)
+            state.copy(todoItems = normalizeChecklist(items), hasChanges = true)
         }
     }
 
@@ -658,9 +669,18 @@ class NoteEditorViewModel @Inject constructor(
         if (uris.isEmpty()) return
         val state = _uiState.value
         val noteId = state.id
-        if (noteId == null || noteId.startsWith(OFFLINE_ID_PREFIX)) {
-            // TODO-STR: string resource (media_save_note_first)
-            _uiState.update { it.copy(mediaHint = "Notiz erst speichern, dann Bilder anhängen") }
+        if (noteId == null) {
+            viewModelScope.launch {
+                val now=Instant.now()
+                val created=createNoteUseCase(Note(id="",title=state.title.ifBlank {context.getString(com.keeplocal.android.R.string.capture_image)},content=state.content,color=state.color,isPinned=state.isPinned,isArchived=false,isTodoList=false,todoItems=emptyList(),tags=state.tags,sharedWith=emptyList(),owner="",position=0,createdAt=now,updatedAt=now,features=state.features,parentId=state.parentId))
+                val saved=created.getOrNull()
+                if(saved!=null){_uiState.update {it.copy(id=saved.id,isNewNote=false,baseUpdatedAt=saved.baseUpdatedAt,title=saved.title)};onImagesPicked(uris)}
+                else setErrorMessage((created as? Result.Error)?.message ?: "Bildnotiz konnte nicht angelegt werden")
+            }
+            return
+        }
+        if (noteId.startsWith(OFFLINE_ID_PREFIX)) {
+            _uiState.update {it.copy(mediaHint="Bilder benötigen eine Verbindung. Die Notiz ist lokal gespeichert.")}
             return
         }
 
@@ -691,7 +711,7 @@ class NoteEditorViewModel @Inject constructor(
             val result = mediaRepository.uploadImages(noteId, uris.take(allowed))
             val updated = result.getOrNull()
             if (updated != null) {
-                _uiState.update { it.copy(images = updated.images, uploadingImageCount = 0) }
+                _uiState.update { it.copy(images = updated.images, uploadingImageCount = 0,baseUpdatedAt=updated.updatedAt) }
             } else {
                 val error = result as? Result.Error
                 val message = if (error?.throwable is IOException) {
@@ -749,7 +769,7 @@ class NoteEditorViewModel @Inject constructor(
             val result = mediaRepository.uploadFiles(noteId, uris.take(allowed))
             val updated = result.getOrNull()
             if (updated != null) {
-                _uiState.update { it.copy(files = updated.files, uploadingFileCount = 0) }
+                _uiState.update { it.copy(files = updated.files, uploadingFileCount = 0,baseUpdatedAt=updated.updatedAt) }
             } else {
                 val error = result as? Result.Error
                 val message = if (error?.throwable is IOException) {
@@ -771,7 +791,7 @@ class NoteEditorViewModel @Inject constructor(
             val result = mediaRepository.deleteFile(noteId, file.filename)
             val updated = result.getOrNull()
             if (updated != null) {
-                _uiState.update { it.copy(files = updated.files) }
+                _uiState.update { it.copy(files = updated.files,baseUpdatedAt=updated.updatedAt) }
             } else {
                 setErrorMessage((result as? Result.Error)?.message ?: "PDF konnte nicht gelöscht werden")
             }
@@ -785,7 +805,7 @@ class NoteEditorViewModel @Inject constructor(
             val result = mediaRepository.deleteImage(noteId, image.filename)
             val updated = result.getOrNull()
             if (updated != null) {
-                _uiState.update { it.copy(images = updated.images) }
+                _uiState.update { it.copy(images = updated.images,baseUpdatedAt=updated.updatedAt) }
             } else {
                 // TODO-STR: string resource (media_delete_failed)
                 setErrorMessage((result as? Result.Error)?.message ?: "Bild konnte nicht gelöscht werden")
@@ -884,7 +904,27 @@ class NoteEditorViewModel @Inject constructor(
             file?.delete()
             return
         }
-        transcribe(file)
+        persistRecording(file)
+    }
+
+    private var savedRecording:String?=null
+    private fun persistRecording(file:File) {
+        val noteId=_uiState.value.id ?: return
+        _uiState.update {it.copy(isTranscribing=true)}
+        viewModelScope.launch {
+            val result=mediaRepository.uploadRecording(noteId,file)
+            val note=result.getOrNull()
+            if(note!=null){
+                savedRecording=file.absolutePath
+                _uiState.update {it.copy(files=note.files,baseUpdatedAt=note.baseUpdatedAt)}
+                if(_uiState.value.showMic)transcribe(file)
+                else {file.delete();_uiState.update {it.copy(isTranscribing=false,mediaHint=context.getString(com.keeplocal.android.R.string.audio_saved))}}
+            } else {
+                pendingTranscription=file
+                _uiState.update {it.copy(isTranscribing=false,canRetryTranscription=true)}
+                setErrorMessage((result as? Result.Error)?.message ?: context.getString(com.keeplocal.android.R.string.audio_save_failed))
+            }
+        }
     }
 
     private fun transcribe(file: File) {
@@ -905,7 +945,7 @@ class NoteEditorViewModel @Inject constructor(
                 pendingTranscription = null
                 _uiState.update {
                     it.copy(
-                        content = appendTranscription(it.content, transcribed.text),
+                        content = if(it.features.format=="rich")(it.content+(if(it.content.isEmpty())"" else "\n\n")+transcribed.text.trim()).take(10000) else appendTranscription(it.content, transcribed.text),
                         isTranscribing = false,
                         hasChanges = true,
                         canRetryTranscription = false
@@ -940,7 +980,7 @@ class NoteEditorViewModel @Inject constructor(
             discardPendingTranscription()
             return
         }
-        transcribe(file)
+        if(savedRecording==file.absolutePath)transcribe(file) else persistRecording(file)
     }
 
     /** Drops a kept recording without another attempt. */
@@ -966,10 +1006,41 @@ class NoteEditorViewModel @Inject constructor(
         super.onCleared()
     }
 
+    fun extractImageText(image: NoteImage) {
+        viewModelScope.launch {
+            try {
+                val file=mediaRepository.downloadImageToCache(image.url).getOrNull()
+                    ?: throw IOException("Bild konnte nicht geladen werden")
+                val text=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.keeplocal.android.util.recognizeImageText(context,file) }
+                if(text.isBlank()){_uiState.update {it.copy(mediaHint=context.getString(com.keeplocal.android.R.string.ocr_no_text))};return@launch}
+                _uiState.update {it.copy(content=(it.content+(if(it.content.isEmpty())"" else "\n\n")+text).take(10000),features=it.features.copy(ocrText=(it.features.ocrText+"\n"+text).trim().take(10000)),hasChanges=true)}
+            } catch(error:kotlinx.coroutines.CancellationException){throw error}
+            catch(error:Exception){setErrorMessage(error.message ?: "Texterkennung fehlgeschlagen")}
+        }
+    }
+
+    fun clearCaptureRequest() { _uiState.update {it.copy(captureKind=null)} }
+
+    fun mediaRepositoryForPlayback()=mediaRepository
+    fun reportMediaError(message:String)=setErrorMessage(message)
+
+    fun setFeatures(features: com.keeplocal.android.domain.model.NoteFeatures) {
+        _uiState.update { it.copy(features = features, hasChanges = true) }
+    }
+
+    fun moveTodoItem(index: Int, direction: Int) {
+        _uiState.update { state -> state.copy(todoItems=moveChecklist(state.todoItems,index,direction),hasChanges=true) }
+    }
+
+    fun indentTodoItem(index: Int) {
+        if (index < 1) return
+        _uiState.update { state -> state.copy(todoItems=state.todoItems.mapIndexed { i,row -> if(i==index) row.copy(indent=if(row.indent==0) 1 else 0) else row },hasChanges=true) }
+    }
+
     fun save() {
         viewModelScope.launch {
             val state = _uiState.value
-            if (state.title.isBlank() && state.content.isBlank() && state.todoItems.all { it.text.isBlank() }) {
+            if (state.title.isBlank() && state.content.isBlank() && state.todoItems.all { it.text.isBlank() } && state.images.isEmpty() && state.files.isEmpty() && state.features.drawing?.strokes.isNullOrEmpty()) {
                 _navigateBack.emit(Unit)
                 return@launch
             }
@@ -999,7 +1070,8 @@ class NoteEditorViewModel @Inject constructor(
                 // Keep attachments on offline saves — the server ignores this
                 // field but the local cache row is rebuilt from this note.
                 images = state.images,
-                files = state.files
+                files = state.files,
+                features = state.features
             )
 
             val result = if (state.isNewNote) {

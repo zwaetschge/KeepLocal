@@ -20,7 +20,8 @@ import { createPollGate } from '../utils/pollGate.mjs';
 
 export const NOTES_PAGE_LIMIT = 50;
 export const FOCUS_REFRESH_THROTTLE_MS = 15_000;
-export const POLL_INTERVAL_MS = 60_000;
+const EMPTY_FILTERS = Object.freeze({});
+export const POLL_INTERVAL_MS = 10_000;
 
 // Nr. 26: Ein Hintergrund-Refresh dimmt die Liste erst, wenn er spürbar dauert.
 // Der Idle-Poll auf einem schnellen Self-Host antwortet in wenigen Millisekunden
@@ -77,7 +78,7 @@ export function canUseDeltaSync(previousMeta, nextMeta, view = {}) {
     if (String(previousMeta[key] ?? 0) !== String(nextMeta[key] ?? 0)) return false;
   }
   if (previousMeta.maxUpdatedAt === nextMeta.maxUpdatedAt) return false;
-  if (view.trash || view.search || view.tag || view.folderScope) return false;
+  if (view.personal || view.trash || view.search || view.tag || view.folderScope || view.filters) return false;
   if (view.page !== 1) return false;
   return true;
 }
@@ -404,6 +405,7 @@ export function useNotesManager({
   showTrash = false,
   selectedTag = null,
   searchTerm = '',
+  filters = EMPTY_FILTERS,
 }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -445,7 +447,7 @@ export function useNotesManager({
   // Spiegel des aktuellen Zustands für Handler ohne Stale-Closures
   const stateRef = useRef({});
   stateRef.current = {
-    notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm,
+    notes, pagination, noteCounts, allTags, showArchived, showTrash, selectedTag, searchTerm, filters,
     treeNodes, selectedIds, folderScope
   };
 
@@ -572,6 +574,7 @@ export function useNotesManager({
     try {
       const trashView = stateRef.current.showTrash;
       const params = {
+        ...stateRef.current.filters,
         page,
         limit: NOTES_PAGE_LIMIT,
         archived: trashView ? 'false' : (stateRef.current.showArchived ? 'true' : 'false'),
@@ -692,7 +695,7 @@ export function useNotesManager({
       fetchNotes(searchTerm, 1, { background });
       refreshTree();
     }
-  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, fetchNotes, refreshTree]);
+  }, [isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, filters, fetchNotes, refreshTree]);
 
   // Beim Logout: Zustand zurücksetzen und laufende Fetches entwerten.
   useEffect(() => {
@@ -1327,6 +1330,8 @@ export function useNotesManager({
           // Seiten oder der Papierkorb laden weiter voll (canUseDeltaSync
           // dokumentiert warum).
           const deltaEligible = canUseDeltaSync(previousMeta, meta, {
+            personal: true,
+            filters: Object.values(stateRef.current.filters || {}).some(Boolean),
             trash: stateRef.current.showTrash,
             search: stateRef.current.searchTerm,
             tag: stateRef.current.selectedTag,

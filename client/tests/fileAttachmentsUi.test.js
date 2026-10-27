@@ -45,7 +45,7 @@ test('attachments render as downloads with their original name, never inline', (
     'the download attribute restores the original filename');
   assert.doesNotMatch(source, /<iframe[^>]*file\.url/, 'PDFs are never embedded inline');
   assert.match(source, /accept="application\/pdf,\.pdf"\s*\n\s*multiple[\s\S]*?id="pdf-upload-input"/);
-  assert.match(source, /htmlFor="pdf-upload-input"/, 'the paperclip button opens the picker via label');
+  assert.match(source, /onClick=\{\(\)=>pdfInputRef\.current\?\.click\(\)\}/, 'the keyboard-accessible attachment button opens the picker');
 });
 
 test('the API client speaks the attachment endpoints', () => {
@@ -53,7 +53,7 @@ test('the API client speaks the attachment endpoints', () => {
 
   assert.match(source, /uploadFiles: async \(id, files\)/);
   assert.match(source, /formData\.append\('files', file\)/);
-  assert.match(source, /BY_ID\(id\)\}\/files`/, 'uploads POST to /:id/files');
+  assert.match(source, /BY_ID\(id\)\}\/files\?personal=true`/, 'uploads POST to /:id/files');
   assert.match(source, /Datei-Upload fehlgeschlagen/);
   assert.match(source, /deleteFile: \(id, filename\)/);
   assert.match(source, /files\/\$\{encodeURIComponent\(filename\)\}/, 'the stored name is URL-encoded on delete');

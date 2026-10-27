@@ -156,6 +156,7 @@ const transcribeDayLimiter = rateLimit({
 
 // All routes require authentication
 router.use(authenticateToken);
+require('./noteExtras')(router);
 // requireEditableNote (eigene oder geteilte Notiz als req.ownedNote) wohnt seit
 // v1.15.0 in utils/attachmentUpload — gemeinsam mit der Upload-Pipeline, die
 // sie neben der Session-Route auch die v1-API benutzt.
@@ -167,9 +168,13 @@ router.use(authenticateToken);
  * GET /api/notes/tree - Leichte Baum-Übersicht (id, parentId, title, Flags)
  * für Sidebar-/Schubladen-Bäume, ohne Inhalte und Bilder.
  */
+router.get('/facets', async (req, res, next) => {
+  try { res.json(await notesService.getNotePeople(req.user._id)); } catch (e) { next(e); }
+});
+
 router.get('/tree', async (req, res, next) => {
   try {
-    const tree = await notesService.getNoteTree(req.user._id, req.query.since);
+    const tree = await notesService.getNoteTree(req.user._id, req.query.since, req.query.personal === 'true');
     res.json(tree);
   } catch (error) {
     next(error);
@@ -213,7 +218,7 @@ router.get('/export/markdown', blockDemoMaintenance, async (req, res, next) => {
     // they consume — buildMarkdownExport buffers one user's ZIP in RAM.
     // Cross-user overlap is therefore still possible until export moves to
     // streaming; accepted tradeoff (documented in v1.16.0 review).
-    const archive = await notesService.buildMarkdownExport(req.user._id);
+    const archive = await notesService.buildMarkdownExport(req.user._id, req.query.personal === 'true');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="keeplocal-export.zip"');
     res.end(archive);
@@ -313,6 +318,7 @@ router.get('/', noteValidation.search, async (req, res, next) => {
 
     const result = await notesService.getAllNotes({
       userId: req.user._id,
+      type: req.query.type, color: req.query.color, person: req.query.person, personal:req.query.personal,
       search,
       tag,
       page,
@@ -409,7 +415,7 @@ router.post('/:id/revisions/restore', rejectDemoNoteCapabilities, noteValidation
  */
 router.get('/:id', noteValidation.getOne, async (req, res, next) => {
   try {
-    const note = await notesService.getNoteById(req.params.id, req.user._id);
+    const note = await notesService.getNoteById(req.params.id, req.user._id, req.query.personal === 'true');
     res.json(note);
   } catch (error) {
     if (error.kind === 'ObjectId') {
@@ -498,7 +504,8 @@ router.patch('/tags', blockDemoMaintenance, noteValidation.tagOperation, async (
       userId: req.user._id,
       action: req.body.action,
       from: req.body.from,
-      to: req.body.to
+      to: req.body.to,
+      personal: req.body.personalOrganization === true
     });
     res.json(result);
   } catch (error) {
@@ -569,7 +576,7 @@ router.delete('/:id', noteValidation.remove, async (req, res, next) => {
  */
 router.post('/:id/pin', noteValidation.pin, async (req, res, next) => {
   try {
-    const note = await notesService.togglePinNote(req.params.id, req.user._id);
+    const note = await notesService.togglePinNote(req.params.id, req.user._id, req.query.personal === 'true');
     res.json(note);
   } catch (error) {
     if (error.kind === 'ObjectId') {
@@ -584,7 +591,7 @@ router.post('/:id/pin', noteValidation.pin, async (req, res, next) => {
  */
 router.post('/:id/archive', noteValidation.pin, async (req, res, next) => {
   try {
-    const note = await notesService.toggleArchiveNote(req.params.id, req.user._id);
+    const note = await notesService.toggleArchiveNote(req.params.id, req.user._id, req.query.personal === 'true');
     res.json(note);
   } catch (error) {
     if (error.kind === 'ObjectId') {
@@ -718,7 +725,7 @@ router.delete('/:id/images/:filename', blockDemoUploads, noteValidation.getOne, 
 
     await fs.promises.rm(thumbpath, { force: true });
 
-    res.json(note);
+    res.json(req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note);
   } catch (error) {
     console.error('[IMAGE DELETE] Error:', error);
     if (error.kind === 'ObjectId') {
@@ -763,7 +770,7 @@ router.delete('/:id/files/:filename', blockDemoUploads, noteValidation.getOne, a
     const path = require('path');
     await fs.promises.rm(path.join(filesDir(), req.params.filename), { force: true });
 
-    res.json(note);
+    res.json(req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note);
   } catch (error) {
     console.error('[FILE DELETE] Error:', error);
     if (error.kind === 'ObjectId') {

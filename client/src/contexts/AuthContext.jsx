@@ -1,3 +1,4 @@
+import {setOfflineAccount,clearOfflineAccount,outbox} from '../services/api/offlineNotes';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { authAPI, initializeCSRF } from '../services/api';
 import { UNAUTHORIZED_EVENT } from '../services/api/apiUtils';
@@ -45,10 +46,13 @@ export function AuthProvider({ children }) {
 
       try {
         const response = await authAPI.getCurrentUser();
+        setOfflineAccount(response.user);
         setUser(response.user);
+        outbox.flush().catch(()=>{});
         setIsLoggedIn(true);
       } catch {
-        setUser(null);
+        setOfflineAccount(null);
+      setUser(null);
         setIsLoggedIn(false);
       }
       setLoading(false);
@@ -74,6 +78,7 @@ export function AuthProvider({ children }) {
       if (isLoggedInRef.current) {
         setSessionExpired(true);
       }
+      setOfflineAccount(null);
       setUser(null);
       setIsLoggedIn(false);
     };
@@ -84,7 +89,9 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const response = await authAPI.login(email, password);
     setSessionExpired(false);
-    setUser(response.user);
+    setOfflineAccount(response.user);
+        setUser(response.user);
+        outbox.flush().catch(()=>{});
     setIsLoggedIn(true);
     return response;
   };
@@ -92,7 +99,9 @@ export function AuthProvider({ children }) {
   const demoLogin = async () => {
     const response = await authAPI.demoLogin();
     setSessionExpired(false);
-    setUser(response.user);
+    setOfflineAccount(response.user);
+        setUser(response.user);
+        outbox.flush().catch(()=>{});
     setIsLoggedIn(true);
     return response;
   };
@@ -100,13 +109,18 @@ export function AuthProvider({ children }) {
   const register = async (username, email, password) => {
     const response = await authAPI.register(username, email, password);
     setSessionExpired(false);
-    setUser(response.user);
+    setOfflineAccount(response.user);
+        setUser(response.user);
+        outbox.flush().catch(()=>{});
     setIsLoggedIn(true);
     return response;
   };
 
   const logout = async () => {
-    await authAPI.logout();
+    setOfflineAccount(null);
+    await outbox.tail.catch(()=>{});
+    try{await authAPI.logout();}catch(error){setOfflineAccount(user);throw error;}
+    await clearOfflineAccount(user?._id || user?.id);
     // Editor-Entwürfe sind Konto-Daten: Am gemeinsamen Rechner darf der nächste
     // Nutzer keine fremden Entwürfe angeboten bekommen (dieselbe Begründung wie
     // bei den konto-gebundenen Einstellungen).
@@ -123,7 +137,9 @@ export function AuthProvider({ children }) {
   const setup = async (username, email, password) => {
     const response = await authAPI.register(username, email, password);
     setSessionExpired(false);
-    setUser(response.user);
+    setOfflineAccount(response.user);
+        setUser(response.user);
+        outbox.flush().catch(()=>{});
     setIsLoggedIn(true);
     setSetupNeeded(false);
     return response;
@@ -137,12 +153,15 @@ export function AuthProvider({ children }) {
     try {
       const response = await authAPI.getCurrentUser();
       setSessionExpired(false);
-      setUser(response.user);
+      setOfflineAccount(response.user);
+        setUser(response.user);
+        outbox.flush().catch(()=>{});
       setIsLoggedIn(true);
       setSetupNeeded(false);
     } catch (error) {
       console.error('OAuth token validation failed:', error);
       await authAPI.logout();
+      setOfflineAccount(null);
       setUser(null);
       setIsLoggedIn(false);
       throw new Error('OAuth login failed');

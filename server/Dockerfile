@@ -1,5 +1,7 @@
 FROM node:22-alpine
 
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu
+
 WORKDIR /app
 
 # Copy package files
