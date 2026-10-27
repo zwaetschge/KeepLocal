@@ -3,18 +3,18 @@ import OutboxStatus from './components/OutboxStatus';
 import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import './App.css';
 import './KeepStyle.css';
+import KeepHeader from './components/KeepHeader';
 import NotesToolbar from './components/NotesToolbar';
 import './DoodleTheme.css';
+import './KeepLayout.css';
 import NoteForm from './components/QuickCapture';
 import { NotesSkeleton, EmptyState, NotesSection, TrashHeader } from './components/AppStates';
-import SearchBar from './components/SearchBar';
 import Sidebar from './components/Sidebar';
 import ThemeToggle from './components/ThemeToggle';
 import ToastStack, { toastBus } from './components/ToastStack';
 import Login from './components/Login';
 import Register from './components/Register';
 import Setup from './components/Setup';
-import Logo from './components/Logo';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -54,6 +54,8 @@ function AppContent() {
   // Journal-Ordner reisen auf demselben Weg mit.
   const { settings, setTheme, setTagColor, updateSettings, setSavedSearches } = useSettings();
   const theme = settings.theme;
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+  const [searchDiscovery,setSearchDiscovery]=useState(false);
   // Ansichts-/UI-Zustand — Notiz-Zustand und CRUD leben in useNotesManager (P13)
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({});
@@ -286,49 +288,16 @@ function AppContent() {
       noSearchResults: { emoji: '🔍', title: t('noNotesFound'), hint: t('tryDifferentSearch') },
     }[emptyStateReason];
   return (
-    <div className={`App ${settings.visualStyle === 'keep' ? 'keep-style' : ''} ${settings.viewMode === 'list' ? 'list-mode' : ''}`}>
+    <div className={`App keep-layout ${sidebarCollapsed ? 'rail-collapsed' : ''} ${searchDiscovery && !searchTerm ? 'search-discovery-open' : ''} ${settings.visualStyle === 'keep' ? 'keep-style' : ''} ${settings.viewMode === 'list' ? 'list-mode' : ''}`}>
       {/* Nr. 28 (Top-30): erster Tab-Stop der App — überspringt Header und
           Sidebar und springt direkt zur Notizliste. */}
       <a className="skip-link" href="#main-content">{t('skipToContent')}</a>
-      <header className="App-header">
-        <div className="header-content">
-          <button
-            className="mobile-menu-toggle"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label={t('openMenu')}
-            aria-expanded={isMobileMenuOpen}
-            aria-controls="app-sidebar"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18M3 6h18M3 18h18"/>
-            </svg>
-          </button>
-          <Logo size={36} />
-          <SearchBar onSearch={handleSearch} searchTerm={searchTerm} ref={searchBarRef} aria-label={t('searchNotes')} />
-          <div className="user-info">
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            {user?.isDemo ? (
-              <div className="demo-user-identity" title={t('demoBannerTitle')}>
-                <svg className="demo-user-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="12" cy="8" r="4"/>
-                  <path d="M4 21a8 8 0 0116 0"/>
-                </svg>
-                <span className="user-name">{user?.username}</span>
-                <span className="demo-user-badge">{t('demoBadge')}</span>
-              </div>
-            ) : (
-              <button className="user-name clickable" onClick={() => setShowSettings(true)}
-                title={`${user?.email}${user?.isAdmin ? ` (${t('admin')})` : ''}`}
-                aria-label={t('settings')}>
-                👤 {user?.username}
-              </button>
-            )}
-            <button onClick={handleLogout} className="btn-logout" title={t('logout')} aria-label={t('logout')}>
-              {t('logout')}
-            </button>
-          </div>
-        </div>
-      </header>
+      <KeepHeader user={user} searchTerm={searchTerm} onSearch={handleSearch} searchRef={searchBarRef}
+        onSearchFocus={()=>setSearchDiscovery(true)} onSearchDismiss={()=>setSearchDiscovery(false)}
+        onMenu={()=>window.matchMedia('(max-width:768px)').matches ? setIsMobileMenuOpen(value=>!value) : setSidebarCollapsed(value=>!value)}
+        isMobileOpen={isMobileMenuOpen} collapsed={sidebarCollapsed}
+        onRefresh={()=>fetchNotes(searchTerm,pagination.page,{background:true})} refreshing={refreshing}
+        settings={settings} onPreferences={updateSettings} onSettings={()=>setShowSettings(true)} onLogout={handleLogout}/>
       {user?.isDemo && (
         <section className="demo-banner" aria-label={t('demoBannerTitle')}>
           <strong>{t('demoBannerTitle')}</strong>
@@ -338,7 +307,9 @@ function AppContent() {
         </section>
       )}
       <div className="App-container">
-        <Sidebar
+        <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed}
+          onShowReminders={()=>{setFilters({...filters,type:'reminders'});setSearchDiscovery(false);}}
+          remindersActive={filters.type==='reminders'}
           allTags={allTags} selectedTag={selectedTag} onTagSelect={handleTagSelect}
           noteCount={noteCounts.active}
           onSettingsClick={user?.isDemo ? undefined : () => setShowSettings(true)}
@@ -346,7 +317,7 @@ function AppContent() {
           isMobileOpen={isMobileMenuOpen} onMobileClose={() => setIsMobileMenuOpen(false)}
           archivedCount={noteCounts.archived} showArchived={showArchived}
           onShowArchivedToggle={() => selectView(showArchived ? 'notes' : 'archived')}
-          onShowNotes={() => selectView('notes')}
+          onShowNotes={() => {setFilters({});selectView('notes');setSearchDiscovery(false);}}
           trashCount={noteCounts.trash} showTrash={showTrash}
           onShowTrashToggle={() => selectView(showTrash ? 'notes' : 'trash')}
           onEmptyTrash={emptyTrash}
@@ -390,7 +361,7 @@ function AppContent() {
             </>
           )}
           <OutboxStatus />
-          <NotesToolbar filters={filters} onFilter={setFilters} tags={allTags} selectedTag={selectedTag} onTag={handleTagSelect} people={people} settings={settings} onSettings={updateSettings}/>
+          <NotesToolbar filters={filters} onFilter={value=>{setFilters(value);setSearchDiscovery(false);}} tags={allTags} selectedTag={selectedTag} onTag={value=>{handleTagSelect(value);setSearchDiscovery(false);}} people={people} settings={settings} onSettings={updateSettings} open={searchDiscovery && !searchTerm} onOpen={()=>setSearchDiscovery(true)} onClose={()=>setSearchDiscovery(false)}/>
           {/* v1.10.0: Mehrfachauswahl — Aktionsleiste über der Liste */}
           {!showTrash && selectedIds.size > 0 && (
             <BulkActionBar

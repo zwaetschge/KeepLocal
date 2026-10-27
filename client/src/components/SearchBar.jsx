@@ -1,8 +1,9 @@
 import React, { useState, useRef, useImperativeHandle, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './SearchBar.css';
+import KeepIcon from './KeepIcon';
 
-const SearchBar = React.forwardRef(({ onSearch, searchTerm: externalSearchTerm }, ref) => {
+const SearchBar = React.forwardRef(({ onSearch, searchTerm: externalSearchTerm, onFocus, onDismiss }, ref) => {
   const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const inputRef = useRef(null);
@@ -69,12 +70,14 @@ const SearchBar = React.forwardRef(({ onSearch, searchTerm: externalSearchTerm }
       <input
         ref={inputRef}
         type="search"
-        placeholder={t('searchPlaceholder')}
+        placeholder={t('layoutSearch')}
         value={searchTerm}
         onChange={handleSearch}
+        onFocus={onFocus}
         onKeyDown={(event) => {
           // Escape leert die Suche und gibt den Fokus frei, statt (wie bisher)
           // nur den Browser-Default zu triggern.
+          if (event.key === 'Escape') onDismiss?.();
           if (event.key === 'Escape' && searchTerm) {
             event.stopPropagation();
             handleClear();
@@ -93,7 +96,7 @@ const SearchBar = React.forwardRef(({ onSearch, searchTerm: externalSearchTerm }
           ✕
         </button>
       )}
-      <span className="search-icon" aria-hidden="true">🔍</span>
+      <span className="search-icon" aria-hidden="true"><KeepIcon name="search"/></span>
     </div>
   );
 });

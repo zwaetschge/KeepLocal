@@ -7,6 +7,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { isNoteOwner, lastEditorName } from '../utils/noteAccess.mjs';
 import './Note.css';
+import KeepIcon from './KeepIcon';
+import ColorPicker from './ColorPicker';
+import EditorOptionsPopover from './EditorOptionsPopover';
 import ConfirmDialog from './ConfirmDialog';
 import LinkPreview from './LinkPreview';
 import { sanitizeAndLinkify } from '../utils/sanitize';
@@ -24,6 +27,9 @@ function formatReminderDate(value) {
 }
 
 function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestore, onPurge, inTrash = false, highlight = '', operation, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
+  const [cardMenu,setCardMenu]=useState(false);
+  const menuTrigger=useRef(null);
+  const cardImages=useRef(null);
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -409,7 +415,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
             aria-label={note.isPinned ? t('unpin') : t('pin')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
+              <path d="M9 3h6v6l3 3v2H6v-2l3-3V3zM12 14v8"/>
             </svg>
           </button>
           {onToggleArchive && (
@@ -447,6 +453,13 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
               </svg>
             </button>
           )}
+          {canManage && <button type="button" className="action-btn reminder-btn" aria-label={t('reminderLabel')} title={t('reminderLabel')} onClick={e=>{e.stopPropagation();onOpenModal?.(note,{editorPanel:'reminder'});}}><KeepIcon name="reminder" size={18}/></button>}
+          <div className="card-color-action" onClick={e=>e.stopPropagation()}><ColorPicker selectedColor={note.color} onColorSelect={color=>onUpdate(note._id,{color})}/></div>
+          {canManage && !user?.isDemo && <button type="button" className="action-btn image-btn" aria-label={t('addImage')} title={t('addImage')} onClick={e=>{e.stopPropagation();cardImages.current?.click();}}><KeepIcon name="image" size={18}/></button>}
+          <button type="button" ref={menuTrigger} className="action-btn more-btn" data-editor-options-trigger aria-label={t('editorMore')} title={t('editorMore')} aria-expanded={cardMenu} onClick={e=>{e.stopPropagation();setCardMenu(value=>!value);}}><KeepIcon name="more" size={18}/></button>
+          {cardMenu && <div onClick={e=>e.stopPropagation()}><EditorOptionsPopover title={t('editorMore')} onOutside={()=>setCardMenu(false)} onClose={()=>{setCardMenu(false);menuTrigger.current?.focus();}}><div className="editor-more-actions">
+            <button type="button" onClick={()=>{setCardMenu(false);onOpenModal?.(note,{editorPanel:'labels'});}}>{t('editorLabels')}</button>
+            <button type="button" onClick={()=>{setCardMenu(false);onOpenModal?.(note,{editorPanel:'more'});}}>{t('fullEditor')}</button>
           {canManage && (
             <button
               onClick={(e) => {
@@ -461,13 +474,19 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>
               </svg>
+              <span>{t('delete')}</span>
             </button>
           )}
+          </div></EditorOptionsPopover></div>}
             </>
           )}
         </div>
       </div>
 
+      {canManage && !user?.isDemo && !inTrash && <input ref={cardImages} type="file" accept="image/*" multiple hidden onClick={event=>event.stopPropagation()} onChange={event=>{
+        const imageFiles=Array.from(event.target.files||[]).slice(0,5);event.target.value='';
+        if(imageFiles.length)onOpenModal?.(note,{imageFiles});
+      }}/>}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title={inTrash ? t('confirmPurgeTitle') : t('confirmDeleteNoteTitle')}

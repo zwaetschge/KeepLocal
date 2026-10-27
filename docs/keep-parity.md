@@ -14,9 +14,15 @@ formatting, drawing, recording and personal-organization fields.
   shortcuts and the quick-capture widget use the same capture paths.
 - Combine **type, label, color and person** filters. Android keeps the search
   entry visible and exposes color/person filters in its additional filter menu.
-- The web toolbar switches **grid/list** and the optional quiet style. Existing
-  themes remain available. Android already had its system-color option; it was
-  retained rather than rebuilt. Note backgrounds are selected in the editor.
+- The web header switches **grid/list**. Focusing Search opens type, label,
+  color and person discovery; selected filters appear as removable/resettable
+  chips. The sidebar follows notes, reminders, labels, archive and trash; folders,
+  journal and saved searches are under More.
+- **Settings → Design** keeps light, dark, OLED, E-Ink and Doodle plus Warm Paper
+  and quiet surface styles. Every web design uses the same Keep layout:
+  64px header, 280px/80px navigation, 240px masonry cards and a 600px composer.
+  Android retains its system-color option. Note backgrounds remain selectable
+  in the editor.
 
 Web keyboard shortcuts, outside inputs and dialogs:
 

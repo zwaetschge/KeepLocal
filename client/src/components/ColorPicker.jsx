@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import './ColorPicker.css';
 import { getColorVar } from '../utils/colorMapper';
@@ -21,6 +21,19 @@ const colors = [
 function ColorPicker({ selectedColor, onColorSelect }) {
   const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
+  const popup=useRef(null), trigger=useRef(null);
+  useLayoutEffect(()=>{
+    if(isOpen && popup.current?.getBoundingClientRect().right>window.innerWidth-8){popup.current.style.left='auto';popup.current.style.right='0';}
+  },[isOpen]);
+  useEffect(()=>{
+    if(!isOpen)return undefined;
+    const close=event=>{
+      if(event.key==='Escape'){event.stopPropagation();setIsOpen(false);trigger.current?.focus();}
+      else if(event.type==='pointerdown'&&!popup.current?.contains(event.target)&&!trigger.current?.contains(event.target))setIsOpen(false);
+    };
+    document.addEventListener('pointerdown',close);document.addEventListener('keydown',close,true);
+    return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',close,true);};
+  },[isOpen]);
 
   const handleColorSelect = (color) => {
     onColorSelect(color);
@@ -32,6 +45,8 @@ function ColorPicker({ selectedColor, onColorSelect }) {
       <button
         type="button"
         className="color-picker-toggle"
+        ref={trigger}
+        aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen(!isOpen);
@@ -46,7 +61,7 @@ function ColorPicker({ selectedColor, onColorSelect }) {
       </button>
 
       {isOpen && (
-        <div className="color-picker-popup">
+        <div className="color-picker-popup" ref={popup}>
           <div className="color-picker-grid">
             {colors.map((color) => (
               <button

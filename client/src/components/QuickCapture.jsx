@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { readDraft, writeDraft, clearDraft } from '../utils/noteDraft.mjs';
 import notesAPI from '../services/api/notesAPI';
 import './NoteForm.css';
+import KeepIcon from './KeepIcon';
 
 const QuickCapture = React.forwardRef(
   ({ onOpenModal, onCreate, onSaved, parentId = null }, ref) => {
@@ -163,7 +164,7 @@ const QuickCapture = React.forwardRef(
                 requestAnimationFrame(() => input.current?.focus());
               }}
             >
-              {t('enterNote')}
+              {t('layoutTakeNote')}
             </button>
             <button
               className="capture-icon"
@@ -174,7 +175,7 @@ const QuickCapture = React.forwardRef(
                 setExpanded(true);
               }}
             >
-              ☑
+              <KeepIcon name="checklist"/>
             </button>
             {!user?.isDemo && (
               <button
@@ -183,7 +184,7 @@ const QuickCapture = React.forwardRef(
                 title={t('addImage')}
                 onClick={() => picker.current?.click()}
               >
-                ▧
+                <KeepIcon name="image"/>
               </button>
             )}
             <button
@@ -199,7 +200,7 @@ const QuickCapture = React.forwardRef(
                 })
               }
             >
-              ✎
+              <KeepIcon name="edit"/>
             </button>
           </div>
         ) : (

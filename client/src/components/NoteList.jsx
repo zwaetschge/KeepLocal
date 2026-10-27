@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useLayoutEffect,useRef} from 'react';
 import Note from './Note';
 import './NoteList.css';
 
@@ -8,11 +8,23 @@ import './NoteList.css';
 // nie, selectedIds blieb leer, die Bulk-Bar war damit unerreichbar und die
 // Tag-Farb-Punkte fehlten auf den Karten (Regression aus dem Nr.-26-Refactor).
 function NoteList({ notes, onDeleteNote, onUpdateNote, onUpdateInline, onTogglePin, onToggleArchive, onOpenCollaborate, onOpenModal, onDragStart, onDragEnd, onDragOver, onDrop, onRestoreNote, onPurgeNote, inTrash, highlight, operationLoading, selectedIds, onToggleSelect, onTagSelect, tagColors }) {
+  const grid=useRef(null);
+  useLayoutEffect(()=>{
+    if(!grid.current || typeof ResizeObserver==='undefined')return undefined;
+    const measure=entry=>{
+      const card=entry.target;
+      const slot=card.parentElement;
+      const span=Math.ceil((card.getBoundingClientRect().height+16)/4);
+      slot.style.gridRowEnd=`span ${span}`;
+    };
+    const observer=new ResizeObserver(entries=>entries.forEach(measure));
+    for(const slot of grid.current.children){const card=slot.firstElementChild;if(card){measure({target:card});observer.observe(card);}}
+    return ()=>observer.disconnect();
+  },[notes]);
   return (
-    <div className="note-list">
+    <div className="note-list" ref={grid}>
       {notes.map((note, index) => (
-        <Note
-          key={note._id}
+        <div className="note-slot" key={note._id}><Note
           note={note}
           index={index}
           onDelete={onDeleteNote}
@@ -35,7 +47,7 @@ function NoteList({ notes, onDeleteNote, onUpdateNote, onUpdateInline, onToggleP
           onToggleSelect={onToggleSelect}
           onTagSelect={onTagSelect}
           tagColors={tagColors}
-        />
+        /></div>
       ))}
     </div>
   );

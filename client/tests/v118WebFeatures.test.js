@@ -66,7 +66,8 @@ test('das Suchfeld folgt extern gesetzten Begriffen (gespeicherte Suchen)', () =
   assert.match(searchBar, /searchTerm: externalSearchTerm/);
   assert.match(searchBar, /if \(externalSearchTerm === undefined\) return;/);
   assert.match(searchBar, /if \(debounceRef\.current\) clearTimeout\(debounceRef\.current\);/);
-  assert.match(app, /<SearchBar onSearch=\{handleSearch\} searchTerm=\{searchTerm\}/);
+  assert.match(app, /<KeepHeader user=\{user\} searchTerm=\{searchTerm\} onSearch=\{handleSearch\}/);
+  assert.match(read('components', 'KeepHeader.jsx'), /<SearchBar onSearch=\{onSearch\} searchTerm=\{searchTerm\}/);
 });
 
 test('gespeicherte Suchen verlassen den Ordner-Scope', () => {

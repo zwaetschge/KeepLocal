@@ -11,6 +11,7 @@ import './Settings.css';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import { useModalA11y } from '../hooks/useModalA11y';
 import LanguageSelector from './LanguageSelector';
+import AppearanceSettings from './AppearanceSettings';
 import { useLanguage } from '../contexts/LanguageContext';
 import { copyToClipboard } from '../utils/clipboard.mjs';
 import { toastBus } from './ToastStack';
@@ -327,6 +328,7 @@ function Settings({ onClose, isAdmin, onAdminClick, folders = [], onDataImported
         </div>
 
         <div className="settings-content">
+          <AppearanceSettings/>
           {/* Language Section — the UI language must be reachable while logged in,
               not only on the login/register screens. */}
           <section className="settings-section">

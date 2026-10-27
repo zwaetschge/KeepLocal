@@ -91,3 +91,46 @@ Client 334/334, production build successful, lint zero errors/five existing
 warnings. Evidence and the reproducible browser script:
 `audit-evidence/editor-keep-2026-10-27/` in the parent workspace.
 This is a local web change; no Android rebuild or live rollout was performed.
+
+
+## Keep layout across designs — 2026-10-27
+
+The user clarified that Keep's arrangement and interaction model must be the
+shared foundation, with the existing designs remaining selectable. The web
+shell now separates layout from themes: 64px header, hamburger-controlled
+280px/80px sidebar, 720px maximum search, 600px inline composer, 240px masonry
+cards, list mode and compact card/editor actions. The sidebar orders notes,
+reminders, labels, label management, archive and trash; KeepLocal extras are
+in More. Search discovery replaces the permanent filter dropdown row. Account,
+refresh, view and settings actions are in the header; all five themes and both
+surface styles are available in Settings → Design. Demo users receive the
+appearance dialog without gaining account administration controls.
+
+Card layout uses measured row spans, retaining chronological DOM order and
+keyboard access. Card actions include reminder, collaboration, color, image,
+archive and More; the pin is in the upper right. Selecting an image opens the
+editor with the actual selected File; the hidden input stops its click bubbling
+so the editor is not opened prematurely without that file. Shared popovers are
+loaded with both cards and editor, dismiss on Escape/outside click and fit
+narrow viewports.
+
+Validation:
+
+- Read-only measurements from the user's already-open Google Keep Firefox tab
+  confirmed 64px header, 280px navigation and 240px cards. No Google notes were
+  edited or copied into the synthetic fixtures.
+- REA MCP captured the local production build with a temporary owned Chromium
+  profile (`ev_23e9f5d8c9e2aafe2faeaf338db071ab4a0ac7626f9a97f1720d34075fd56c4b`).
+- Client 334/334, production build succeeds, lint zero errors and five existing
+  warnings. No backend contract or dependency was changed.
+- Browser verification covers all ten theme/surface combinations retaining
+  layout geometry, sidebar collapse, filters reaching request parameters,
+  list mode, label editor, keyboard/drawer focus, image selection and discard.
+- One/two/three notes with varied heights fill horizontally without overlap;
+  390px and 320px layouts and menu bounds pass. Desktop, search, mobile, dark
+  and Doodle screenshots are retained with reproducible scripts.
+- Android Builder MCP is healthy; the selected device again returns
+  `No route to host`. No native visual-parity claim, Android source change,
+  alternate device, release or live rollout is included in this follow-up.
+
+Evidence: parent workspace `audit-evidence/keep-layout-2026-10-27/`.

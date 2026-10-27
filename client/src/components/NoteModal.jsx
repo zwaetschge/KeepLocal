@@ -89,7 +89,7 @@ function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onTogg
   const [content, setContent] = useState(note?.content || initialNote.content || '');
   const [tags, setTags] = useState(note?.tags || initialNote.tags || []);
   const [tagInput, setTagInput] = useState('');
-  const [editorPanel, setEditorPanel] = useState(null);
+  const [editorPanel, setEditorPanel] = useState(initialNote.editorPanel || null);
   const panelTriggerRef = useRef(null);
   const togglePanel = (panel, event) => {
     panelTriggerRef.current = event.currentTarget;

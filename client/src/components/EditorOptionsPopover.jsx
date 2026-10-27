@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import './EditorOptionsPopover.css';
 
 export default function EditorOptionsPopover({ title, onClose, onOutside, children }) {
   const { t } = useLanguage();
@@ -13,6 +14,10 @@ export default function EditorOptionsPopover({ title, onClose, onOutside, childr
     document.addEventListener('pointerdown', dismiss);
     return () => document.removeEventListener('pointerdown', dismiss);
   }, []);
+  useLayoutEffect(() => {
+    const panel=panelRef.current;
+    if(panel && panel.getBoundingClientRect().right>window.innerWidth-8){panel.style.left='auto';panel.style.right='0';}
+  },[title]);
   useEffect(() => {
     const panel = panelRef.current;
     (panel?.querySelector('.editor-options-fields input, .editor-options-fields select, .editor-more-actions > button') || panel?.querySelector('button'))?.focus();
