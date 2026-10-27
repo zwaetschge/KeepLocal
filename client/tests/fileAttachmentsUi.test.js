@@ -53,7 +53,7 @@ test('the API client speaks the attachment endpoints', () => {
 
   assert.match(source, /uploadFiles: async \(id, files\)/);
   assert.match(source, /formData\.append\('files', file\)/);
-  assert.match(source, /BY_ID\(id\)\}\/files`/, 'uploads POST to /:id/files');
+  assert.match(source, /BY_ID\(id\)\}\/files\?personal=true`/, 'uploads POST to /:id/files');
   assert.match(source, /Datei-Upload fehlgeschlagen/);
   assert.match(source, /deleteFile: \(id, filename\)/);
   assert.match(source, /files\/\$\{encodeURIComponent\(filename\)\}/, 'the stored name is URL-encoded on delete');

@@ -1,10 +1,8 @@
 // Ownership helpers for notes.
 //
-// Shared notes are collaborative: the owner and everyone in `sharedWith` may
-// edit content/title/tags/colour and toggle the pin. Destructive or structural
-// operations stay owner-only on the server (delete, archive, share/unshare,
-// image upload, transcription), so the UI must not offer them to collaborators —
-// otherwise every click answers with a confusing 404 "Notiz nicht gefunden".
+// Participants can edit note content and attachments. Delete, structure and
+// sharing stay owner-only. The web client requests personal=true: colour,
+// labels, pin and archive then belong to the current user's organization.
 //
 // Plain module (no React) so `node --test` can exercise it directly.
 

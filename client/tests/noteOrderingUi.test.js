@@ -54,7 +54,7 @@ test('search relevance beats manual order, which beats recency', () => {
   assert.doesNotMatch(hook, /filtered = filtered\.filter\(item => item\.parentId === folderScope\)/,
     'Ordner-Filter darf nicht mehr clientseitig auf dem geladenen Fenster laufen');
   assert.match(hook, /if \(!trashView && stateRef\.current\.folderScope\) params\.folderId = stateRef\.current\.folderScope;/);
-  assert.match(hook, /\[isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, fetchNotes, refreshTree\]/,
+  assert.match(hook, /\[isLoggedIn, authLoading, showArchived, showTrash, selectedTag, searchTerm, folderScope, filters, fetchNotes, refreshTree\]/,
     'Scope-Wechsel muss die Liste neu laden');
 });
 

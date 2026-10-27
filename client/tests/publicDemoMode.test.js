@@ -58,7 +58,7 @@ test('authenticated demo mode stays visibly labelled and removes restricted entr
   assert.match(note, /\{canManage && onOpenCollaborate && \(/);
   assert.match(modal, /useLinkPreview\(content, !isTodoList && !isDemo\)/);
   assert.match(modal, /!isDemo && note && images/);
-  assert.match(modal, /!isDemo && note && settings\.aiFeatures\.voiceTranscription/);
+  assert.match(modal, /!isDemo && note && \(/);
 });
 
 test('demo call to action has a visible keyboard focus treatment', () => {

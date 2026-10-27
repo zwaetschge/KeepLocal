@@ -20,10 +20,10 @@ import { readLocalStorage, writeLocalStorage } from './localStorage.mjs';
 export const DRAFT_STORAGE_KEY = 'keeplocal_drafts';
 /** Hart begrenzt: kein unbounded Wachstum im localStorage. */
 export const MAX_DRAFTS = 10;
-export const MAX_ENTRY_BYTES = 10 * 1024;
+export const MAX_ENTRY_BYTES = 300 * 1024;
 
 /** Felder, die einen Entwurf ausmachen. */
-export const DRAFT_FIELDS = ['title', 'content', 'tags', 'todoItems', 'isTodoList', 'color'];
+export const DRAFT_FIELDS = ['title', 'content', 'tags', 'todoItems', 'isTodoList', 'color', 'features'];
 
 const byteLength = (value) => {
   try {
@@ -79,17 +79,18 @@ export function writeDraft(noteId, userId, draft, storage) {
     noteUpdatedAt: draft?.noteUpdatedAt || null
   };
 
+  const entryLimit=entry.features?.drawing ? MAX_ENTRY_BYTES : 32 * 1024;
   let serialized = JSON.stringify({ ...entry });
-  if (byteLength(serialized) > MAX_ENTRY_BYTES && typeof entry.content === 'string') {
+  if (byteLength(serialized) > entryLimit && typeof entry.content === 'string') {
     let content = entry.content;
-    while (content.length > 0 && byteLength(JSON.stringify({ ...entry, content })) > MAX_ENTRY_BYTES) {
+    while (content.length > 0 && byteLength(JSON.stringify({ ...entry, content })) > entryLimit) {
       content = content.slice(0, Math.max(0, Math.floor(content.length * 0.8)));
     }
     entry.content = content;
     entry.truncated = true;
   }
   serialized = JSON.stringify({ ...entry });
-  if (byteLength(serialized) > MAX_ENTRY_BYTES) {
+  if (byteLength(serialized) > entryLimit) {
     return null; // z. B. riesige Todo-Liste: nichts schreiben statt alles verdrängen
   }
 
@@ -164,6 +165,7 @@ export function isDraftWorthRestoring(draft, note) {
  */
 export function draftHasSubstance(draft) {
   if (!draft) return false;
+  if(draft.features?.drawing?.strokes?.length)return true;
   if ((draft.title || '').trim()) return true;
   if ((draft.content || '').trim()) return true;
   if (Array.isArray(draft.tags) && draft.tags.length > 0) return true;

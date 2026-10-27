@@ -93,7 +93,8 @@ test('the notes list aborts the previous request instead of stacking them', () =
   const notesAPI = read('services', 'api', 'notesAPI.js');
   assert.match(notesAPI, /getAll: \(params = \{\}, options = \{\}\) =>/);
   assert.match(notesAPI, /\{ signal: options\.signal \}/);
-  assert.match(notesAPI, /getById: \(id, options = \{\}\) => fetchWithAuth\(API_ENDPOINTS\.NOTES\.BY_ID\(id\), \{ signal: options\.signal \}\)/);
+  assert.match(notesAPI, /getById:[\s\S]*?signal: options\.signal/);
+  assert.match(notesAPI, /cachedRead\(query,/);
 });
 
 test('the trash badge is part of the merge comparison', () => {

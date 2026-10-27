@@ -36,7 +36,7 @@
 
 .note-list .note {
   margin-bottom: 16px;
-  display: inline-block;
+  display: block;
   width: 100%;
 }
 

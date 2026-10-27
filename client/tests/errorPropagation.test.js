@@ -100,7 +100,7 @@ test('both multipart calls and the 401 path use the shared error builder', () =>
   assert.match(notesAPI, /async function fetchMultipart\(url, formData, fallbackMessage\)/);
   assert.match(notesAPI, /throw await toHttpError\(response, fallbackMessage\);/);
   assert.match(notesAPI, /LONG_REQUEST_TIMEOUT_MS/);
-  assert.equal(notesAPI.match(/return fetchMultipart\(/g)?.length, 4, 'image upload, file upload, transcription and the v1.13.0 ZIP import all use it');
+  assert.equal(notesAPI.match(/return fetchMultipart\(/g)?.length, 5, 'images, files, recordings, transcription and ZIP import all use it');
   assert.match(notesAPI, /'Bild-Upload fehlgeschlagen'/);
   assert.match(notesAPI, /'Datei-Upload fehlgeschlagen'/);
   assert.match(notesAPI, /'Transkription fehlgeschlagen'/);

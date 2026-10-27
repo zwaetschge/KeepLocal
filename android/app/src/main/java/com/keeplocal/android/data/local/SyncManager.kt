@@ -40,6 +40,9 @@ import javax.inject.Singleton
 /** Page size for the background delta pull — matches the server-side list limit. */
 private const val PULL_PAGE_LIMIT = 100
 
+/** Version the cached projection independently of server note timestamps. */
+internal const val PERSONAL_SYNC_SIGNATURE_PREFIX = "personal-v1:"
+
 /**
  * Poison cap (v1.16.0): a queued op the server keeps rejecting gets at most
  * this many drains before it is poisoned (kept in the table, never replayed).
@@ -246,7 +249,7 @@ class SyncManager @Inject constructor(
             if (metaResponse.code() == 401) return@withContext 0
             if (!metaResponse.isSuccessful) return@withContext 0
             val meta = metaResponse.body() ?: return@withContext 0
-            val signature = meta.signature()
+            val signature = PERSONAL_SYNC_SIGNATURE_PREFIX + meta.signature()
             if (signature == storedSignature) return@withContext 0
 
             val pendingIds = pendingOperationDao.getAllOperations().map { it.noteId }.toSet()
@@ -277,7 +280,12 @@ class SyncManager @Inject constructor(
             // 2) Delta upsert in two sweeps (since=null → full pull: exactly
             // what a cold cache needs); a torn pull keeps the old signature
             // so the next period retries from the same since.
-            val since = settingsDataStore.syncSince.first().takeIf { it.isNotBlank() }
+            // An upgrade must also fetch unchanged notes: personal organization,
+            // owner IDs and feature fields are a new projection of the same rows.
+            // Keep the existing transaction-bound pending filter during this full pull.
+            val since = settingsDataStore.syncSince.first().takeIf {
+                it.isNotBlank() && storedSignature.startsWith(PERSONAL_SYNC_SIGNATURE_PREFIX)
+            }
             var pullClean = treeIds != null
             var maxSeenUpdatedAt: String? = null
             run {

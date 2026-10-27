@@ -99,6 +99,8 @@ const userSchema = new mongoose.Schema({
     // Markdown-Rendering der Karten (v1.13.0): Die meisten Bestandsnotizen
     // (Trilium-Import) sind Markdown — default an, abschaltbar fuer Konten,
     // die rohen Text bevorzugen.
+    viewMode: { type: String, enum: ['grid', 'list'], default: 'grid' },
+    visualStyle: { type: String, enum: ['keep', 'classic'], default: 'keep' },
     renderMarkdown: {
       type: Boolean,
       default: true
@@ -233,6 +235,7 @@ userSchema.methods.toJSON = function() {
   return obj;
 };
 
+userSchema.post('findOneAndDelete',async function(user){if(user?._id)await require('./NoteOrganization').deleteMany({userId:user._id});});
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;

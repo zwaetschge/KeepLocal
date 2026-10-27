@@ -325,7 +325,7 @@ test('HTTP-Fehler tragen Status und Body (409-Durchreichung für NoteModal)', ()
 test('Live-Refresh: Focus/visibility-Throttle und 60s-Poll mit sauberem Cleanup', () => {
   const hook = readClientFile('src/hooks/useNotesManager.js');
   assert.match(hook, /FOCUS_REFRESH_THROTTLE_MS = 15_000/);
-  assert.match(hook, /POLL_INTERVAL_MS = 60_000/);
+  assert.match(hook, /POLL_INTERVAL_MS = 10_000/);
   assert.match(hook, /window\.addEventListener\('focus', onWake\)/);
   assert.match(hook, /document\.addEventListener\('visibilitychange', onWake\)/);
   assert.match(hook, /visibilityState !== 'visible'\) return/);

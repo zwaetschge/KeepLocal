@@ -43,6 +43,8 @@ object NoteQueries {
         NoteTypeFilter.IMAGES -> " AND imagesJson != '[]'"
         NoteTypeFilter.REMINDERS -> " AND remindAtEpochMs IS NOT NULL"
         NoteTypeFilter.PINNED -> " AND isPinned = 1"
+        NoteTypeFilter.DRAWINGS -> " AND featuresJson LIKE '%\"points\"%'"
+        NoteTypeFilter.AUDIO -> " AND filesJson LIKE '%audio/%'"
     }
 
     /**
@@ -85,8 +87,8 @@ object NoteQueries {
         // narrow the whole list instead of the search hits.
         val match = if (term.isBlank()) "" else
             " AND (title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%' OR " +
-                "todoItemsJson LIKE '%' || ? || '%' OR tagsJson LIKE '%' || ? || '%')"
-        val matchArgs: Array<Any?> = if (term.isBlank()) arrayOf() else arrayOf(term, term, term, term)
+                "todoItemsJson LIKE '%' || ? || '%' OR tagsJson LIKE '%' || ? || '%' OR ocrText LIKE '%' || ? || '%')"
+        val matchArgs: Array<Any?> = if (term.isBlank()) arrayOf() else arrayOf(term, term, term, term, term)
         val (folder, folderArgs) = folderClause(scope)
         // Array + Array is ambiguous in Kotlin; concatenating via lists keeps
         // the bound order (search term first, folder id after) explicit.

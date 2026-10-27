@@ -1,3 +1,6 @@
+import {toggleChecklist} from '../utils/checklist.mjs';
+import {DrawingPreview} from './DrawingEditor';
+import {RichTextPreview} from './RichTextEditor';
 import React, { useState, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,7 +50,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
   // v1.13.0 Nr. 2: Karten als Markdown rendern (Trilium-Bestand). marked ist
   // lazy geladen — bis zur ersten Antwort (und für Code-Notizen, die
   // dicktengleich bleiben sollen) zeigt die Karte den gewohnten Plain-Text.
-  const markdownEnabled = settings.renderMarkdown !== false && !note.isCode;
+  const markdownEnabled = settings.renderMarkdown !== false && !note.isCode && note.features?.format !== 'rich';
   const markdownHtml = useMarkdownHtml(note.content || '', markdownEnabled, { highlight });
   const contentHtml = markdownHtml ?? plainHtml;
 
@@ -150,9 +153,14 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
   const handleTodoItemToggle = (itemIndex) => {
     if (!note.todoItems || (!onUpdate && !onUpdateInline)) return;
 
-    const toggled = (items) => items.map((item, index) => (
-      index === itemIndex ? { ...item, completed: !item.completed } : item
-    ));
+    const item=note.todoItems[itemIndex];
+    if(!item)return;
+    const stableId=item.id || item._id;
+    const desired=!item.completed;
+    const toggled=(items)=>{
+      const index=stableId?items.findIndex(row=>(row.id || row._id)===stableId):itemIndex;
+      return index<0?items:toggleChecklist(items,index,desired);
+    };
 
     // v1.17.0 (W1): Todo-Toggle als Inline-Editierung mit baseUpdatedAt +
     // Reload+Retry — ein paralleler Edit (anderer Tab/Gerät) 409-t vorher,
@@ -167,7 +175,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
 
   return (
     <div
-      className={`note ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
+      className={`note note-background-${note.features?.background || 'none'} ${isDragging ? 'dragging' : ''} ${dragOverTag ? 'drag-over-tag' : ''}`}
       style={{
         backgroundColor: getColorVar(note.color),
         '--note-bg-color': getColorVar(note.color),
@@ -183,6 +191,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
         }
       }}
       role="article"
+      data-note-id={note._id}
       tabIndex={0}
       aria-label={note.title || t('note') || 'Notiz'}
       aria-busy={Boolean(operation)}
@@ -193,6 +202,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      <DrawingPreview drawing={note.features?.drawing} images={note.images || []}/>
       <div className="note-content-wrapper">
         {/* v1.10.0: Mehrfachauswahl — die Checkbox erscheint dauerhaft, sobald
             eine Auswahl läuft, sonst beim Hover/Fokus der Karte. */}
@@ -215,7 +225,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
         {note.isTodoList && note.todoItems && note.todoItems.length > 0 ? (
           <div className="note-todo-list">
             {note.todoItems.map((item, index) => (
-              <div key={index} className="note-todo-item">
+              <div key={item.id || item._id || index} className="note-todo-item" style={{marginInlineStart:item.indent?18:0}}>
                 <input
                   type="checkbox"
                   className="note-todo-checkbox"
@@ -234,6 +244,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
           </div>
         ) : (
           <>
+            {note.features?.format === 'rich' && !note.isCode ? <p ref={contentRef} className="note-content"><RichTextPreview text={note.content || ''} marks={note.features.marks || []}/></p> : (
             <p
               ref={contentRef}
               className={`note-content${markdownHtml ? ' markdown' : ''}`}
@@ -245,6 +256,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
                 }
               }}
             />
+            )}
             {note.linkPreviews && note.linkPreviews.length > 0 && (
               <div className="note-link-previews">
                 {note.linkPreviews.map((preview, index) => (
@@ -400,7 +412,7 @@ function Note({ note, index, onDelete, onUpdate, onUpdateInline, onTogglePin, on
               <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
             </svg>
           </button>
-          {canManage && (
+          {onToggleArchive && (
             <button
               onClick={(e) => {
                 e.stopPropagation();

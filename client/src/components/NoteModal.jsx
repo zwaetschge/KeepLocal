@@ -15,6 +15,10 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { useBackdropClose } from '../hooks/useBackdropClose';
 import notesAPI from '../services/api/notesAPI';
 import NoteHistory from './NoteHistory';
+import ChecklistEditor from './ChecklistEditor';
+import RichTextEditor from './RichTextEditor';
+import DrawingEditor from './DrawingEditor';
+import {shiftMarks} from '../utils/richText.mjs';
 import { resolveApiErrorMessage } from '../utils/apiErrors.mjs';
 
 // v1.12.0: Anhang-Groesse kompakt anzeigen (1024er-Einheiten, eine Nachkommastelle).
@@ -57,7 +61,7 @@ function isNoteConflictError(error) {
 // der Lokalzeit; remindAt reist als ISO-UTC. '' = keine Erinnerung. Die
 // Konverter (und ihre Teil-Eingabe-/Zeitzonen-Fallen) leben seit v1.17.1 in
 // utils/reminderTime.mjs.
-function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
+function NoteModal({ note, initialNote = {}, serverNote, onSave, onClose, onToggleArchive, onOpenCollaborate, onDelete, availableTags = [], wikiNotes = [], onOpenNote, folders = [], defaultParentId = null, onRestored }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -67,12 +71,14 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   // Server antwortet sonst mit 404 „Notiz nicht gefunden“).
   const canManage = !note || isNoteOwner(note, user);
   const editorName = lastEditorName(serverNote || note);
-  const [title, setTitle] = useState(note?.title || '');
-  const [content, setContent] = useState(note?.content || '');
-  const [tags, setTags] = useState(note?.tags || []);
+  const [title, setTitle] = useState(note?.title || initialNote.title || '');
+  const [content, setContent] = useState(note?.content || initialNote.content || '');
+  const [tags, setTags] = useState(note?.tags || initialNote.tags || []);
   const [tagInput, setTagInput] = useState('');
-  const [color, setColor] = useState(note?.color || '#ffffff');
-  const [isTodoList, setIsTodoList] = useState(note?.isTodoList || false);
+  const [features, setFeatures] = useState(note?.features || initialNote.features || (!note ? {format:'rich',marks:[]} : {}));
+  const listOptions = {checkedToBottom:true, ...features.list};
+  const [color, setColor] = useState(note?.color || initialNote.color || '#ffffff');
+  const [isTodoList, setIsTodoList] = useState(note?.isTodoList || initialNote.isTodoList || false);
   const [isPinned, setIsPinned] = useState(note?.isPinned || false);
   // v1.10.0: Code-/Monospace-Notiz und Eltern-Ordner
   const [isCode, setIsCode] = useState(note?.isCode || false);
@@ -84,7 +90,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const [images, setImages] = useState(note?.images || []);
   // v1.12.0: PDF-Anhänge — eigene Liste, eigener Upload-Pfad (/files).
   const [noteFiles, setNoteFiles] = useState(note?.files || []);
-  const [newImageFiles, setNewImageFiles] = useState([]);
+  const [newImageFiles, setNewImageFiles] = useState(initialNote.imageFiles || []);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [newPdfFiles, setNewPdfFiles] = useState([]);
@@ -106,6 +112,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   // note.updatedAt at the time the modal was opened (or the server version was
   // loaded) — sent as baseUpdatedAt on every non-forced PUT.
   const baseUpdatedAtRef = useRef(note?.updatedAt || null);
+  const persistedIdRef = useRef(note?._id || null);
   const contentTextareaRef = useRef(null);
   // Backlinks (v1.16.0): „Erwähnt in“ kommt vom Server — das geladene 50er-
   // Fenster rechnete die Liste lokal aus und zeigte sie bei vollem Bestand
@@ -159,7 +166,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     deleteItem: handleTodoItemDelete,
     handleItemKeyDown: handleTodoItemKeyDown,
     getCleanedItems,
-  } = useTodoList(note?.todoItems || []);
+  } = useTodoList(note?.todoItems || initialNote.todoItems || []);
 
   // v1.14.0 Nr. 7: Restore aus der Revisions-Historie. Der Server läuft über
   // updateNote und liefert die frische Note — lokalen State UND baseUpdatedAt
@@ -168,6 +175,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     if (!updatedNote || typeof updatedNote !== 'object') return;
     setTitle(updatedNote.title || '');
     setContent(updatedNote.content || '');
+    setFeatures(updatedNote.features || {});
     setTags(Array.isArray(updatedNote.tags) ? updatedNote.tags : []);
     setIsTodoList(Boolean(updatedNote.isTodoList));
     if (Array.isArray(updatedNote.todoItems)) setTodoItems(updatedNote.todoItems);
@@ -197,6 +205,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       todoItems: isTodoList ? todoItems : [],
       isTodoList,
       color,
+      features,
       noteUpdatedAt: note?.updatedAt || null
     };
     // Substanzlose Entwürfe nie schreiben (leerer Editor nach dem Verwerfen,
@@ -217,7 +226,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
       () => writeDraft(note?._id || null, draftUserId, draft),
       DRAFT_DEBOUNCE_MS
     );
-  }, [title, content, tags, todoItems, isTodoList, color, note?._id, note?.updatedAt, draftUserId, draftOffer]);
+  }, [title, content, tags, todoItems, isTodoList, color, features, note?._id, note?.updatedAt, draftUserId, draftOffer]);
 
   // Nach jeder Änderung (entprellt). Der erste Lauf schreibt nichts: Ein
   // unveränderter Editor soll keinen Entwurf anlegen.
@@ -251,6 +260,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     if (draftOffer.title !== undefined) setTitle(draftOffer.title);
     if (draftOffer.content !== undefined) setContent(draftOffer.content);
     if (Array.isArray(draftOffer.tags)) setTags(draftOffer.tags);
+    if (draftOffer.features !== undefined) setFeatures(draftOffer.features);
     if (draftOffer.color !== undefined) setColor(draftOffer.color);
     if (draftOffer.isTodoList !== undefined) setIsTodoList(Boolean(draftOffer.isTodoList));
     if (Array.isArray(draftOffer.todoItems)) setTodoItems(draftOffer.todoItems);
@@ -275,6 +285,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     if (!source) return;
     setTitle(source.title || '');
     setContent(source.content || '');
+    setFeatures(source.features || {});
     setTags(source.tags || []);
     setTagInput('');
     setColor(source.color || '#ffffff');
@@ -375,16 +386,8 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   const saveNote = async (options = {}) => {
     const forceOverwrite = Boolean(options.force);
     if (isSaving) return;
-    // Validate based on mode
-    if (isTodoList) {
-      if (todoItems.length === 0 || todoItems.every((item) => !item.text.trim())) {
-        return;
-      }
-    } else {
-      if (!content.trim()) {
-        return;
-      }
-    }
+    if (!title.trim() && !content.trim() && !todoItems.some(item => item.text.trim())
+      && !images.length && !noteFiles.length && !newImageFiles.length && !newPdfFiles.length && !features.drawing?.strokes?.length) return;
 
     // Add any pending tag from input
     let finalTags = [...tags];
@@ -397,8 +400,9 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     }
 
     const noteData = {
-      title: title.trim(),
-      content: isTodoList ? '' : content.trim(),
+      features,
+      title: title.trim() || ((!content.trim() && !todoItems.some(item => item.text.trim())) ? (newImageFiles[0]?.name || newPdfFiles[0]?.name || '') : ''),
+      content: isTodoList ? '' : features.format==='rich'?content:content.trim(),
       tags: finalTags,
       color: color,
       isPinned: isPinned,
@@ -426,8 +430,27 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
 
     setIsSaving(true);
     try {
-      const savedNote = await onSave(payload);
+      let savedNote = !note && persistedIdRef.current
+        ? await notesAPI.update(persistedIdRef.current, { ...payload, baseUpdatedAt: baseUpdatedAtRef.current })
+        : await onSave(payload);
       if (savedNote) {
+        persistedIdRef.current = savedNote._id;
+        baseUpdatedAtRef.current = savedNote.updatedAt;
+        if (newImageFiles.length) {
+          const updatedNote = await notesAPI.uploadImages(savedNote._id, newImageFiles);
+          savedNote = updatedNote;
+          setImages(updatedNote.images || []);
+          setNewImageFiles([]);
+          baseUpdatedAtRef.current = updatedNote.updatedAt;
+        }
+        if (newPdfFiles.length) {
+          const updatedNote = await notesAPI.uploadFiles(savedNote._id, newPdfFiles);
+          savedNote = updatedNote;
+          setNoteFiles(updatedNote.files || []);
+          setNewPdfFiles([]);
+          baseUpdatedAtRef.current = updatedNote.updatedAt;
+        }
+        onRestored?.();
         if (forceOverwrite) {
           toastBus.success(t('conflictOverwritten'));
         }
@@ -626,10 +649,6 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
   };
 
   // Add todo item handler (using the hook's internal logic via setTodoItems)
-  const handleAddTodoItem = () => {
-    if (todoItems.length >= 200) return;
-    setTodoItems([...todoItems, { text: '', completed: false, order: todoItems.length }]);
-  };
 
   // Image upload handlers
   const handleImageSelect = (e) => {
@@ -779,8 +798,15 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
         mediaStreamRef.current = null;
         lastAudioBlobRef.current = audioBlob;
 
-        // Automatically transcribe after recording stops
-        await handleTranscribe(audioBlob);
+        try {
+          const id = persistedIdRef.current;
+          if (!id) { toastBus.info(t('saveBeforeTranscribing')); return; }
+          const updatedNote = await notesAPI.uploadRecording(id, audioBlob);
+          setNoteFiles(updatedNote.files || []);
+          baseUpdatedAtRef.current = updatedNote.updatedAt;
+          onRestored?.();
+        } catch (error) { toastBus.publish(resolveApiErrorMessage(error,t,'errorSaving'), 'error',10000, {label:t('retryTranscription'),onClick:async()=>{try{const saved=await notesAPI.uploadRecording(persistedIdRef.current,audioBlob);setNoteFiles(saved.files || []);baseUpdatedAtRef.current=saved.updatedAt;onRestored?.();}catch(retryError){toastBus.error(resolveApiErrorMessage(retryError,t,'errorSaving'));}}}); return; }
+        if (settings.aiFeatures?.voiceTranscription) await handleTranscribe(audioBlob);
       };
 
       mediaRecorder.start();
@@ -882,9 +908,8 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
 
   // Auto-save when clicking outside the modal
   const handleOverlayClick = () => {
-    const hasContent = isTodoList
-      ? (todoItems.length > 0 && todoItems.some(item => item.text.trim()))
-      : content.trim();
+    const hasContent = title.trim() || content.trim() || todoItems.some(item => item.text.trim())
+      || images.length || noteFiles.length || newImageFiles.length || newPdfFiles.length || features.drawing?.strokes?.length;
 
     if (hasContent) {
       handleSave();
@@ -937,6 +962,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
     <div className="note-modal-overlay" {...backdropClose}>
       <div
         className="note-modal"
+        data-background={features.background || 'none'}
         ref={containerRef}
         role="dialog"
         aria-modal="true"
@@ -1039,50 +1065,12 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
           )}
 
           {isTodoList ? (
-            <div className="todo-list-container">
-              {todoItems.map((item, index) => (
-                <div key={index} className="todo-item">
-                  <input
-                    type="checkbox"
-                    className="todo-item-checkbox"
-                    checked={item.completed}
-                    onChange={() => handleTodoItemToggle(index)}
-                  />
-                  <input
-                    type="text"
-                    className={`todo-item-input ${item.completed ? 'completed' : ''}`}
-                    placeholder={t('todoItem')}
-                    value={item.text}
-                    onChange={(e) => handleTodoItemChange(index, e.target.value)}
-                    onKeyDown={(e) => handleTodoItemKeyDown(e, index)}
-                    maxLength={500}
-                    autoFocus={index === todoItems.length - 1}
-                  />
-                  <button
-                    type="button"
-                    className="todo-item-delete"
-                    onClick={() => handleTodoItemDelete(index)}
-                    aria-label={t('deleteItem')}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="todo-add-item"
-                onClick={handleAddTodoItem}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                {t('todoItem')}
-              </button>
-            </div>
+            <ChecklistEditor items={todoItems} onChange={setTodoItems} onText={handleTodoItemChange} onToggle={handleTodoItemToggle} onDelete={handleTodoItemDelete} onKeyDown={handleTodoItemKeyDown}
+              options={listOptions} onOptions={list=>setFeatures(prev=>({...prev,list}))}
+              onAdd={() => setTodoItems(prev => listOptions.addToTop ? [{id:crypto.randomUUID(),text:'',completed:false,order:0,indent:0},...prev] : [...prev,{id:crypto.randomUUID(),text:'',completed:false,order:prev.length,indent:0}])}/>
+
+          ) : (!isCode && features.format === 'rich') ? (
+            <RichTextEditor value={content} marks={features.marks || []} onChange={(text,marks)=>{setContent(text);setFeatures(prev=>({...prev,marks}));}}/>
           ) : (
             <textarea
               ref={contentTextareaRef}
@@ -1090,6 +1078,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
               placeholder={t('enterNote')}
               value={content}
               onChange={(e) => {
+                setFeatures(prev=>({...prev,marks:shiftMarks(prev.marks,content,e.target.value)}));
                 setContent(e.target.value);
                 contentCaretRef.current = e.target.selectionStart ?? 0;
               }}
@@ -1099,6 +1088,13 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
               maxLength={10000}
             />
           )}
+
+          <button type="button" className="editor-format-toggle" aria-pressed={Boolean(features.drawing)} onClick={()=>setFeatures(prev=>({...prev,drawing:prev.drawing?null:{width:800,height:600,strokes:[]}}))}>{t('keepDrawing')}</button>
+          {features.drawing && <DrawingEditor value={features.drawing} images={images} onChange={drawing=>setFeatures(prev=>({...prev,drawing}))}/>}
+          {!isTodoList && !isCode && <button type="button" className="editor-format-toggle" onClick={()=>setFeatures(prev=>({...prev,format:prev.format === 'rich'?'plain':'rich'}))}>{features.format === 'rich' ? t('keepMarkdown') : t('keepVisual')}</button>}
+          <label className="note-background-picker">{t('keepBackground')} <select value={features.background || 'none'} onChange={e=>setFeatures(prev=>({...prev,background:e.target.value}))}>
+            {['none','grid','lines','dots','leaves','sand'].map(bg=><option key={bg} value={bg}>{t(`keepBackground_${bg}`)}</option>)}
+          </select></label>
 
           {/* v1.10.0: Wiki-Link-Vervollständigung — erscheint, sobald über dem
               Caret ein angefangenes `[[` steht; Klick ersetzt das Fragment. */}
@@ -1213,6 +1209,13 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                         decoding="async"
                       />
                     </button>
+                    <button type="button" className="image-ocr-btn" onClick={async()=>{
+                        try { const result=await notesAPI.extractImageText(note._id,image.filename);
+                          if(!result.text){toastBus.info(t('keepNoText'));return;}
+                          setFeatures(prev=>({...prev,ocrText:((prev.ocrText || '')+'\n'+result.text).trim().slice(0,10000)}));
+                          setContent(prev=>(prev+(prev?'\n\n':'')+result.text).slice(0,10000));
+                        } catch(error){toastBus.error(resolveApiErrorMessage(error,t,'errorSaving'));}
+                      }}>{t('keepExtractText')}</button>
                     <button
                       type="button"
                       className="image-delete-btn"
@@ -1319,8 +1322,12 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
             </div>
           )}
 
+          {noteFiles.filter(file=>file.mimetype?.startsWith('audio/')).map(file=><figure key={file.filename}>
+            <figcaption>{file.originalName || t('keepRecording')}</figcaption><audio controls preload="none" src={file.url}/>
+          </figure>)}
+
           {/* Hidden file input for image selection */}
-          {!isDemo && note && (
+          {!isDemo && canManage && (
             <input
               ref={fileInputRef}
               type="file"
@@ -1333,7 +1340,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
           )}
 
           {/* Hidden file input for PDF attachments */}
-          {!isDemo && note && (
+          {!isDemo && canManage && (
             <input
               ref={pdfInputRef}
               type="file"
@@ -1494,7 +1501,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 </svg>
               </button>
             )}
-            {note && canManage && onToggleArchive && (
+            {note && onToggleArchive && (
               <button
                 type="button"
                 className={`btn-modal-archive ${note.isArchived ? 'archived' : ''}`}
@@ -1552,7 +1559,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 <path d="M12 17v5m-5-9H5a2 2 0 0 1 0-4h14a2 2 0 0 1 0 4h-2m-5-9V2"/>
               </svg>
             </button>
-            {!isDemo && note && (
+            {!isDemo && canManage && (
               <>
                 <label
                   htmlFor="image-upload-input"
@@ -1566,7 +1573,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                     <polyline points="21 15 16 10 5 21"/>
                   </svg>
                 </label>
-                {newImageFiles.length > 0 && (
+                {note && newImageFiles.length > 0 && (
                   <button
                     type="button"
                     className={`btn-modal-image-upload ${uploadingImages ? 'uploading' : ''}`}
@@ -1594,7 +1601,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                   </svg>
                 </label>
-                {newPdfFiles.length > 0 && (
+                {note && newPdfFiles.length > 0 && (
                   <button
                     type="button"
                     className={`btn-modal-image-upload ${uploadingFiles ? 'uploading' : ''}`}
@@ -1612,7 +1619,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
                 )}
               </>
             )}
-            {!isDemo && note && settings.aiFeatures.voiceTranscription && !isTodoList && (
+            {!isDemo && note && !isTodoList && (
               <button
                 type="button"
                 className={`btn-modal-voice ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}
@@ -1665,7 +1672,7 @@ function NoteModal({ note, serverNote, onSave, onClose, onToggleArchive, onOpenC
             <button
               className="btn-modal-save"
               onClick={handleSave}
-              disabled={isSaving || (isTodoList ? (todoItems.length === 0 || todoItems.every(item => !item.text.trim())) : !content.trim())}
+              disabled={isSaving || (!title.trim() && !content.trim() && !todoItems.some(item => item.text.trim()) && !images.length && !noteFiles.length && !newImageFiles.length && !newPdfFiles.length && !features.drawing?.strokes?.length)}
             >
               {t('save')}
             </button>

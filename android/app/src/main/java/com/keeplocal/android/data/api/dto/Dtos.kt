@@ -2,6 +2,7 @@ package com.keeplocal.android.data.api.dto
 
 import com.keeplocal.android.data.api.NullableString
 import com.squareup.moshi.Json
+import com.keeplocal.android.domain.model.NoteFeatures
 import com.squareup.moshi.JsonClass
 
 // The API authenticates by email, never by username (server/routes/auth.js
@@ -137,6 +138,7 @@ data class NoteDto(
     @Json(name = "images") val images: List<NoteImageDto>? = null,
     @Json(name = "sharedWith") val sharedWith: List<SharedUserDto>? = null,
     @Json(name = "owner") val owner: String = "",
+    @Json(name = "userId") val ownerReference: Any? = null,
     // v1.16.0 wire fix: the server field is `order` (Note schema, web client,
     // v1 API). `position` was never sent by the server and never understood in
     // a PUT — manual order silently round-tripped as 0 in both directions.
@@ -154,9 +156,11 @@ data class NoteDto(
     // PDF attachments (v1.14.0 Nr. 5): server-managed like images; uploads
     // and deletions go through their own endpoints, never through the note
     // update payload.
-    @Json(name = "files") val files: List<NoteFileDto>? = null
+    @Json(name = "files") val files: List<NoteFileDto>? = null,
+    @Json(name = "features") val features: NoteFeatures? = null
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
+    fun resolvedOwnerId():String = when(val ref=ownerReference){is String->ref;is Map<*,*>->(ref["_id"] ?: ref["id"])?.toString() ?: owner;else->owner}
 }
 
 /** One PDF attachment of a note (POST /api/notes/{id}/files, max 25 per note,
@@ -192,7 +196,8 @@ data class NotesMetaDto(
 data class TagOperationRequestDto(
     @Json(name = "action") val action: String, // rename | merge | delete
     @Json(name = "from") val from: List<String>,
-    @Json(name = "to") val to: String? = null
+    @Json(name = "to") val to: String? = null,
+    @Json(name="personalOrganization") val personalOrganization:Boolean=true
 )
 
 @JsonClass(generateAdapter = true)
@@ -245,7 +250,8 @@ data class TodoItemDto(
     @Json(name = "id") val id: String = "",
     @Json(name = "text") val text: String = "",
     @Json(name = "completed") val isCompleted: Boolean = false,
-    @Json(name = "order") val position: Int = 0
+    @Json(name = "order") val position: Int = 0,
+    @Json(name = "indent") val indent: Int = 0
 ) {
     fun resolvedId(): String = id.ifBlank { mongoId }
 }
@@ -253,7 +259,8 @@ data class TodoItemDto(
 @JsonClass(generateAdapter = true)
 data class SharedUserDto(
     @Json(name = "userId") val userId: String = "",
-    @Json(name = "username") val username: String = ""
+    @Json(name = "username") val username: String = "",
+    @Json(name = "_id") val mongoId: String = ""
 )
 
 @JsonClass(generateAdapter = true)
@@ -269,7 +276,8 @@ data class CreateNoteDto(
     @Json(name = "remindAt") val remindAt: String? = null,
     // Tree (v1.10.0): create the note inside a folder note.
     @Json(name = "parentId") val parentId: String? = null,
-    @Json(name = "isCode") val isCode: Boolean = false
+    @Json(name = "isCode") val isCode: Boolean = false,
+    @Json(name = "features") val features: NoteFeatures? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -293,7 +301,9 @@ data class UpdateNoteDto(
     // Tree (v1.10.0): same full-state semantics — an explicit JSON null moves
     // the note back to the root level, absent would leave it untouched.
     @Json(name = "parentId") val parentId: NullableString? = null,
-    @Json(name = "isCode") val isCode: Boolean? = null
+    @Json(name = "isCode") val isCode: Boolean? = null,
+    @Json(name = "features") val features: NoteFeatures? = null,
+    @Json(name="personalOrganization") val personalOrganization: Boolean = true
 )
 
 @JsonClass(generateAdapter = true)

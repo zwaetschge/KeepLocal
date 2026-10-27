@@ -40,7 +40,8 @@ object MarkdownNoteParser {
         /** Normalized full file path ("ordner/datei.md") — v1.16.0: needed to
          *  hand the parsed tree to the server's bulk import endpoint, which
          *  rebuilds the structure from exactly these paths. */
-        val path: String = ""
+        val path: String = "",
+        val rawMarkdown: String? = null
     )
 
     data class ParsedImport(val dirs: List<ParsedDir>, val files: List<ParsedFile>)
@@ -93,7 +94,7 @@ object MarkdownNoteParser {
         val merged = dirs.values.map { dir ->
             val index = indexBodies[dir.dirPath]
             if (index == null) dir
-            else dir.copy(title = index.title.ifBlank { dir.title }, indexContent = index.content.ifBlank { null })
+            else dir.copy(title = index.title.ifBlank { dir.title }, indexContent = index.rawMarkdown ?: index.content.ifBlank { null })
         }.sortedBy { it.dirPath.count { c -> c == '/' } + 1 }
 
         return Result.Success(ParsedImport(dirs = merged, files = outFiles))
@@ -186,7 +187,8 @@ object MarkdownNoteParser {
             tags = tags,
             isTodoList = isTodoList,
             todoItems = todoItems,
-            parentPath = null
+            parentPath = null,
+            rawMarkdown = rawContent.takeIf {it.startsWith("---") && it.contains("keepLocalData:",ignoreCase=true)}
         )
     }
 

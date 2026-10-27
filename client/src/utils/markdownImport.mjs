@@ -56,7 +56,7 @@ export async function buildMarkdownImportItems(files, { readFile = (file) => fil
     items.push({
       path: folderPath,
       title: title || 'Notiz',
-      content: text.slice(0, IMPORT_MAX_CONTENT_CHARS)
+      content: text.startsWith('---') && /^keepLocalData:/im.test(text)?text:text.slice(0, IMPORT_MAX_CONTENT_CHARS)
     });
   }
   return { items, skipped };
@@ -69,8 +69,12 @@ export async function buildMarkdownImportItems(files, { readFile = (file) => fil
 export function chunkImportItems(items, size = IMPORT_CHUNK_SIZE) {
   const chunkSize = Number.isInteger(size) && size > 0 ? size : IMPORT_CHUNK_SIZE;
   const chunks = [];
-  for (let index = 0; index < items.length; index += chunkSize) {
-    chunks.push(items.slice(index, index + chunkSize));
+  let chunk=[],bytes=2;
+  for(const item of items){
+    const size=new TextEncoder().encode(JSON.stringify(item)).length+1;
+    if(chunk.length && (chunk.length>=chunkSize || bytes+size>850000)){chunks.push(chunk);chunk=[];bytes=2;}
+    chunk.push(item);bytes+=size;
   }
+  if(chunk.length)chunks.push(chunk);
   return chunks;
 }

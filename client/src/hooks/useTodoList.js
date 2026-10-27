@@ -1,4 +1,6 @@
+import {newLocalId} from '../utils/localId.mjs';
 import { useState, useCallback } from 'react';
+import {normalizeChecklist,toggleChecklist} from '../utils/checklist.mjs';
 
 /**
  * Hook for managing todo list items
@@ -18,7 +20,7 @@ import { useState, useCallback } from 'react';
  * } = useTodoList(note?.todoItems || []);
  */
 export function useTodoList(initialItems = []) {
-  const [todoItems, setTodoItems] = useState(initialItems);
+  const [todoItems, setTodoItems] = useState(() => normalizeChecklist(initialItems));
 
   /**
    * Add a new empty todo item
@@ -26,7 +28,7 @@ export function useTodoList(initialItems = []) {
   const addItem = useCallback(() => {
     setTodoItems((prev) => [
       ...prev,
-      { text: '', completed: false, order: prev.length },
+      { id: newLocalId(), text: '', completed: false, order: prev.length, indent:0 },
     ]);
   }, []);
 
@@ -48,14 +50,7 @@ export function useTodoList(initialItems = []) {
    * @param {number} index - Item index
    */
   const toggleItem = useCallback((index) => {
-    setTodoItems((prev) => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        completed: !updated[index].completed,
-      };
-      return updated;
-    });
+    setTodoItems(prev => toggleChecklist(prev,index));
   }, []);
 
   /**
@@ -103,6 +98,8 @@ export function useTodoList(initialItems = []) {
     if (content.trim()) {
       const lines = content.split('\n').filter((line) => line.trim());
       const items = lines.map((line, index) => ({
+        id: newLocalId(),
+        indent: 0,
         text: line.trim(),
         completed: false,
         order: index,
@@ -130,6 +127,8 @@ export function useTodoList(initialItems = []) {
     return todoItems
       .filter((item) => item.text.trim())
       .map((item, index) => ({
+        id: item.id || item._id || newLocalId(),
+        indent: item.indent || 0,
         text: item.text.trim(),
         completed: item.completed || false,
         order: index,

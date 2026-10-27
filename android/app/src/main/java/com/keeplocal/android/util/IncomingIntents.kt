@@ -1,6 +1,7 @@
 package com.keeplocal.android.util
 
 import android.content.Intent
+import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,12 @@ object IncomingIntents {
         val text: String,
         val title: String?
     )
+
+    data class CaptureRequest(val kind: String = "text", val images: List<Uri> = emptyList())
+    private val _captureRequest = MutableStateFlow<CaptureRequest?>(null)
+    val captureRequest: StateFlow<CaptureRequest?> = _captureRequest.asStateFlow()
+    fun prepareCapture(kind: String, images: List<Uri> = emptyList()) { _captureRequest.value=CaptureRequest(kind,images) }
+    fun consumeCapture() { _captureRequest.value=null }
 
     /** Navigation request emitted by widget/tile/launcher-shortcut taps. */
     sealed interface NavRequest {
@@ -43,16 +50,29 @@ object IncomingIntents {
     /** Feed from MainActivity.onCreate/onNewIntent — tolerates any intent. */
     fun handle(intent: Intent?) {
         when (intent?.action) {
-            Intent.ACTION_SEND -> parseSharedText(intent)?.let {
+            Intent.ACTION_SEND_MULTIPLE -> {
+                if (intent.type?.startsWith("image/") == true) {
+                    val images=intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM,Uri::class.java).orEmpty().filter {it.scheme=="content"}.take(25)
+                    if(images.isNotEmpty()){prepareCapture("image",images);_navRequest.value=NavRequest.NewNote}
+                }
+            }
+
+            Intent.ACTION_SEND -> {
+                if (intent.type?.startsWith("image/") == true) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM,Uri::class.java)?.takeIf {it.scheme=="content"}?.let { prepareCapture("image",listOf(it));_navRequest.value=NavRequest.NewNote }
+                }
+                parseSharedText(intent)?.let {
                 _sharedText.value = it
                 // The share itself carries no destination — open a new note
                 // so the editor can pick the text up.
                 _navRequest.value = NavRequest.NewNote
             }
+            }
             Intent.ACTION_VIEW -> intent.data?.lastPathSegment
                 ?.takeIf { ServerContract.isServerId(it) }
                 ?.let { _navRequest.value = NavRequest.OpenNote(it) }
         }
+        intent?.getStringExtra(EXTRA_CAPTURE_KIND)?.takeIf {it in listOf("text","list","image","drawing")}?.let {prepareCapture(it);_navRequest.value=NavRequest.NewNote}
         if (intent?.getBooleanExtra(EXTRA_NEW_NOTE, false) == true) {
             _navRequest.value = NavRequest.NewNote
         }
@@ -107,6 +127,7 @@ object IncomingIntents {
         _searchRequest.value = null
     }
 
+    const val EXTRA_CAPTURE_KIND = "keeplocal.extra.CAPTURE_KIND"
     const val EXTRA_NEW_NOTE = "keeplocal.extra.NEW_NOTE"
     const val EXTRA_OPEN_NOTE_ID = "keeplocal.extra.OPEN_NOTE_ID"
     const val EXTRA_OPEN_TRASH = "keeplocal.extra.OPEN_TRASH"

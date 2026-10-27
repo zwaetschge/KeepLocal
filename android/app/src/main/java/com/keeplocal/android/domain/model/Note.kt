@@ -40,7 +40,8 @@ data class Note(
     // editor uploads/deletes them through their own endpoints. Until this
     // release the field was not even parsed — attachments were invisible on
     // Android even though the server had them since v1.12.0.
-    val files: List<NoteFile> = emptyList()
+    val files: List<NoteFile> = emptyList(),
+    val features: NoteFeatures = NoteFeatures()
 )
 
 /**
@@ -80,7 +81,8 @@ data class TodoItem(
     val id: String,
     val text: String,
     val isCompleted: Boolean,
-    val position: Int
+    val position: Int,
+    val indent: Int = 0
 )
 
 data class SharedUser(

@@ -12,7 +12,7 @@ import com.keeplocal.android.data.local.entity.PendingOperationEntity
 
 @Database(
     entities = [NoteEntity::class, PendingOperationEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -21,6 +21,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingOperationDao(): PendingOperationDao
 
     companion object {
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN featuresJson TEXT NOT NULL DEFAULT '{}'")
+                db.execSQL("ALTER TABLE notes ADD COLUMN ocrText TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /**
          * v3 adds two columns to `notes`:
          * - `imagesJson`: serialized image attachments (parallel work; the

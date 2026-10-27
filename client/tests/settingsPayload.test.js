@@ -28,7 +28,9 @@ test('settings normalization preserves valid supported values', async () => {
     savedSearches: [{ id: 's-1', name: 'Offene Punkte', query: 'offen', typeFilter: null, tag: null }],
     journalFolderId: '64b1f0c9a1d4e5f6a7b8c9d0',
     // v1.13.0: Markdown-Rendering der Karten
-    renderMarkdown: true
+    renderMarkdown: true,
+    viewMode: 'grid',
+    visualStyle: 'keep'
   };
 
   assert.deepEqual(normalizeSettings(settings), settings);
@@ -63,7 +65,9 @@ test('user preferences are mapped into settings and back', async () => {
     savedSearches: [],
     journalFolderId: null,
     // v1.13.0: ohne gespeicherte Präferenz gilt der Default (an)
-    renderMarkdown: true
+    renderMarkdown: true,
+    viewMode: 'grid',
+    visualStyle: 'keep'
   });
 
   assert.deepEqual(preferencesFromSettings(settings), {
@@ -73,7 +77,9 @@ test('user preferences are mapped into settings and back', async () => {
     tagColors: {},
     savedSearches: [],
     journalFolderId: null,
-    renderMarkdown: true
+    renderMarkdown: true,
+    viewMode: 'grid',
+    visualStyle: 'keep'
   });
 
   // A user without preferences (older account) falls back to the defaults.

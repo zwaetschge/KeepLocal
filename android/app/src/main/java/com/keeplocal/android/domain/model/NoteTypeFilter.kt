@@ -18,7 +18,7 @@ enum class NoteTypeFilter {
     /** Notes carrying a reminder, fired or not. */
     REMINDERS,
     /** Pinned notes only. */
-    PINNED;
+    PINNED, DRAWINGS, AUDIO;
 
     /**
      * In-memory twin of the SQL filter in NoteQueries — applied when results
@@ -32,6 +32,8 @@ enum class NoteTypeFilter {
         IMAGES -> note.images.isNotEmpty()
         REMINDERS -> note.remindAt != null
         PINNED -> note.isPinned
+        DRAWINGS -> !note.features.drawing?.strokes.isNullOrEmpty()
+        AUDIO -> note.files.any { it.mimeType?.startsWith("audio/")==true }
     }
 
     companion object {
@@ -42,6 +44,8 @@ enum class NoteTypeFilter {
             "images" -> IMAGES
             "reminders" -> REMINDERS
             "pinned" -> PINNED
+            "drawings" -> DRAWINGS
+            "audio" -> AUDIO
             else -> ALL
         }
     }

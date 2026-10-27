@@ -18,7 +18,7 @@ test('a new-note request never replaces an open editor, a wiki link navigates (v
   // alte Guard schluckte die Navigation still.
   assert.match(
     app,
-    /setNoteModal\(prev => \(!prev\.isOpen\s*\n\s*\|\| \(note && String\(prev\.note\?\._id \?\? 'new'\) !== String\(note\._id\)\)\)\s*\n\s*\? \{ isOpen: true, note \} : prev\)/
+    /setNoteModal\(prev => \(!prev\.isOpen\s*\n\s*\|\| \(note && String\(prev\.note\?\._id \?\? 'new'\) !== String\(note\._id\)\)\)\s*\n\s*\? \{ isOpen: true, note, initial \} : prev\)/
   );
   assert.doesNotMatch(app, /const openNoteModal = \(note = null\) => setNoteModal\(\{ isOpen: true, note \}\)/);
 });
@@ -30,7 +30,7 @@ test('note cards offer destructive actions to the owner only', () => {
 
   assert.match(note, /import \{ isNoteOwner, lastEditorName \} from '\.\.\/utils\/noteAccess\.mjs';/);
   assert.match(note, /const canManage = isNoteOwner\(note, user\);/);
-  assert.match(note, /\{canManage && \(\s*<button[^>]*onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onToggleArchive/s);
+  assert.match(note, /\{onToggleArchive && \(\s*<button[^>]*onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onToggleArchive/s);
   assert.match(note, /\{canManage && onOpenCollaborate && \(/);
   assert.match(note, /const editorName = lastEditorName\(note\);/);
   assert.match(note, /className="note-edited-by"/);
@@ -44,12 +44,12 @@ test('the note editor hides owner-only tools and explains the shared state', () 
 
   assert.match(modal, /const canManage = !note \|\| isNoteOwner\(note, user\);/);
   // Destructural/strukturell bleibt beim Besitzer ...
-  assert.match(modal, /\{note && canManage && onToggleArchive && \(/);
+  assert.match(modal, /\{note && onToggleArchive && \(/);
   assert.match(modal, /\{note && canManage && onOpenCollaborate && \(/);
   assert.match(modal, /\{note && canManage && onDelete && \(/);
   // ... Inhaltliches (Bilder, Aufnahme) dürfen Mitbearbeiter ebenfalls,
   // passend zu den Server-Routen (requireEditableNote).
-  assert.match(modal, /\{!isDemo && note && settings\.aiFeatures\.voiceTranscription/);
+  assert.match(modal, /\{!isDemo && note && \(/);
   assert.doesNotMatch(modal, /\{!isDemo && note && canManage && settings\.aiFeatures/);
   assert.match(modal, /\{!isDemo && note && images && images\.length > 0 && \(/);
   assert.doesNotMatch(modal, /\{canManage && \(\s*<button\s*type="button"\s*className="image-delete-btn"/);

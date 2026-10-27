@@ -151,6 +151,7 @@ Detailed guides:
 - [CachyOS development and testing](docs/cachyos.md)
 - [Public demo operations](docs/public-demo.md)
 - [Current architecture](docs/architecture.md)
+- [Capture, editors, offline saves and personal organization](docs/keep-parity.md)
 - [Security audit and migration notes](AUDIT_REPORT.md)
 
 ## Persistent data and upgrades

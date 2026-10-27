@@ -13,7 +13,7 @@ private val sharedUserListType = Types.newParameterizedType(List::class.java, Sh
 private val noteImageListType = Types.newParameterizedType(List::class.java, NoteImageData::class.java)
 private val noteFileListType = Types.newParameterizedType(List::class.java, NoteFileData::class.java)
 
-private data class TodoItemData(val id: String, val text: String, val isCompleted: Boolean, val position: Int)
+private data class TodoItemData(val id: String, val text: String, val isCompleted: Boolean, val position: Int, val indent: Int = 0)
 private data class SharedUserData(val userId: String, val username: String)
 private data class NoteImageData(
     val filename: String,
@@ -51,7 +51,8 @@ fun NoteEntity.toDomain(): Note = Note(
     baseUpdatedAt = baseUpdatedAt?.let { raw -> runCatching { Instant.parse(raw) }.getOrNull() },
     remindAt = remindAtEpochMs?.let { Instant.ofEpochMilli(it) },
     parentId = parentId,
-    isCode = isCode
+    isCode = isCode,
+    features = runCatching { moshi.adapter(NoteFeatures::class.java).fromJson(featuresJson) }.getOrNull() ?: NoteFeatures()
 )
 
 fun Note.toEntity(): NoteEntity = NoteEntity(
@@ -74,19 +75,21 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     baseUpdatedAt = baseUpdatedAt?.toString(),
     remindAtEpochMs = remindAt?.toEpochMilli(),
     parentId = parentId,
-    isCode = isCode
+    isCode = isCode,
+    featuresJson = moshi.adapter(NoteFeatures::class.java).toJson(features),
+    ocrText = features.ocrText
 )
 
 private fun parseTodoItems(json: String): List<TodoItem> {
     return try {
         val adapter = moshi.adapter<List<TodoItemData>>(todoListType)
-        adapter.fromJson(json)?.map { TodoItem(it.id, it.text, it.isCompleted, it.position) } ?: emptyList()
+        adapter.fromJson(json)?.map { TodoItem(it.id, it.text, it.isCompleted, it.position, it.indent) } ?: emptyList()
     } catch (_: Exception) { emptyList() }
 }
 
 private fun serializeTodoItems(items: List<TodoItem>): String {
     val adapter = moshi.adapter<List<TodoItemData>>(todoListType)
-    return adapter.toJson(items.map { TodoItemData(it.id, it.text, it.isCompleted, it.position) })
+    return adapter.toJson(items.map { TodoItemData(it.id, it.text, it.isCompleted, it.position, it.indent) })
 }
 
 private fun parseStringList(json: String): List<String> {

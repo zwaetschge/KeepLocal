@@ -149,7 +149,7 @@ async function handleImageUpload(req, res) {
     }
 
     const note = await notesService.addImages(req.params.id, req.user._id, imageData);
-    res.json(note);
+    res.json(req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note);
   } catch (error) {
     console.error('[IMAGE UPLOAD] ✗ Error during upload:', error);
 
@@ -247,7 +247,7 @@ async function handleFileUpload(req, res) {
     }
 
     const note = await notesService.addFiles(req.params.id, req.user._id, fileData);
-    res.json(note);
+    res.json(req.query.personal==='true'?await require('../services/noteOrganization').projectNote(note,req.user._id):note);
   } catch (error) {
     console.error('[FILE UPLOAD] ✗ Error during upload:', error);
     tempFiles.forEach(filepath => {

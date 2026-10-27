@@ -37,6 +37,7 @@ data class NoteDraft(
     // inside a folder doesn't lose its shape on restore.
     @Json(name = "isCode") val isCode: Boolean = false,
     @Json(name = "parentId") val parentId: String? = null,
+    @Json(name = "features") val features: com.keeplocal.android.domain.model.NoteFeatures = com.keeplocal.android.domain.model.NoteFeatures(),
     @Json(name = "savedAt") val savedAt: Long = 0L
 ) {
     companion object {
@@ -52,7 +53,9 @@ data class NoteDraft(
 @JsonClass(generateAdapter = true)
 data class DraftTodoItem(
     @Json(name = "text") val text: String = "",
-    @Json(name = "isCompleted") val isCompleted: Boolean = false
+    @Json(name = "isCompleted") val isCompleted: Boolean = false,
+    @Json(name = "id") val id: String = "",
+    @Json(name = "indent") val indent: Int = 0
 )
 
 @Singleton

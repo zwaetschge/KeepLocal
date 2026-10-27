@@ -1,5 +1,7 @@
 package com.keeplocal.android.widget
 
+import com.keeplocal.android.data.local.entity.toDomain
+
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -64,7 +66,10 @@ class PinnedNotesWidget : GlanceAppWidget() {
                 .pinnedNotes()
                 .invoke(maxCount = MAX_NOTES)
         }.getOrNull()
-        val pinned = (notes as? Result.Success<List<Note>>)?.data ?: emptyList()
+        val filter=collectionWidgetPrefs(context).getString("filter_${(id as? androidx.glance.appwidget.AppWidgetId)?.appWidgetId}","pinned") ?: "pinned"
+        val pinned=if(filter=="pinned") (notes as? Result.Success<List<Note>>)?.data ?: emptyList() else {
+            EntryPointAccessors.fromApplication(context.applicationContext,WidgetEntryPoint::class.java).noteDao().getAllLiveNotesSync().map {it.toDomain()}.filter {filter=="all" || filter.removePrefix("tag:") in it.tags}.take(MAX_NOTES)
+        }
         // Widgets live outside the app theme; follow the system night mode so
         // the widget never blinds on a dark launcher (v1.7.0 Nr. 10).
         val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -199,5 +204,6 @@ class PinnedNotesWidgetReceiver : GlanceAppWidgetReceiver() {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface WidgetEntryPoint {
+    fun noteDao(): com.keeplocal.android.data.local.dao.NoteDao
     fun pinnedNotes(): GetPinnedNotesUseCase
 }

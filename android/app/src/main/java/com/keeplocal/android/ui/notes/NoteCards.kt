@@ -1,5 +1,7 @@
 package com.keeplocal.android.ui.notes
 
+import com.keeplocal.android.ui.components.noteBackground
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -220,8 +222,8 @@ fun NoteCard(
         // Tonal look (v1.7.0 Nr. 2): a real resting shadow instead of the
         // invisible 1dp, more on press.
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isSelected) 4.dp else 2.dp,
-            pressedElevation = 6.dp,
+            defaultElevation = if (isSelected) 2.dp else 0.dp,
+            pressedElevation = 2.dp,
             hoveredElevation = 3.dp
         ),
         colors = CardDefaults.cardColors(
@@ -235,7 +237,7 @@ fun NoteCard(
         }
     ) {
         CompositionLocalProvider(LocalContentColor provides cc.onCard) {
-            Column(modifier = Modifier.animateContentSize(animationSpec = Motion.short())) {
+            Column(modifier = Modifier.noteBackground(note.features.background,cc.onCard).animateContentSize(animationSpec = Motion.short())) {
                 // Full-bleed cover (v1.7.0 Nr. 2): edge to edge, outside the
                 // content padding, above title and text.
                 note.images.firstOrNull()?.let { cover ->
@@ -248,7 +250,8 @@ fun NoteCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (note.title.isNotBlank()) {
+                        note.features.drawing?.let { com.keeplocal.android.ui.components.NoteDrawingPreview(it,images=note.images) }
+                    if (note.title.isNotBlank()) {
                             Text(
                                 text = SearchHighlight.annotate(note.title, highlightQuery),
                                 style = MaterialTheme.typography.titleMedium,
@@ -339,7 +342,7 @@ fun NoteCard(
                         }
                     } else if (note.content.isNotBlank()) {
                         Text(
-                            text = SearchHighlight.annotate(note.content, highlightQuery),
+                            text = if(note.features.format=="rich" && highlightQuery.isBlank()) com.keeplocal.android.ui.components.richNoteText(note.content,note.features.marks) else SearchHighlight.annotate(note.content, highlightQuery),
                             style = MaterialTheme.typography.bodySmall,
                             color = cc.onCard,
                             maxLines = 8,
@@ -537,7 +540,7 @@ fun NoteRow(
             .doodleCard(CardShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = CardShape,
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = cc.onCard

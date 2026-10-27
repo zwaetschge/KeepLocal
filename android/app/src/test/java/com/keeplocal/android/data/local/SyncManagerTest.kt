@@ -469,8 +469,29 @@ class SyncManagerTest {
         Response.success(NotesResponseDto(notes = emptyList(), pages = 1))
 
     @Test
+    fun `personal projection upgrade refetches unchanged rows while protecting pending edits`() = runTest {
+        storedSignature="1/0/0/2026-09-22T10:00:00.000Z" // legacy signature, same server version
+        storedSince="2026-09-22T10:00:00.000Z"
+        val id="eeeeeeeeeeeeeeeeeeeeeeee"
+        val pending="ffffffffffffffffffffffff"
+        noteDao.insertNote(entity(id,title="Old projection"))
+        noteDao.insertNote(entity(pending,title="Local draft"))
+        enqueue(OperationType.UPDATE,pending)
+        coEvery {api.getNotesMeta()} returns meta()
+        coEvery {api.getNoteTree()} returns Response.success(listOf(NoteTreeNodeDto(id=id),NoteTreeNodeDto(id=pending)))
+        coEvery {api.getNotes(any(),any(),eq(false),any(),any(),any(),isNull())} returns Response.success(NotesResponseDto(notes=listOf(dto(id,"Personal projection").copy(color="#ccff90"),dto(pending,"Server version")),pages=1))
+        coEvery {api.getNotes(any(),any(),eq(true),any(),any(),any(),isNull())} returns emptyListPage()
+        assertEquals(1,syncManager.pullRemoteChanges())
+        assertEquals("Personal projection",noteDao.getNoteById(id)?.title)
+        assertEquals("green",noteDao.getNoteById(id)?.color)
+        assertEquals("Local draft",noteDao.getNoteById(pending)?.title)
+        assertTrue(storedSignature.startsWith(PERSONAL_SYNC_SIGNATURE_PREFIX))
+        coVerify(exactly=1){api.getNotes(any(),any(),eq(false),any(),any(),any(),isNull())}
+    }
+
+    @Test
     fun `unchanged signature skips the pull entirely`() = runTest {
-        storedSignature = "1/0/0/2026-09-22T10:00:00.000Z"
+        storedSignature = PERSONAL_SYNC_SIGNATURE_PREFIX + "1/0/0/2026-09-22T10:00:00.000Z"
         coEvery { api.getNotesMeta() } returns meta()
 
         assertEquals(0, syncManager.pullRemoteChanges())
@@ -506,12 +527,12 @@ class SyncManagerTest {
         assertNull("deleted server-side and not queued -> removed", noteDao.getNoteById("cccccccccccccccccccccccc"))
         assertNotNull("offline ids are not server notes", noteDao.getNoteById("offline_1"))
         assertNotNull("queued notes wait for their op", noteDao.getNoteById("dddddddddddddddddddddddd"))
-        assertEquals("2/0/0/2026-09-22T10:00:00.000Z", storedSignature)
+        assertEquals(PERSONAL_SYNC_SIGNATURE_PREFIX + "2/0/0/2026-09-22T10:00:00.000Z", storedSignature)
     }
 
     @Test
     fun `delta upserts changed notes but never overwrites queued edits`() = runTest {
-        storedSignature = ""
+        storedSignature = PERSONAL_SYNC_SIGNATURE_PREFIX + "older"
         storedSince = "2026-09-22T09:00:00.000Z"
         coEvery { api.getNotesMeta() } returns meta()
         coEvery { api.getNoteTree() } returns Response.success(
@@ -545,7 +566,7 @@ class SyncManagerTest {
 
     @Test
     fun `an edit queued mid-pull is honored by the live pending check`() = runTest {
-        storedSignature = ""
+        storedSignature = PERSONAL_SYNC_SIGNATURE_PREFIX + "older"
         storedSince = "2026-09-22T09:00:00.000Z"
         coEvery { api.getNotesMeta() } returns meta()
         coEvery { api.getNoteTree() } returns Response.success(

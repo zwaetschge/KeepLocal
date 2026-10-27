@@ -161,3 +161,13 @@
     border-right: none;
   }
 }
+
+.quick-capture { background: var(--bg-paper); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-sm); }
+.quick-capture.expanded { padding: 16px; }
+.quick-capture-row { display:flex; align-items:center; }
+.quick-capture-row .note-form-button { border:0; box-shadow:none; background:transparent; flex:1; }
+.capture-icon { min-width:44px; min-height:44px; border:0; background:transparent; color:var(--text-secondary); font-size:22px; cursor:pointer; }
+.quick-capture-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; padding-top:12px; }
+.quick-capture-actions button { min-height:40px; border:0; border-radius:6px; background:transparent; color:var(--text-primary); padding:8px; cursor:pointer; }
+.quick-capture-actions button:hover { background:var(--bg-tertiary); }
+.quick-capture textarea { min-height:80px; resize:vertical; }

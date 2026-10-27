@@ -13,8 +13,8 @@ android {
         applicationId = "com.keeplocal.android"
         minSdk = 33
         targetSdk = 34
-        versionCode = 32
-        versionName = "1.18.0"
+        versionCode = 33
+        versionName = "1.19.0-dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -73,6 +73,8 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.04.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
+
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
     // Compose
     implementation("androidx.compose.ui:ui")

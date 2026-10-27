@@ -60,7 +60,8 @@ interface KeepLocalApi {
         @Query("limit") limit: Int? = null,
         // Delta-Sync (v1.14.0 Nr. 6): ISO-8601 — only notes with
         // updatedAt > since come back (list AND pagination total).
-        @Query("since") since: String? = null
+        @Query("since") since: String? = null,
+        @Query("personal") personal: Boolean = true
     ): Response<NotesResponseDto>
 
     // Change probe (v1.14.0 Nr. 6): counts + max(updatedAt) in one
@@ -73,16 +74,18 @@ interface KeepLocalApi {
     // list itself. Registered before /{id} on the server, so no escaping
     // needed for the literal path segment.
     @GET("api/notes/tree")
-    suspend fun getNoteTree(): Response<List<NoteTreeNodeDto>>
+    suspend fun getNoteTree(@Query("personal") personal:Boolean=true): Response<List<NoteTreeNodeDto>>
 
     // Markdown export (v1.10.0): the whole tree as a ZIP built server-side
     // (folders become _index.md directories) — streamed, not buffered.
     @Streaming
     @GET("api/notes/export/markdown")
-    suspend fun exportMarkdown(): Response<okhttp3.ResponseBody>
+    suspend fun exportMarkdown(@Query("personal") personal:Boolean=true): Response<okhttp3.ResponseBody>
 
     @GET("api/notes/{id}")
-    suspend fun getNote(@Path("id") id: String): Response<NoteDto>
+    suspend fun getNote(@Path("id") id: String,
+        @Query("personal") personal: Boolean = true
+    ): Response<NoteDto>
 
     @POST("api/notes")
     suspend fun createNote(@Body note: CreateNoteDto): Response<NoteDto>
@@ -115,10 +118,14 @@ interface KeepLocalApi {
     suspend fun emptyTrash(): Response<EmptyTrashResponseDto>
 
     @POST("api/notes/{id}/pin")
-    suspend fun togglePin(@Path("id") id: String): Response<NoteDto>
+    suspend fun togglePin(@Path("id") id: String,
+        @Query("personal") personal: Boolean = true
+    ): Response<NoteDto>
 
     @POST("api/notes/{id}/archive")
-    suspend fun toggleArchive(@Path("id") id: String): Response<NoteDto>
+    suspend fun toggleArchive(@Path("id") id: String,
+        @Query("personal") personal: Boolean = true
+    ): Response<NoteDto>
 
     // Manual ordering (drag & drop). The server validates orderedIds as an
     // array of MongoIds (max 200) — offline ids must be filtered out and the
@@ -143,13 +150,15 @@ interface KeepLocalApi {
     @POST("api/notes/{id}/images")
     suspend fun uploadImages(
         @Path("id") id: String,
-        @Part images: List<MultipartBody.Part>
+        @Part images: List<MultipartBody.Part>,
+        @Query("personal") personal:Boolean=true
     ): Response<NoteDto>
 
     @DELETE("api/notes/{id}/images/{filename}")
     suspend fun deleteImage(
         @Path("id") id: String,
-        @Path("filename") filename: String
+        @Path("filename") filename: String,
+        @Query("personal") personal:Boolean=true
     ): Response<NoteDto>
 
     // PDF attachments (v1.14.0 Nr. 5): multipart field name "files", max 5
@@ -159,14 +168,20 @@ interface KeepLocalApi {
     @POST("api/notes/{id}/files")
     suspend fun uploadFiles(
         @Path("id") id: String,
-        @Part files: List<MultipartBody.Part>
+        @Part files: List<MultipartBody.Part>,
+        @Query("personal") personal:Boolean=true
     ): Response<NoteDto>
 
     @DELETE("api/notes/{id}/files/{filename}")
     suspend fun deleteFile(
         @Path("id") id: String,
-        @Path("filename") filename: String
+        @Path("filename") filename: String,
+        @Query("personal") personal:Boolean=true
     ): Response<NoteDto>
+
+    @Multipart
+    @POST("api/notes/{id}/recordings")
+    suspend fun uploadRecording(@Path("id") id:String,@Part audio:MultipartBody.Part,@Query("personal") personal:Boolean=true):Response<NoteDto>
 
     // Audio transcription (multipart field "audio", optional "language")
     @Multipart

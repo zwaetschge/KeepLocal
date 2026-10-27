@@ -66,9 +66,7 @@ function parseTrustProxy(value) {
 app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // CORS-Konfiguration
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
-  : ['http://localhost:3000'];
+const allowedOrigins = require('./config/allowedOrigins').configuredOrigins();
 
 if (process.env.NODE_ENV === 'production' && allowedOrigins.includes('*')) {
   throw new Error('ALLOWED_ORIGINS must list explicit origins in production');

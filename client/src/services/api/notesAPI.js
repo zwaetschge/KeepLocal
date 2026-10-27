@@ -1,3 +1,4 @@
+import {outbox,cachedRead} from './offlineNotes';
 import { API_ENDPOINTS } from '../../constants/api';
 import { fetchWithAuth, buildQueryString, getCsrfToken, parseResponse, toHttpError, API_BASE_URL } from './apiUtils';
 import { createRequestSignal, isAbortError, LONG_REQUEST_TIMEOUT_MS } from '../../utils/requestSignals.mjs';
@@ -50,6 +51,9 @@ async function fetchMultipart(url, formData, fallbackMessage) {
  * Handles all note-related operations (CRUD, pin, archive, share)
  */
 const notesAPI = {
+  extractImageText: (id, filename) => fetchWithAuth(`/api/notes/${id}/images/${encodeURIComponent(filename)}/text`, {method:'POST'}),
+  uploadRecording: (id, blob) => { const data=new FormData();data.append('audio',blob,'recording.webm');return fetchMultipart(`/api/notes/${id}/recordings?personal=true`,data,'Audio konnte nicht gespeichert werden'); },
+  getFacets: () => fetchWithAuth('/api/notes/facets'),
   /**
    * Get all notes with optional filtering
    * @param {Object} params - Query parameters (archived, tags, search, etc.)
@@ -59,8 +63,8 @@ const notesAPI = {
    * @returns {Promise<Array>} Array of notes
    */
   getAll: (params = {}, options = {}) => {
-    const query = buildQueryString(params);
-    return fetchWithAuth(`${API_ENDPOINTS.NOTES.BASE}${query ? `?${query}` : ''}`, { signal: options.signal });
+    const query = buildQueryString({...params,personal:true});
+    return cachedRead(query,()=>fetchWithAuth(`${API_ENDPOINTS.NOTES.BASE}${query ? `?${query}` : ''}`, { signal: options.signal }));
   },
 
   /**
@@ -69,7 +73,15 @@ const notesAPI = {
    * @param {Object} [options] - `{ signal }`
    * @returns {Promise<Object>} Note data
    */
-  getById: (id, options = {}) => fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id), { signal: options.signal }),
+  getById: (id, options = {}) => {
+    const owner=outbox.owner;
+    return id.startsWith('local_') ? outbox.cachedNote(id,owner)
+      : fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}?personal=true`, { signal: options.signal })
+          .then(note=>outbox.cacheNote(note,owner)).catch(error=>{
+            if(error.status || error.code==='ABORTED')throw error;
+            return outbox.cachedNote(id,owner);
+          });
+  },
 
   /**
    * Light note-tree projection (v1.10.0): flat list of {id, parentId, title,
@@ -81,7 +93,7 @@ const notesAPI = {
   getTree: (params = {}, options = {}) => {
     // params (v1.16.0): { since } liefert nur geänderte Knoten — der Server
     // kann das seit v1.13, der Client schickte es bis v1.15 nie.
-    const query = buildQueryString(params);
+    const query = buildQueryString({...params,personal:true});
     return fetchWithAuth(`${API_ENDPOINTS.NOTES.TREE}${query ? `?${query}` : ''}`, { signal: options.signal });
   },
 
@@ -100,7 +112,7 @@ const notesAPI = {
    * @returns {Promise<Blob>} ZIP blob
    */
   exportMarkdown: async () => {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.EXPORT_MARKDOWN}`, {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.NOTES.EXPORT_MARKDOWN}?personal=true`, {
       credentials: 'include',
       headers: getCsrfToken() ? { 'X-CSRF-Token': getCsrfToken() } : {},
     });
@@ -113,11 +125,7 @@ const notesAPI = {
    * @param {Object} noteData - Note data (title, content, color, etc.)
    * @returns {Promise<Object>} Created note
    */
-  create: (noteData) =>
-    fetchWithAuth(API_ENDPOINTS.NOTES.BASE, {
-      method: 'POST',
-      body: JSON.stringify(noteData),
-    }),
+  create: (noteData) => outbox.write('create', null, noteData),
 
   /**
    * Aenderungs-Sonde fuer den 60s-Poll (v1.13.0 Nr. 9): Zaehlungen und
@@ -195,7 +203,7 @@ const notesAPI = {
   tagOperation: (action, from, to) =>
     fetchWithAuth(API_ENDPOINTS.NOTES.TAGS, {
       method: 'PATCH',
-      body: JSON.stringify({ action, from, to }),
+      body: JSON.stringify({ action, from, to, personalOrganization:true }),
     }),
 
   /**
@@ -204,21 +212,14 @@ const notesAPI = {
    * @param {Object} noteData - Updated note data
    * @returns {Promise<Object>} Updated note
    */
-  update: (id, noteData) =>
-    fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id), {
-      method: 'PUT',
-      body: JSON.stringify(noteData),
-    }),
+  update: (id, noteData) => outbox.write('update', id, noteData),
 
   /**
    * Delete a note
    * @param {string} id - Note ID
    * @returns {Promise<Object>} Deletion confirmation
    */
-  delete: (id) =>
-    fetchWithAuth(API_ENDPOINTS.NOTES.BY_ID(id), {
-      method: 'DELETE',
-    }),
+  delete: (id) => outbox.write('delete', id),
 
   /**
    * Persist a manual order (drag & drop) for one section
@@ -266,7 +267,7 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note
    */
   togglePin: (id) =>
-    fetchWithAuth(API_ENDPOINTS.NOTES.PIN(id), {
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.PIN(id)}?personal=true`, {
       method: 'POST',
     }),
 
@@ -276,7 +277,7 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note
    */
   toggleArchive: (id) =>
-    fetchWithAuth(API_ENDPOINTS.NOTES.ARCHIVE(id), {
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.ARCHIVE(id)}?personal=true`, {
       method: 'POST',
     }),
 
@@ -321,13 +322,14 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note with images
    */
   uploadImages: async (id, files) => {
+    id=await outbox.resolveId(id);if(id.startsWith('local_'))throw new Error('Bilder können nach der Synchronisation hochgeladen werden');
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('images', file));
 
     // Manual fetch for multipart/form-data (don't set Content-Type, browser will
     // set it with boundary) — inkl. Abort/Timeout und code/status/retryAfter.
     return fetchMultipart(
-      `${API_ENDPOINTS.NOTES.BY_ID(id)}/images`,
+      `${API_ENDPOINTS.NOTES.BY_ID(id)}/images?personal=true`,
       formData,
       'Bild-Upload fehlgeschlagen'
     );
@@ -340,7 +342,7 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note without the image
    */
   deleteImage: (id, filename) =>
-    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${encodeURIComponent(filename)}`, {
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/images/${encodeURIComponent(filename)}?personal=true`, {
       method: 'DELETE',
     }),
 
@@ -351,11 +353,12 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note with files
    */
   uploadFiles: async (id, files) => {
+    id=await outbox.resolveId(id);if(id.startsWith('local_'))throw new Error('Anhänge können nach der Synchronisation hochgeladen werden');
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('files', file));
 
     return fetchMultipart(
-      `${API_ENDPOINTS.NOTES.BY_ID(id)}/files`,
+      `${API_ENDPOINTS.NOTES.BY_ID(id)}/files?personal=true`,
       formData,
       'Datei-Upload fehlgeschlagen'
     );
@@ -368,7 +371,7 @@ const notesAPI = {
    * @returns {Promise<Object>} Updated note without the attachment
    */
   deleteFile: (id, filename) =>
-    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/files/${encodeURIComponent(filename)}`, {
+    fetchWithAuth(`${API_ENDPOINTS.NOTES.BY_ID(id)}/files/${encodeURIComponent(filename)}?personal=true`, {
       method: 'DELETE',
     }),
 

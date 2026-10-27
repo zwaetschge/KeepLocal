@@ -49,6 +49,8 @@ interface MediaRepository {
      * Uploads the recorded audio file (M4A/AAC) and returns the transcription.
      * The server does NOT append the text to the note — the caller does.
      */
+    suspend fun uploadRecording(noteId: String, audioFile: File): Result<Note> = Result.Error("Audio storage unavailable")
+
     suspend fun transcribeAudio(noteId: String, audioFile: File): Result<TranscriptionResult>
 
     /**
