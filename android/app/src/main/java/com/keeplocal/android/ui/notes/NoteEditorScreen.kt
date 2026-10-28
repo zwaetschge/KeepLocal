@@ -8,22 +8,19 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import com.keeplocal.android.ui.components.noteBackground
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
@@ -40,6 +37,9 @@ import androidx.compose.ui.input.key.type
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -66,7 +66,6 @@ import com.keeplocal.android.util.MarkdownText
 import com.keeplocal.android.util.NoteLinkDetector
 import com.keeplocal.android.util.PdfNoteRenderer
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -107,8 +106,12 @@ fun NoteEditorContent(
     onOpenNote: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showAddMenu by remember { mutableStateOf(false) }
+    var showListSettings by remember { mutableStateOf(false) }
+    var showLabels by remember { mutableStateOf(false) }
+    var showFormatting by remember { mutableStateOf(false) }
+    var formatAction by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var showImageTools by remember { mutableStateOf(false) }
-    var showBackgrounds by remember {mutableStateOf(false)}
     var showDrawing by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
@@ -183,15 +186,6 @@ fun NoteEditorContent(
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(5)
     ) { uris -> viewModel.onImagesPicked(uris) }
-    LaunchedEffect(uiState.captureKind) {
-        when(uiState.captureKind) {
-            "image" -> imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            "drawing" -> showDrawing=true
-        }
-        if(uiState.captureKind!=null)viewModel.clearCaptureRequest()
-    }
-
-
     // SAF document picker for PDF attachments (v1.14.0 Nr. 5): no storage
     // permission needed, the ViewModel enforces the 25-per-note budget.
     val filePicker = rememberLauncherForActivityResult(
@@ -214,6 +208,17 @@ fun NoteEditorContent(
             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
+
+    LaunchedEffect(uiState.captureKind) {
+        when(uiState.captureKind) {
+            "image" -> imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            "list" -> if (uiState.todoItems.isEmpty()) viewModel.addTodoItem()
+            "drawing" -> showDrawing=true
+            "audio" -> onMicPressed()
+        }
+        if(uiState.captureKind!=null)viewModel.clearCaptureRequest()
+    }
+
 
     // Reminder notifications (v1.8.0 Nr. 2): POST_NOTIFICATIONS is asked for
     // the moment the user actually wants a reminder, never on startup.
@@ -257,6 +262,7 @@ fun NoteEditorContent(
 
     Scaffold(
         modifier = Modifier
+            .imePadding()
             .onPreviewKeyEvent { event ->
                 // Hardware keyboard: Ctrl+S saves, Ctrl+Enter appends a todo
                 // item, Esc leaves (saving pending changes like the back arrow).
@@ -293,95 +299,76 @@ fun NoteEditorContent(
                     }
                 },
                 actions = {
-                    // Pin/Unpin button
-                    IconButton(onClick = { viewModel.togglePin() }) {
-                        Icon(
-                            imageVector = if (uiState.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = stringResource(if (uiState.isPinned) R.string.cd_unpin_note else R.string.cd_pin_note),
-                            tint = if (uiState.isPinned) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    IconButton(onClick = viewModel::togglePin) {
+                        Icon(if (uiState.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                            stringResource(if (uiState.isPinned) R.string.cd_unpin_note else R.string.cd_pin_note))
                     }
-                    if (!uiState.isNewNote) {
-                        IconButton(onClick = {
-                            viewModel.loadFriends()
-                            showShareDialog = true
-                        }) {
-                            Icon(Icons.Default.PersonAdd, contentDescription = stringResource(R.string.editor_share))
-                        }
+                    IconButton(onClick = { showReminderSheet = true }) {
+                        Icon(Icons.Default.AddAlert, stringResource(R.string.reminder_add))
                     }
-                    IconButton(onClick = { viewModel.toggleTodoList() }) {
-                        Icon(
-                            if (uiState.isTodoList) Icons.AutoMirrored.Filled.Notes else Icons.Default.CheckBox,
-                            contentDescription = stringResource(R.string.editor_todo_mode)
-                        )
-                    }
-                    // Code note (v1.10.0): monospaced content.
-                    IconButton(onClick = { viewModel.toggleCode() }) {
-                        Icon(
-                            Icons.Default.Code,
-                            contentDescription = stringResource(R.string.editor_code_mode),
-                            tint = if (uiState.isCode) MaterialTheme.colorScheme.primary
-                                   else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Markdown preview (v1.18.0): swap rendered/raw in place.
-                    if (markdownEnabled) {
-                        IconButton(onClick = { showRawContent = !showRawContent }) {
-                            Icon(
-                                if (showRawContent) Icons.Default.Visibility else Icons.Default.Edit,
-                                contentDescription = stringResource(
-                                    if (showRawContent) R.string.editor_markdown_rendered
-                                    else R.string.editor_markdown_raw
-                                )
-                            )
-                        }
-                    }
-                    IconButton(onClick = { showColorPicker = true }) {
-                        Icon(Icons.Default.Palette, contentDescription = stringResource(R.string.editor_color))
-                    }
-                    // Overflow (v1.9.0): find-in-note + share-as-PDF, so the
-                    // icon row stays put even as the actions grow.
-                    Box {
-                        IconButton(onClick = { showOverflow = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_actions))
-                        }
-                        DropdownMenu(
-                            expanded = showOverflow,
-                            onDismissRequest = { showOverflow = false }
-                        ) {
-                            if (!uiState.isTodoList) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.search_in_note)) },
-                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                    onClick = {
-                                        showOverflow = false
-                                        showFindBar = true
-                                        // Hits are painted into the raw field.
-                                        showRawContent = true
-                                    }
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.pdf_share)) },
-                                leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
-                                onClick = {
-                                    showOverflow = false
-                                    shareAsPdf()
-                                }
-                            )
-                        }
-                    }
-                    IconButton(onClick = viewModel::save, enabled = !uiState.isSaving) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.editor_save))
-                        }
+                    IconButton(onClick = viewModel::archiveAndClose, enabled = !uiState.isSaving) {
+                        Icon(if (uiState.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
+                            stringResource(if (uiState.isArchived) R.string.editor_unarchive else R.string.cd_archive_note))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )
+        },
+        bottomBar = {
+            Surface(color = backgroundColor) {
+                Column {
+                if (showFormatting && uiState.features.format == "rich" && !uiState.isTodoList && !uiState.isCode && !showFindBar) {
+                    com.keeplocal.android.ui.components.NoteFormattingToolbar(formatAction)
+                }
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        IconButton(onClick = { showAddMenu = true }) { Icon(Icons.Default.AddBox, stringResource(R.string.editor_add_content)) }
+                        DropdownMenu(showAddMenu, { showAddMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_add_image)) }, leadingIcon = { Icon(Icons.Default.Image, null) }, onClick = {
+                                showAddMenu = false
+                                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }, enabled = uiState.uploadingImageCount == 0)
+                            DropdownMenuItem(text = { Text(stringResource(R.string.capture_drawing)) }, leadingIcon = { Icon(Icons.Default.Draw, null) }, onClick = { showAddMenu = false; showDrawing = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_start_recording)) }, leadingIcon = { Icon(Icons.Default.Mic, null) }, onClick = { showAddMenu = false; onMicPressed() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_todo_mode)) }, leadingIcon = { Icon(Icons.Default.CheckBox, null) }, onClick = { showAddMenu = false; viewModel.toggleTodoList() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_add_file)) }, leadingIcon = { Icon(Icons.Default.AttachFile, null) }, onClick = { showAddMenu = false; filePicker.launch(arrayOf("application/pdf")) }, enabled = uiState.uploadingFileCount == 0)
+                        }
+                    }
+                    IconButton(onClick = { showColorPicker = true }) { Icon(Icons.Default.Palette, stringResource(R.string.editor_color)) }
+                    if (!uiState.isTodoList && !uiState.isCode) IconButton(onClick = {
+                        showFormatting = if (uiState.features.format != "rich") true else !showFormatting
+                        if (uiState.features.format != "rich") viewModel.setFeatures(uiState.features.copy(format = "rich"))
+                    }) { Icon(Icons.Default.TextFormat, stringResource(R.string.editor_format)) }
+                    Text(
+                        if (uiState.isSaving) stringResource(R.string.sync_banner_syncing, 1)
+                        else if (uiState.draftSavedAt > 0 && uiState.hasChanges) stringResource(R.string.editor_draft_saved)
+                        else uiState.baseUpdatedAt?.let { formatReminderTime(it) }.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                    )
+                    Box {
+                        IconButton(onClick = { showOverflow = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.cd_more_actions)) }
+                        DropdownMenu(showOverflow, { showOverflow = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_labels)) }, leadingIcon = { Icon(Icons.Default.Label, null) }, onClick = { showOverflow = false; showLabels = true })
+                            if (!uiState.isNewNote) DropdownMenuItem(text = { Text(stringResource(R.string.editor_share)) }, leadingIcon = { Icon(Icons.Default.PersonAdd, null) }, onClick = { showOverflow = false; viewModel.loadFriends(); showShareDialog = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_code_mode)) }, onClick = { showOverflow = false; viewModel.toggleCode() })
+                            if (uiState.isTodoList) DropdownMenuItem(text = { Text(stringResource(R.string.list_settings)) }, onClick = { showOverflow = false; showListSettings = true })
+                            if (!uiState.isTodoList) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.search_in_note)) }, leadingIcon = { Icon(Icons.Default.Search, null) }, onClick = { showOverflow = false; showFindBar = true; showRawContent = true })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.editor_plain_text)) }, onClick = { showOverflow = false; viewModel.setFeatures(uiState.features.copy(format = "plain")); showRawContent = true })
+                            }
+                            if (markdownEnabled) DropdownMenuItem(text = { Text(stringResource(if (showRawContent) R.string.editor_markdown_rendered else R.string.editor_markdown_raw)) }, onClick = { showOverflow = false; showRawContent = !showRawContent })
+                            if (uiState.images.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.ocr_image_index, 1)) }, onClick = { showOverflow = false; showImageTools = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pdf_share)) }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }, onClick = { showOverflow = false; shareAsPdf() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.editor_save)) }, leadingIcon = { Icon(Icons.Default.Check, null) }, enabled = !uiState.isSaving, onClick = { showOverflow = false; viewModel.save() })
+                        }
+                    }
+                }
+                }
+            }
         },
         containerColor = backgroundColor
     ) { padding ->
@@ -397,6 +384,8 @@ fun NoteEditorContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .noteBackground(uiState.features.background, MaterialTheme.colorScheme.onSurface)
+                .verticalScroll(rememberScrollState())
         ) {
             // Color picker (v1.7.0 Nr. 7): bottom sheet instead of a row that
             // pushed the whole editor down. Renders in its own window, so its
@@ -419,7 +408,8 @@ fun NoteEditorContent(
                             val colorValue = NoteColorUtil.colorFor(color)
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(48.dp)
+                                    .semantics { contentDescription = color.name; selected = color == uiState.color }
                                     .clip(CircleShape)
                                     .background(colorValue)
                                     .then(
@@ -445,39 +435,64 @@ fun NoteEditorContent(
                             }
                         }
                     }
+                    Text(stringResource(R.string.note_background), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("none", "grid", "lines", "dots", "leaves", "sand").forEach { key ->
+                            FilterChip(selected = uiState.features.background == key,
+                                onClick = { viewModel.setFeatures(uiState.features.copy(background = key)) },
+                                label = { Text(stringResource(when (key) {
+                                    "grid" -> R.string.background_grid; "lines" -> R.string.background_lines
+                                    "dots" -> R.string.background_dots; "leaves" -> R.string.background_leaves
+                                    "sand" -> R.string.background_sand; else -> R.string.background_none
+                                })) })
+                        }
+                    }
                 }
             }
 
-            // Subtle autosave confirmation (v1.7.0 Nr. 7): flashes for two
-            // seconds after the draft landed in the store.
-            var draftSavedVisible by remember { mutableStateOf(false) }
-            LaunchedEffect(uiState.draftSavedAt) {
-                if (uiState.draftSavedAt > 0L) {
-                    draftSavedVisible = true
-                    delay(2000)
-                    draftSavedVisible = false
-                }
-            }
-            AnimatedVisibility(visible = draftSavedVisible) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        stringResource(R.string.editor_draft_saved),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            // Image attachments (uploads render as placeholder cells)
+            if (uiState.images.isNotEmpty() || uiState.uploadingImageCount > 0) {
+                NoteImageGrid(
+                    images = uiState.images,
+                    uploadingCount = uiState.uploadingImageCount,
+                    onImageClick = { index -> viewerIndex = index },
+                    onDeleteImage = { image -> viewModel.deleteImage(image) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
             }
 
+            com.keeplocal.android.ui.components.AudioAttachments(uiState.files.filter{it.mimeType?.startsWith("audio/")==true},viewModel.mediaRepositoryForPlayback(),onError={viewModel.reportMediaError(it)},onDelete=viewModel::deleteFile)
+            // PDF attachments (v1.14.0 Nr. 5): chips open in the system
+            // viewer (cache download — the file route needs the session
+            // cookie), trailing X deletes.
+            if (uiState.files.isNotEmpty() || uiState.uploadingFileCount > 0) {
+                FileAttachmentRow(
+                    files = uiState.files.filter {it.mimeType?.startsWith("audio/")!=true},
+                    uploadingCount = uiState.uploadingFileCount,
+                    onOpenFile = { file ->
+                        viewerScope.launch {
+                            val opened = FileActions.openInViewer(context, file)
+                            if (!opened) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.file_open_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    onDeleteFile = { file -> viewModel.deleteFile(file) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            uiState.features.drawing?.takeIf { it.strokes.isNotEmpty() }?.let {
+                com.keeplocal.android.ui.components.NoteDrawingPreview(it, images = uiState.images)
+            }
             // Title (v1.7.0 Nr. 7): big and growing — multi-line instead of a
             // cramped single-line field, capped at three lines.
             TextField(
@@ -522,14 +537,6 @@ fun NoteEditorContent(
                             modifier = Modifier.size(16.dp)
                         )
                     }
-                } else {
-                    AssistChip(
-                        onClick = { showReminderSheet = true },
-                        label = { Text(stringResource(R.string.reminder_add)) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
-                        }
-                    )
                 }
             }
 
@@ -593,12 +600,15 @@ fun NoteEditorContent(
                     onOptions={viewModel.setFeatures(uiState.features.copy(list=it))},onText=viewModel::updateTodoItem,
                     onToggle=viewModel::toggleTodoItemCompleted,onMove=viewModel::moveTodoItem,onIndent=viewModel::indentTodoItem,
                     onDelete=viewModel::removeTodoItem,onAdd=viewModel::addTodoItem,onCleanup=viewModel::cleanupTodoItems,
-                    modifier=Modifier.fillMaxWidth().weight(1f))
-            } else if (uiState.features.format == "rich" && !uiState.isCode) {
+                    settingsOpen = showListSettings, onDismissSettings = { showListSettings = false },
+                    modifier=Modifier.fillMaxWidth())
+            } else if (uiState.features.format == "rich" && !uiState.isCode && !showFindBar) {
                 com.keeplocal.android.ui.components.RichNoteField(
                     text=uiState.content,marks=uiState.features.marks,
                     onChange={text,marks -> viewModel.updateContent(text);viewModel.setFeatures(uiState.features.copy(format="rich",marks=marks))},
-                    modifier=Modifier.fillMaxWidth().weight(1f)
+                    modifier=Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                    onFormatActionChanged = { formatAction = it },
+                    requestInitialFocus = uiState.isNewNote && uiState.captureKind !in listOf("drawing", "image", "audio") && !showDrawing
                 )
             } else if (showMarkdownPreview) {
                 // Rendered markdown (v1.18.0): the preview replaces the raw
@@ -607,8 +617,7 @@ fun NoteEditorContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .heightIn(min = 80.dp)
                 ) {
                     val blocks = remember(uiState.content) {
                         MarkdownRenderer.parseMarkdown(uiState.content)
@@ -631,7 +640,7 @@ fun NoteEditorContent(
                     value = uiState.content,
                     onValueChange = viewModel::updateContent,
                     placeholder = { Text(stringResource(R.string.editor_content_hint)) },
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
                     textStyle = if (uiState.isCode) {
                         MaterialTheme.typography.bodyLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                     } else {
@@ -715,120 +724,11 @@ fun NoteEditorContent(
                 }
             }
 
-            // Image attachments (uploads render as placeholder cells)
-            if (uiState.images.isNotEmpty() || uiState.uploadingImageCount > 0) {
-                NoteImageGrid(
-                    images = uiState.images,
-                    uploadingCount = uiState.uploadingImageCount,
-                    onImageClick = { index -> viewerIndex = index },
-                    onDeleteImage = { image -> viewModel.deleteImage(image) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
-
-            com.keeplocal.android.ui.components.AudioAttachments(uiState.files.filter{it.mimeType?.startsWith("audio/")==true},viewModel.mediaRepositoryForPlayback(),onError={viewModel.reportMediaError(it)},onDelete=viewModel::deleteFile)
-            // PDF attachments (v1.14.0 Nr. 5): chips open in the system
-            // viewer (cache download — the file route needs the session
-            // cookie), trailing X deletes.
-            if (uiState.files.isNotEmpty() || uiState.uploadingFileCount > 0) {
-                FileAttachmentRow(
-                    files = uiState.files.filter {it.mimeType?.startsWith("audio/")!=true},
-                    uploadingCount = uiState.uploadingFileCount,
-                    onOpenFile = { file ->
-                        viewerScope.launch {
-                            val opened = FileActions.openInViewer(context, file)
-                            if (!opened) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.file_open_failed),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onDeleteFile = { file -> viewModel.deleteFile(file) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
-
-            // Attachment row: add image, dictate, inline media hints
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
-                    enabled = uiState.uploadingImageCount == 0
-                ) {
-                    if (uiState.uploadingImageCount > 0) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.Default.AddPhotoAlternate,
-                            contentDescription = stringResource(R.string.editor_add_image)
-                        )
-                    }
-                }
-                if(uiState.images.isNotEmpty()) IconButton(onClick={showImageTools=true}) {Text("OCR")}
-                IconButton(onClick={showDrawing=true}) {Text("✎")}
-                Box {
-                    TextButton(onClick={showBackgrounds=true}){Text(stringResource(R.string.note_background))}
-                    DropdownMenu(showBackgrounds,{showBackgrounds=false}){
-                        listOf("none","grid","lines","dots","leaves","sand").forEach {key->DropdownMenuItem(text={Text(stringResource(when(key){"grid"->R.string.background_grid;"lines"->R.string.background_lines;"dots"->R.string.background_dots;"leaves"->R.string.background_leaves;"sand"->R.string.background_sand;else->R.string.background_none}))},onClick={viewModel.setFeatures(uiState.features.copy(background=key));showBackgrounds=false})}
-                    }
-                }
-                IconButton(onClick={viewModel.setFeatures(uiState.features.copy(format=if(uiState.features.format=="rich") "plain" else "rich"))}) {Text("Aa")}
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = { filePicker.launch(arrayOf("application/pdf")) },
-                    enabled = uiState.uploadingFileCount == 0
-                ) {
-                    if (uiState.uploadingFileCount > 0) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.Default.AttachFile,
-                            contentDescription = stringResource(R.string.editor_add_file)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                // Hidden — not disabled — while the account-wide dictation
-                // switch is off (aiFeatures.voiceTranscription).
-                run {
-                    AudioRecordButton(
-                        isRecording = uiState.isRecording,
-                        isTranscribing = uiState.isTranscribing,
-                        elapsedMs = uiState.recordingElapsedMs,
-                        onClick = { onMicPressed() }
-                    )
-                }
-                // A recording survived a 429 budget refusal: offer the retry
-                // the WebUI offers, instead of silently keeping the file.
-                if (uiState.canRetryTranscription) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    AssistChip(
-                        onClick = { viewModel.retryTranscription() },
-                        label = { Text(stringResource(R.string.transcribe_retry)) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    )
+            if (uiState.isRecording || uiState.isTranscribing || uiState.canRetryTranscription) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AudioRecordButton(isRecording = uiState.isRecording, isTranscribing = uiState.isTranscribing,
+                        elapsedMs = uiState.recordingElapsedMs, onClick = { onMicPressed() })
+                    if (uiState.canRetryTranscription) TextButton(onClick = viewModel::retryTranscription) { Text(stringResource(R.string.transcribe_retry)) }
                 }
             }
                 uiState.mediaHint?.let { hint ->
@@ -898,7 +798,14 @@ fun NoteEditorContent(
                 }
             }
 
-            // Tags
+            if (uiState.tags.isNotEmpty()) Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                uiState.tags.forEach { tag -> AssistChip(onClick = { showLabels = true }, label = { Text(tag) }) }
+            }
+            if (showLabels) ModalBottomSheet(onDismissRequest = { showLabels = false }) {
+                Text(stringResource(R.string.editor_labels), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
@@ -983,6 +890,9 @@ fun NoteEditorContent(
                     }
                 }
             }
+                Spacer(Modifier.height(24.dp))
+            }
+
         }
 
         uiState.errorMessage?.let { error ->

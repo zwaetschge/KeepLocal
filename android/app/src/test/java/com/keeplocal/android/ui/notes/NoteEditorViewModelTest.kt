@@ -458,4 +458,51 @@ class NoteEditorViewModelTest {
 
         assertNotNull(viewModel.uiState.value.mediaHint)
     }
+    @Test
+    fun `archive saves latest content before toggling persisted note`() = runTest {
+        coEvery { createNoteUseCase(any()) } returns Result.Success(testNote)
+        coEvery { noteRepository.toggleArchive("1") } returns Result.Success(testNote.copy(isArchived = true))
+        val vm = createViewModel()
+        vm.updateTitle("New thought")
+        vm.navigateBack.test {
+            vm.archiveAndClose()
+            advanceUntilIdle()
+            assertEquals(Unit, awaitItem())
+        }
+        coVerify(exactly = 1) { createNoteUseCase(match { it.title == "New thought" }) }
+        coVerify(exactly = 1) { noteRepository.toggleArchive("1") }
+        assertTrue(vm.uiState.value.isArchived)
+    }
+
+    @Test
+    fun `failed archive retains saved id so retry cannot create duplicate`() = runTest {
+        coEvery { createNoteUseCase(any()) } returns Result.Success(testNote)
+        coEvery { updateNoteUseCase(any()) } returns Result.Success(testNote)
+        coEvery { noteRepository.toggleArchive("1") } returnsMany listOf(Result.Error("Archive failed"), Result.Success(testNote.copy(isArchived = true)))
+        val vm = createViewModel()
+        vm.updateTitle("Thought")
+        vm.archiveAndClose()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isNewNote)
+        assertEquals("1", vm.uiState.value.id)
+        vm.archiveAndClose()
+        advanceUntilIdle()
+        coVerify(exactly = 1) { createNoteUseCase(any()) }
+        coVerify(exactly = 1) { updateNoteUseCase(any()) }
+        coVerify(exactly = 2) { noteRepository.toggleArchive("1") }
+    }
+
+    @Test
+    fun `editing archived note preserves its local archived flag`() = runTest {
+        coEvery { getNoteUseCase("1") } returns Result.Success(testNote.copy(isArchived = true))
+        coEvery { updateNoteUseCase(any()) } answers { Result.Success(firstArg()) }
+        val vm = createViewModel("1")
+        advanceUntilIdle()
+        vm.updateTitle("Still archived")
+        vm.save()
+        advanceUntilIdle()
+        coVerify { updateNoteUseCase(match { it.isArchived && it.title == "Still archived" }) }
+        coVerify(exactly = 0) { noteRepository.toggleArchive(any()) }
+    }
+
 }

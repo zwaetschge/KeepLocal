@@ -1,21 +1,25 @@
 package com.keeplocal.android.ui.notes
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -43,15 +47,17 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
@@ -61,7 +67,6 @@ import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.outlined.PushPin
@@ -70,8 +75,6 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -80,7 +83,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
@@ -97,22 +99,17 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,7 +118,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -133,6 +129,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -150,15 +148,9 @@ import com.keeplocal.android.ui.components.EmptyState
 import com.keeplocal.android.ui.components.EmptyStateVariant
 import com.keeplocal.android.ui.components.ShimmerNoteGrid
 import com.keeplocal.android.ui.components.ShimmerNoteList
-import com.keeplocal.android.ui.theme.Motion
-import com.keeplocal.android.ui.theme.doodleCard
 import com.keeplocal.android.util.NoteShareFormatter
 import com.keeplocal.android.util.Ordering
 import com.keeplocal.android.util.UiState
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.max
 import kotlinx.coroutines.flow.collect
@@ -167,7 +159,7 @@ import kotlinx.coroutines.launch
 private val SidebarWidth = 264.dp
 
 /** Minimum readable width of a note card; the grid fits as many as this allows. */
-private val MinNoteColumnWidth = 190.dp
+private val MinNoteColumnWidth = 160.dp
 
 /**
  * Below this window width the permanent sidebar starts collapsed to an icon
@@ -336,6 +328,7 @@ private fun NotesSinglePaneLayout(
             ) { sidebar() }
             NotesPane(
                 viewModel = viewModel,
+                onOpenSettings = onNavigateToSettings,
                 showMenuButton = false,
                 onOpenDrawer = {},
                 onOpenNote = { onNavigateToEditor(it, null) },
@@ -351,6 +344,7 @@ private fun NotesSinglePaneLayout(
         ) {
             NotesPane(
                 viewModel = viewModel,
+                onOpenSettings = onNavigateToSettings,
                 showMenuButton = true,
                 onOpenDrawer = { scope.launch { drawerState.open() } },
                 onOpenNote = { onNavigateToEditor(it, null) },
@@ -397,6 +391,7 @@ private fun NotesTwoPaneLayout(
     val listPane = @Composable { modifier: Modifier ->
         NotesPane(
             viewModel = viewModel,
+                onOpenSettings = onNavigateToSettings,
             showMenuButton = false,
             onOpenDrawer = {},
             onOpenNote = { id -> detail = EditorRequest(noteId = id, serial = editorSerial) },
@@ -535,6 +530,7 @@ private fun NotesPane(
     viewModel: NotesViewModel,
     showMenuButton: Boolean,
     onOpenDrawer: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenNote: (String) -> Unit,
     onCreateNote: () -> Unit,
     selectedNoteId: String?,
@@ -545,10 +541,11 @@ private fun NotesPane(
     val snackbarHostState = remember { SnackbarHostState() }
     var showSearch by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf<String?>(null) }
-    var showContextMenu by remember { mutableStateOf<Note?>(null) }
     var showTagDialog by remember { mutableStateOf(false) }
     var showExtraFilters by remember { mutableStateOf(false) }
     var showCaptureMenu by remember { mutableStateOf(false) }
+    var showSelectionMenu by remember { mutableStateOf(false) }
+    var showListOptions by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
     val context = LocalContext.current
@@ -631,6 +628,13 @@ private fun NotesPane(
         }
     }
 
+    BackHandler(enabled = showSearch || uiState.isMultiSelectMode) {
+        if (uiState.isMultiSelectMode) viewModel.clearSelection() else closeSearch()
+    }
+    LaunchedEffect(showSearch) {
+        if (showSearch) { withFrameNanos { }; searchFocus.requestFocus() }
+    }
+
     Scaffold(
         modifier = modifier
             .onPreviewKeyEvent { event ->
@@ -686,116 +690,113 @@ private fun NotesPane(
                         IconButton(onClick = { showTagDialog = true }) {
                             Icon(Icons.Default.Label, contentDescription = stringResource(R.string.cd_tag_selection))
                         }
-                        // Bulk move (v1.10.0): the whole selection into one folder.
-                        IconButton(onClick = { viewModel.beginMove(null) }) {
-                            Icon(Icons.Default.DriveFileMove, contentDescription = stringResource(R.string.cd_move_selection))
-                        }
                         IconButton(onClick = viewModel::archiveSelectedNotes) {
                             Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.cd_archive_note))
                         }
                         IconButton(onClick = viewModel::deleteSelectedNotes) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete_note))
                         }
+                        Box {
+                            IconButton(onClick = { showSelectionMenu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.cd_more_actions)) }
+                            DropdownMenu(showSelectionMenu, { showSelectionMenu = false }) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.action_move)) }, onClick = { showSelectionMenu = false; viewModel.beginMove(null) })
+                                if (selectedNotes.size == 1) DropdownMenuItem(text = { Text(stringResource(R.string.action_share)) }, onClick = { showSelectionMenu = false; shareNoteAsText(selectedNotes.single()) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.action_duplicate)) }, onClick = {
+                                    showSelectionMenu = false
+                                    selectedNotes.forEach { viewModel.duplicateNote(it.id, context.getString(R.string.duplicate_copy_label)) }
+                                    viewModel.clearSelection()
+                                })
+                            }
+                        }
                     }
                 )
             } else {
-                TopAppBar(
-                    title = {
-                        // AppBar <-> search field morph (v1.7.0 Nr. 6): the
-                        // title and the expanding field slide+fade into each
-                        // other instead of popping.
-                        AnimatedContent(
-                            targetState = showSearch,
-                            transitionSpec = {
-                                (fadeIn(animationSpec = Motion.short()) +
-                                    slideInHorizontally(animationSpec = Motion.short()) { it / 4 }) togetherWith
-                                    (fadeOut(animationSpec = Motion.short()) +
-                                        slideOutHorizontally(animationSpec = Motion.short()) { -it / 4 })
-                            },
-                            label = "search_morph"
-                        ) { searching ->
-                            if (searching) {
-                                TextField(
+                Column(Modifier.statusBarsPadding()) {
+                    Surface(
+                        shape = RoundedCornerShape(32.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (showSearch || showMenuButton) IconButton(onClick = {
+                                if (showSearch) closeSearch() else onOpenDrawer()
+                            }) {
+                                Icon(if (showSearch) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Menu,
+                                    stringResource(if (showSearch) R.string.cd_back else R.string.cd_menu))
+                            } else Spacer(Modifier.width(16.dp))
+                            if (showSearch) {
+                                BasicTextField(
                                     value = uiState.searchQuery,
                                     onValueChange = viewModel::onSearchQueryChanged,
-                                    placeholder = {
-                                        Text(
-                                            stringResource(R.string.notes_search),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .focusRequester(searchFocus),
+                                    modifier = Modifier.weight(1f).focusRequester(searchFocus),
                                     singleLine = true,
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        disabledIndicatorColor = Color.Transparent
-                                    ),
-                                    textStyle = MaterialTheme.typography.bodyLarge
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                                    decorationBox = { field ->
+                                        Box {
+                                            if (uiState.searchQuery.isEmpty()) Text(stringResource(R.string.notes_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            field()
+                                        }
+                                    }
                                 )
+                                IconButton(onClick = { showExtraFilters = true }) {
+                                    Icon(Icons.Default.Tune, stringResource(R.string.note_filters))
+                                }
+                                if (uiState.searchQuery.isNotEmpty()) IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(Icons.Default.Close, stringResource(R.string.clear))
+                                }
                             } else {
-                                Text(
-                                    when {
-                                        uiState.showArchived -> stringResource(R.string.notes_archived)
-                                        uiState.selectedTag != null -> uiState.selectedTag!!
-                                        folderBreadcrumb != null -> folderBreadcrumb
-                                        else -> stringResource(R.string.notes_title)
-                                    },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Surface(onClick = { showSearch = true }, color = Color.Transparent, modifier = Modifier.weight(1f)) {
+                                    Box(Modifier.height(56.dp), contentAlignment = Alignment.CenterStart) {
+                                        Text(stringResource(R.string.notes_search), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                IconButton(onClick = viewModel::toggleViewMode) {
+                                    Icon(if (isListMode) Icons.Default.GridView else Icons.Default.ViewAgenda,
+                                        stringResource(if (isListMode) R.string.cd_view_grid else R.string.cd_view_list))
+                                }
+                                Box {
+                                    IconButton(onClick = { showListOptions = true }) {
+                                        val username = uiState.ownerNames[uiState.currentUserId]
+                                        if (username.isNullOrBlank()) Icon(Icons.Default.AccountCircle, stringResource(R.string.note_account))
+                                        else Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.size(32.dp).then(Modifier.semantics { contentDescription = username })) {
+                                            Box(contentAlignment = Alignment.Center) { Text(username.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimaryContainer) }
+                                        }
+                                    }
+                                    DropdownMenu(showListOptions, { showListOptions = false }) {
+                                        uiState.ownerNames[uiState.currentUserId]?.let { username ->
+                                            DropdownMenuItem(text = { Text(username) }, enabled = false, onClick = {})
+                                        }
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.nav_settings)) }, onClick = { showListOptions = false; onOpenSettings() })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.sort_label)) }, onClick = { showListOptions = false; showSortDialog = true })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.note_filters)) }, onClick = { showListOptions = false; showSearch = true; showExtraFilters = true })
+                                    }
+                                }
                             }
                         }
-                    },
-                    navigationIcon = {
-                        if (showMenuButton) {
-                            IconButton(onClick = onOpenDrawer) {
-                                Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.cd_menu))
-                            }
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick={showExtraFilters=true}) {Text("☷")}
-                        // Sort mode picker (v1.8.0 Nr. 9).
-                        IconButton(onClick = { showSortDialog = true }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = stringResource(R.string.sort_label)
-                            )
-                        }
-                        IconButton(onClick = viewModel::toggleViewMode) {
-                            Icon(
-                                if (isListMode) Icons.Default.GridView else Icons.Default.ViewAgenda,
-                                contentDescription = stringResource(
-                                    if (isListMode) R.string.cd_view_grid else R.string.cd_view_list
-                                )
-                            )
-                        }
-                        IconButton(onClick = { if (showSearch) closeSearch() else showSearch = true }) {
-                            Icon(
-                                if (showSearch) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = stringResource(R.string.cd_search)
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
-                    )
-                )
+                    }
+                    val sectionTitle = when {
+                        uiState.showArchived -> stringResource(R.string.notes_archived)
+                        uiState.selectedTag != null -> uiState.selectedTag
+                        folderBreadcrumb != null -> folderBreadcrumb
+                        else -> null
+                    }
+                    if (sectionTitle != null) Text(sectionTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                    if (uiState.colorFilter != null || uiState.personFilter != null) TextButton(onClick = { viewModel.setColorFilter(null); viewModel.setPersonFilter(null) }, modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Text(stringResource(R.string.filters_reset))
+                    }
+                }
             }
         },
         floatingActionButton = {
             if (!uiState.showArchived && !uiState.isMultiSelectMode) {
                 FloatingActionButton(
                     onClick = {showCaptureMenu=true},
-                    containerColor = MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(20.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_add_note))
                 }
@@ -813,9 +814,6 @@ private fun NotesPane(
             // can't resolve BoxWithConstraints.maxWidth via implicit receiver.
             val paneMaxWidth = this@BoxWithConstraints.maxWidth
             Column(modifier = Modifier.fillMaxSize()) {
-                if(!showSearch && !uiState.isMultiSelectMode)Surface(onClick={showSearch=true},shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
-                    Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Search,contentDescription=null);Spacer(Modifier.width(12.dp));Text(stringResource(R.string.notes_search),style=MaterialTheme.typography.bodyLarge)}
-                }
                 if (uiState.syncBanner != SyncBanner.None) {
                     SyncStatusBanner(
                         banner = uiState.syncBanner,
@@ -968,7 +966,7 @@ private fun NotesPane(
                             val columnCount = if (isListMode) {
                                 1
                             } else {
-                                max(1, floor(paneMaxWidth / MinNoteColumnWidth).toInt())
+                                if (paneMaxWidth < 600.dp) 2 else max(2, floor(paneMaxWidth / MinNoteColumnWidth).toInt())
                             }
                             val allNotes = notes.data
                             // Explicit sorts (v1.8.0 Nr. 9) show ONE flat sequence —
@@ -1010,13 +1008,12 @@ private fun NotesPane(
                             val currentOrderedIds by rememberUpdatedState(orderedIds)
                             val currentPinnedIds by rememberUpdatedState(pinnedIdSet)
                             val currentUiState by rememberUpdatedState(uiState)
-                            val currentAllNotes by rememberUpdatedState(allNotes)
                             val currentManualSort by rememberUpdatedState(manualSort)
 
                             LazyVerticalStaggeredGrid(
                                 state = gridState,
                                 columns = StaggeredGridCells.Fixed(columnCount),
-                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 80.dp),
+                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalItemSpacing = 8.dp,
                                 modifier = Modifier
@@ -1025,7 +1022,7 @@ private fun NotesPane(
                                         detectDragGesturesAfterLongPress(
                                             onDragStart = { start ->
                                                 val id = noteIdAt(gridState.layoutInfo, start)
-                                                if (id != null && !currentUiState.isMultiSelectMode && !currentUiState.showArchived) {
+                                                if (id != null && !currentUiState.isMultiSelectMode) {
                                                     draggingId = id
                                                     dragMoved = false
                                                     dragFinger = start
@@ -1039,7 +1036,7 @@ private fun NotesPane(
                                                 dragMoved = true
                                                 // Reordering only exists in the custom order —
                                                 // sorted views keep their chosen sequence.
-                                                if (currentManualSort) {
+                                                if (currentManualSort && !currentUiState.showArchived) {
                                                     val target = noteIdAt(gridState.layoutInfo, dragFinger)
                                                     if (target != null && target != id) {
                                                         val newOrder = Ordering.orderAfterDrop(
@@ -1055,11 +1052,11 @@ private fun NotesPane(
                                                 val id = draggingId
                                                 draggingId = null
                                                 if (id != null) {
-                                                    if (dragMoved && currentManualSort) {
+                                                    if (dragMoved && currentManualSort && !currentUiState.showArchived) {
                                                         viewModel.commitDragReorder(currentOrderedIds)
                                                     } else if (!dragMoved) {
-                                                        // Long-press without moving: context menu.
-                                                        showContextMenu = currentAllNotes.find { it.id == id }
+                                                        // Keep selects on a stationary long press; moving still reorders.
+                                                        viewModel.toggleNoteSelection(id)
                                                     }
                                                 }
                                             },
@@ -1070,23 +1067,15 @@ private fun NotesPane(
                                         )
                                     }
                             ) {
-                                if (!uiState.showArchived && !uiState.isMultiSelectMode) {
-                                    item(span = StaggeredGridItemSpan.FullLine) {
-                                        QuickCreateBar(onClick = onCreateNote)
-                                    }
-                                }
-
                                 val noteItem: @Composable (Note) -> Unit = { note ->
                                     DraggableNoteCard(isDragged = note.id == draggingId) {
                                         AnimatedNoteCard(
                                             note = note,
                                             uiState = uiState,
-                                            compact = isListMode,
                                             isSelected = note.id == selectedNoteId ||
                                                 note.id in uiState.selectedNoteIds,
                                             onOpen = { onOpenNote(note.id) },
                                             viewModel = viewModel,
-                                            haptic = haptic,
                                             archivedText = archivedText,
                                             onDelete = { showDeleteConfirm = note.id }
                                         )
@@ -1124,7 +1113,7 @@ private fun NotesPane(
 
                 // Visible sync status (v1.8.0 Nr. 3): when the list last
                 // matched the server, pulled-to-refresh or background sync.
-                LastSyncFooter(lastSyncAt = uiState.lastSyncAt)
+                // Sync failures remain visible in the banner; routine sync stays quiet.
             }
         }
     }
@@ -1205,43 +1194,6 @@ private fun NotesPane(
         )
     }
 
-    // Context menu bottom sheet (replaces WebUI drag & drop)
-    showContextMenu?.let { note ->
-        NoteContextSheet(
-            note = note,
-            onDismiss = { showContextMenu = null },
-            onPin = {
-                viewModel.togglePin(note.id)
-                showContextMenu = null
-            },
-            onMove = {
-                showContextMenu = null
-                viewModel.beginMove(note.id)
-            },
-            onArchive = {
-                viewModel.toggleArchive(note.id)
-                viewModel.showSnackbar(archivedText)
-                showContextMenu = null
-            },
-            onDelete = {
-                showContextMenu = null
-                showDeleteConfirm = note.id
-            },
-            onEdit = {
-                showContextMenu = null
-                onOpenNote(note.id)
-            },
-            onShare = {
-                showContextMenu = null
-                shareNoteAsText(note)
-            },
-            onDuplicate = {
-                showContextMenu = null
-                viewModel.duplicateNote(note.id, context.getString(R.string.duplicate_copy_label))
-            }
-        )
-    }
-
     // Sort mode picker (v1.8.0 Nr. 9): custom order stays the default; the
     // others re-read the window from the Room cache instantly.
     if(showExtraFilters) ModalBottomSheet(onDismissRequest={showExtraFilters=false}) {
@@ -1258,8 +1210,8 @@ private fun NotesPane(
     }
     if (showCaptureMenu) {
         ModalBottomSheet(onDismissRequest={showCaptureMenu=false}) {
-            listOf("text" to R.string.capture_text,"list" to R.string.capture_list,"image" to R.string.capture_image,"drawing" to R.string.capture_drawing).forEach { (kind,label) ->
-                ListItem(headlineContent={Text(stringResource(label))},modifier=Modifier.fillMaxWidth().clickable {
+            listOf("text" to R.string.capture_text,"list" to R.string.capture_list,"image" to R.string.capture_image,"drawing" to R.string.capture_drawing,"audio" to R.string.editor_start_recording).forEach { (kind,label) ->
+                ListItem(headlineContent={Text(stringResource(label))}, leadingContent = { Icon(when(kind) { "audio" -> Icons.Default.Mic; "list" -> androidx.compose.material.icons.Icons.Default.CheckBox; "image" -> androidx.compose.material.icons.Icons.Default.Image; "drawing" -> androidx.compose.material.icons.Icons.Default.Draw; else -> Icons.Default.Edit }, null) }, modifier=Modifier.fillMaxWidth().clickable {
                     com.keeplocal.android.util.IncomingIntents.prepareCapture(kind)
                     showCaptureMenu=false
                     onCreateNote()
@@ -1333,7 +1285,7 @@ private fun MovePickerDialog(
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.move_to_root)) },
                     leadingContent = { Icon(Icons.Default.Home, contentDescription = null) },
-                    modifier = Modifier.clickableListItem { onPick(null) }
+                    modifier = Modifier.clickable { onPick(null) }
                 )
                 if (candidates.isEmpty()) {
                     Text(
@@ -1355,7 +1307,7 @@ private fun MovePickerDialog(
                         leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
                         modifier = Modifier
                             .padding(start = (depth * 12).dp)
-                            .clickableListItem { onPick(note.id) }
+                            .clickable { onPick(note.id) }
                     )
                 }
             }
@@ -1376,36 +1328,6 @@ private fun sortModeLabel(mode: SortMode): String = stringResource(
         SortMode.TITLE -> R.string.sort_title_az
     }
 )
-
-/**
- * Quiet "zuletzt synchronisiert" line under the note list. Empty before the
- * first sync so a fresh install doesn't start with a warning color.
- */
-@Composable
-private fun LastSyncFooter(lastSyncAt: Long) {
-    val text = when {
-        lastSyncAt <= 0L -> stringResource(R.string.sync_last_never)
-        System.currentTimeMillis() - lastSyncAt < 60_000L -> stringResource(R.string.sync_just_now)
-        else -> stringResource(R.string.sync_last_prefix) + " " + formatSyncTime(lastSyncAt)
-    }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-    )
-}
-
-/** Short local timestamp for the sync footer ("17.9. 14:32"). */
-private fun formatSyncTime(epochMillis: Long): String = try {
-    DateTimeFormatter.ofPattern("d.M. HH:mm").withLocale(Locale.getDefault())
-        .format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
-} catch (_: Exception) {
-    "-"
-}
 
 /**
  * Slim status strip above the note list: syncing/pending while offline changes
@@ -1487,138 +1409,6 @@ private fun EmptyNotes() {
     )
 }
 
-// Quick-create bar matching WebUI "Notiz eingeben..."
-@Composable
-private fun QuickCreateBar(onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 8.dp)
-            .doodleCard(RoundedCornerShape(8.dp)),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
-            hoveredElevation = 4.dp,
-            pressedElevation = 4.dp
-        ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                Icons.Default.Edit,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                text = stringResource(R.string.notes_quick_create),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
-        }
-    }
-}
-
-// Long-press context menu bottom sheet (functional parity with WebUI drag & drop)
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NoteContextSheet(
-    note: Note,
-    onDismiss: () -> Unit,
-    onPin: () -> Unit,
-    onMove: () -> Unit,
-    onArchive: () -> Unit,
-    onDelete: () -> Unit,
-    onEdit: () -> Unit,
-    onShare: () -> Unit,
-    onDuplicate: () -> Unit
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(bottom = 24.dp)) {
-            if (note.title.isNotBlank()) {
-                Text(
-                    text = note.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.editor_edit_note)) },
-                leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                modifier = Modifier.clickableListItem(onEdit)
-            )
-            // Move into a folder (v1.10.0) — the tree's mobile counterpart to
-            // the WebUI's drag & drop.
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.action_move)) },
-                leadingContent = { Icon(Icons.Default.DriveFileMove, contentDescription = null) },
-                modifier = Modifier.clickableListItem(onMove)
-            )
-            // Share as text / duplicate (v1.8.0 Nr. 8) — the two actions that
-            // used to be WebUI-only.
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.action_share)) },
-                leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
-                modifier = Modifier.clickableListItem(onShare)
-            )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.action_duplicate)) },
-                leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
-                modifier = Modifier.clickableListItem(onDuplicate)
-            )
-            ListItem(
-                headlineContent = {
-                    Text(
-                        if (note.isPinned) {
-                            stringResource(R.string.cd_unpin_note)
-                        } else {
-                            stringResource(R.string.cd_pin_note)
-                        }
-                    )
-                },
-                leadingContent = {
-                    Icon(
-                        if (note.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                        contentDescription = null
-                    )
-                },
-                modifier = Modifier.clickableListItem(onPin)
-            )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.cd_archive_note)) },
-                leadingContent = { Icon(Icons.Default.Archive, contentDescription = null) },
-                modifier = Modifier.clickableListItem(onArchive)
-            )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.delete)) },
-                leadingContent = {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                colors = ListItemDefaults.colors(headlineColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.clickableListItem(onDelete)
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-private fun Modifier.clickableListItem(onClick: () -> Unit): Modifier =
-    this.then(Modifier.combinedClickable(onClick = onClick))
-
 // Note card with slide-in animation (matching WebUI noteSlideIn). No
 // onLongClick here on purpose: the grid-level long-press gesture owns it
 // (drag reorder, or context menu on a long-press without movement).
@@ -1626,11 +1416,9 @@ private fun Modifier.clickableListItem(onClick: () -> Unit): Modifier =
 private fun AnimatedNoteCard(
     note: Note,
     uiState: NotesScreenState,
-    compact: Boolean,
     isSelected: Boolean,
     onOpen: () -> Unit,
     viewModel: NotesViewModel,
-    haptic: HapticFeedback,
     archivedText: String,
     onDelete: () -> Unit
 ) {
@@ -1648,7 +1436,7 @@ private fun AnimatedNoteCard(
         SwipeableNoteCard(
             note = note,
             isSelected = isSelected,
-            compact = compact,
+            compact = false,
             onClick = {
                 if (uiState.isMultiSelectMode) viewModel.toggleNoteSelection(note.id) else onOpen()
             },

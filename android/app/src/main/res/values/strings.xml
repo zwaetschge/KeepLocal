@@ -556,4 +556,12 @@
     <string name="background_dots">Dots</string>
     <string name="background_leaves">Leaves</string>
     <string name="background_sand">Sand</string>
+    <string name="note_filters">Filters</string>
+    <string name="editor_format">Formatting</string>
+    <string name="editor_add_content">Add to note</string>
+    <string name="editor_saved_quiet">Saved</string>
+    <string name="editor_labels">Labels</string>
+    <string name="editor_plain_text">Plain text</string>
+    <string name="editor_unarchive">Unarchive</string>
+    <string name="note_account">Account and settings</string>
 </resources>

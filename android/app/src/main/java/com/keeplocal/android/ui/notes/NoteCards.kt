@@ -1,5 +1,9 @@
 package com.keeplocal.android.ui.notes
 
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.keeplocal.android.ui.components.noteBackground
 
 import androidx.compose.animation.animateColorAsState
@@ -48,10 +52,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,7 +77,7 @@ import com.keeplocal.android.util.ChecklistProgress
 import com.keeplocal.android.util.SearchHighlight
 import java.time.Instant
 
-private val CardShape = RoundedCornerShape(8.dp)
+private val CardShape = RoundedCornerShape(12.dp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,6 +214,7 @@ fun NoteCard(
                 scaleY = pressScale
             }
             .doodleCard(CardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -223,18 +226,15 @@ fun NoteCard(
         // invisible 1dp, more on press.
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (isSelected) 2.dp else 0.dp,
-            pressedElevation = 2.dp,
-            hoveredElevation = 3.dp
+            pressedElevation = 0.dp,
+            hoveredElevation = 0.dp
         ),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = cc.onCard
         ),
-        border = if (isSelected) {
-            CardDefaults.outlinedCardBorder().copy(width = 2.dp)
-        } else {
-            null
-        }
+        border = BorderStroke(if (isSelected) 2.dp else 1.dp,
+            if (isSelected) MaterialTheme.colorScheme.primary else cc.chipOutline)
     ) {
         CompositionLocalProvider(LocalContentColor provides cc.onCard) {
             Column(modifier = Modifier.noteBackground(note.features.background,cc.onCard).animateContentSize(animationSpec = Motion.short())) {
@@ -245,12 +245,12 @@ fun NoteCard(
                 }
 
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    note.features.drawing?.let { com.keeplocal.android.ui.components.NoteDrawingPreview(it, images = note.images) }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        note.features.drawing?.let { com.keeplocal.android.ui.components.NoteDrawingPreview(it,images=note.images) }
                     if (note.title.isNotBlank()) {
                             Text(
                                 text = SearchHighlight.annotate(note.title, highlightQuery),
@@ -343,9 +343,9 @@ fun NoteCard(
                     } else if (note.content.isNotBlank()) {
                         Text(
                             text = if(note.features.format=="rich" && highlightQuery.isBlank()) com.keeplocal.android.ui.components.richNoteText(note.content,note.features.marks) else SearchHighlight.annotate(note.content, highlightQuery),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = cc.onCard,
-                            maxLines = 8,
+                            maxLines = 12,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -538,6 +538,7 @@ fun NoteRow(
         modifier = modifier
             .fillMaxWidth()
             .doodleCard(CardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = CardShape,
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp),
@@ -545,11 +546,8 @@ fun NoteRow(
             containerColor = containerColor,
             contentColor = cc.onCard
         ),
-        border = if (isSelected) {
-            CardDefaults.outlinedCardBorder().copy(width = 2.dp)
-        } else {
-            null
-        }
+        border = BorderStroke(if (isSelected) 2.dp else 1.dp,
+            if (isSelected) MaterialTheme.colorScheme.primary else cc.chipOutline)
     ) {
         CompositionLocalProvider(LocalContentColor provides cc.onCard) {
             Row(
