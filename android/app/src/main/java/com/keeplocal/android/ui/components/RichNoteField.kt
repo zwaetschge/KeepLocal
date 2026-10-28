@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +47,9 @@ fun shiftTextMarks(marks: List<TextMark>,before: String,after: String): List<Tex
 }
 
 @Composable
-fun RichNoteField(text: String, marks: List<TextMark>, onChange:(String,List<TextMark>)->Unit, modifier:Modifier=Modifier) {
+fun RichNoteField(text: String, marks: List<TextMark>, onChange:(String,List<TextMark>)->Unit, modifier:Modifier=Modifier, requestInitialFocus:Boolean=false, onFormatActionChanged:(((String)->Unit)?)->Unit = {}) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (requestInitialFocus) { withFrameNanos { }; focus.requestFocus() } }
     var field by remember { mutableStateOf(TextFieldValue(text)) }
     LaunchedEffect(text) { if(field.text!=text)field=TextFieldValue(text,TextRange(text.length)) }
     fun format(type:String) {
@@ -65,16 +69,28 @@ fun RichNoteField(text: String, marks: List<TextMark>, onChange:(String,List<Tex
         if(!remove)next.add(TextMark(type,start,end))
         onChange(text,next)
     }
+    val currentFormat = rememberUpdatedState<(String) -> Unit>({ format(it) })
+    DisposableEffect(Unit) {
+        onFormatActionChanged { type -> currentFormat.value(type) }
+        onDispose { onFormatActionChanged(null) }
+    }
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            listOf("H1" to "h1","H2" to "h2","B" to "bold","I" to "italic","U" to "underline","Aa" to "clear").forEach { (label,type) ->
-                TextButton(onClick={format(type)},enabled=field.selection.min!=field.selection.max || type.startsWith("h")) {Text(label)}
-            }
-        }
         TextField(value=field,onValueChange={value->if(value.text.length<=10000){val next=shiftTextMarks(marks,field.text,value.text);field=value;onChange(value.text,next)}},
-            modifier=Modifier.fillMaxWidth().weight(1f),
+            modifier=Modifier.fillMaxWidth().heightIn(min = 80.dp).focusRequester(focus),
+            placeholder = { Text(androidx.compose.ui.res.stringResource(com.keeplocal.android.R.string.editor_content_hint)) },
             visualTransformation=VisualTransformation { value -> TransformedText(richNoteText(value.text,marks),OffsetMapping.Identity) },
             colors=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent),
             textStyle=MaterialTheme.typography.bodyLarge)
+
+    }
+}
+
+/** A keyboard-adjacent toolbar; long notes cannot push it off screen. */
+@Composable
+fun NoteFormattingToolbar(onFormat: ((String) -> Unit)?) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        listOf("H1" to "h1", "H2" to "h2", "B" to "bold", "I" to "italic", "U" to "underline", "Aa" to "clear").forEach { (label, type) ->
+            TextButton(onClick = { onFormat?.invoke(type) }, enabled = onFormat != null) { Text(label) }
+        }
     }
 }

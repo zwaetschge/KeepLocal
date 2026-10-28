@@ -105,10 +105,10 @@ fun NotesSidebarContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                KeepLocalLogo(size = 36.dp)
+                KeepLocalLogo(size = 28.dp)
                 Text(
                     text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineSmall.copy(
+                    style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = (-0.5).sp
                     ),
@@ -146,6 +146,60 @@ fun NotesSidebarContent(
                 isDark = isDark,
                 onClick = onSelectNotes
             )
+            // v1.9.0 Nr. 5: everything with a reminder still ahead.
+            SidebarItem(
+                icon = { Icon(Icons.Default.Alarm, contentDescription = null) },
+                label = stringResource(R.string.upcoming_title),
+                isActive = false,
+                isDark = isDark,
+                onClick = onSelectReminders
+            )
+            if (state.availableTags.isNotEmpty()) {
+                @Suppress("DEPRECATION")
+                Divider(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                Text(
+                    text = stringResource(R.string.nav_tags).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 1.sp
+                    ),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                state.availableTags.forEach { tag ->
+                    // Palette dot (v1.10.0) instead of the label icon when the
+                    // account gave this tag a color.
+                    val dot = remember(tag, state.tagColors) {
+                        tagChipColor(state.tagColors[tag])
+                    }
+                    SidebarItem(
+                        icon = {
+                            if (dot != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(11.dp)
+                                        .clip(CircleShape)
+                                        .background(dot)
+                                )
+                            } else {
+                                Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null)
+                            }
+                        },
+                        label = tag,
+                        isActive = state.selectedTag == tag,
+                        isDark = isDark,
+                        onClick = { onSelectTag(tag) }
+                    )
+                }
+                // v1.9.0 Nr. 3: rename/merge/delete lives one tap behind the list.
+                SidebarItem(
+                    icon = { Icon(Icons.Default.Sell, contentDescription = null) },
+                    label = stringResource(R.string.tags_title),
+                    isActive = false,
+                    isDark = isDark,
+                    onClick = onNavigateToTags
+                )
+            }
             SidebarItem(
                 icon = { Icon(Icons.Default.Archive, contentDescription = null) },
                 label = stringResource(R.string.nav_archive),
@@ -159,14 +213,6 @@ fun NotesSidebarContent(
                 isActive = false,
                 isDark = isDark,
                 onClick = onSelectTrash
-            )
-            // v1.9.0 Nr. 5: everything with a reminder still ahead.
-            SidebarItem(
-                icon = { Icon(Icons.Default.Alarm, contentDescription = null) },
-                label = stringResource(R.string.upcoming_title),
-                isActive = false,
-                isDark = isDark,
-                onClick = onSelectReminders
             )
             // Journal (v1.10.0): today's note, created on first access.
             SidebarItem(
@@ -232,52 +278,6 @@ fun NotesSidebarContent(
                 }
             }
 
-            if (state.availableTags.isNotEmpty()) {
-                @Suppress("DEPRECATION")
-                Divider(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-                Text(
-                    text = stringResource(R.string.nav_tags).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 1.sp
-                    ),
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                state.availableTags.forEach { tag ->
-                    // Palette dot (v1.10.0) instead of the label icon when the
-                    // account gave this tag a color.
-                    val dot = remember(tag, state.tagColors) {
-                        tagChipColor(state.tagColors[tag])
-                    }
-                    SidebarItem(
-                        icon = {
-                            if (dot != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(11.dp)
-                                        .clip(CircleShape)
-                                        .background(dot)
-                                )
-                            } else {
-                                Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null)
-                            }
-                        },
-                        label = tag,
-                        isActive = state.selectedTag == tag,
-                        isDark = isDark,
-                        onClick = { onSelectTag(tag) }
-                    )
-                }
-                // v1.9.0 Nr. 3: rename/merge/delete lives one tap behind the list.
-                SidebarItem(
-                    icon = { Icon(Icons.Default.Sell, contentDescription = null) },
-                    label = stringResource(R.string.tags_title),
-                    isActive = false,
-                    isDark = isDark,
-                    onClick = onNavigateToTags
-                )
-            }
             Spacer(modifier = Modifier.height(8.dp))
         }
 

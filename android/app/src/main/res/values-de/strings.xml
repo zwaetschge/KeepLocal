@@ -544,4 +544,12 @@
     <string name="background_dots">Punkte</string>
     <string name="background_leaves">Blätter</string>
     <string name="background_sand">Sand</string>
+    <string name="note_filters">Filter</string>
+    <string name="editor_format">Formatierung</string>
+    <string name="editor_add_content">Zur Notiz hinzufügen</string>
+    <string name="editor_saved_quiet">Gespeichert</string>
+    <string name="editor_labels">Labels</string>
+    <string name="editor_plain_text">Nur Text</string>
+    <string name="editor_unarchive">Aus Archiv holen</string>
+    <string name="note_account">Konto und Einstellungen</string>
 </resources>

@@ -63,6 +63,7 @@ data class NoteEditorState(
     val content: String = "",
     val color: NoteColor = NoteColor.DEFAULT,
     val isPinned: Boolean = false,
+    val isArchived: Boolean = false,
     val isTodoList: Boolean = false,
     val todoItems: List<TodoItem> = emptyList(),
     val tags: List<String> = emptyList(),
@@ -368,6 +369,7 @@ class NoteEditorViewModel @Inject constructor(
                         content = note.content,
                         color = note.color,
                         isPinned = note.isPinned,
+                        isArchived = note.isArchived,
                         isTodoList = note.isTodoList,
                         todoItems = note.todoItems,
                         tags = note.tags,
@@ -1037,9 +1039,15 @@ class NoteEditorViewModel @Inject constructor(
         _uiState.update { state -> state.copy(todoItems=state.todoItems.mapIndexed { i,row -> if(i==index) row.copy(indent=if(row.indent==0) 1 else 0) else row },hasChanges=true) }
     }
 
-    fun save() {
+    fun save() = saveAndClose(archive = false)
+
+    /** Save the edited content before archiving, including a newly created note. */
+    fun archiveAndClose() = saveAndClose(archive = true)
+
+    private fun saveAndClose(archive: Boolean) {
         viewModelScope.launch {
             val state = _uiState.value
+            if (state.isSaving) return@launch
             if (state.title.isBlank() && state.content.isBlank() && state.todoItems.all { it.text.isBlank() } && state.images.isEmpty() && state.files.isEmpty() && state.features.drawing?.strokes.isNullOrEmpty()) {
                 _navigateBack.emit(Unit)
                 return@launch
@@ -1054,7 +1062,7 @@ class NoteEditorViewModel @Inject constructor(
                 content = state.content,
                 color = state.color,
                 isPinned = state.isPinned,
-                isArchived = false,
+                isArchived = state.isArchived,
                 isTodoList = state.isTodoList,
                 todoItems = if (state.isTodoList) state.todoItems else emptyList(),
                 tags = state.tags,
@@ -1081,8 +1089,22 @@ class NoteEditorViewModel @Inject constructor(
             }
 
             if (result.isSuccess) {
-                _uiState.update { it.copy(isSaving = false, hasChanges = false) }
+                val saved = result.getOrNull()!!
+                // If archive fails, retry edits against this saved id/version;
+                // never create a duplicate of the newly saved note.
+                _uiState.update { it.copy(id = saved.id, isNewNote = false,
+                    baseUpdatedAt = saved.baseUpdatedAt ?: saved.updatedAt, hasChanges = false) }
                 noteDraftStore.clear()
+                if (archive) {
+                    val archived = noteRepository.toggleArchive(saved.id)
+                    if (archived.isError) {
+                        _uiState.update { it.copy(isSaving = false) }
+                        setErrorMessage((archived as Result.Error).message)
+                        return@launch
+                    }
+                    _uiState.update { it.copy(isArchived = archived.getOrNull()!!.isArchived) }
+                }
+                _uiState.update { it.copy(isSaving = false) }
                 _navigateBack.emit(Unit)
             } else {
                 _uiState.update { it.copy(isSaving = false) }
