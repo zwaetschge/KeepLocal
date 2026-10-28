@@ -2,7 +2,7 @@
 .note-modal-overlay { background:rgb(0 0 0 / .5); backdrop-filter:none; -webkit-backdrop-filter:none; align-items:center; }
 .note-modal { max-width:600px; margin:0; border-radius:8px; box-shadow:0 8px 28px #0004; }
 .note-modal-body { padding:20px 24px 12px; gap:10px; }
-.note-modal-title { font-family:var(--font-body); font-size:20px; line-height:1.4; font-weight:500; letter-spacing:0; padding:0 40px 8px 0; }
+.note-modal-title { width:calc(100% - 40px); font-family:var(--font-body); font-size:20px; line-height:1.4; font-weight:500; letter-spacing:0; padding:0 0 8px; }
 .note-modal-title:focus-visible { border-bottom-color:transparent; }
 .note-modal > .btn-modal-pin { position:absolute; top:14px; right:14px; width:40px; height:40px; padding:9px; border:0; background:transparent; color:var(--text-primary); border-radius:50%; cursor:pointer; }
 .note-modal > .btn-modal-pin:is(:hover,.pinned) { background:var(--hover-overlay); }
@@ -27,7 +27,7 @@
 .note-modal .tag-pill-text { overflow:hidden; text-overflow:ellipsis; }
 .note-modal .tag-pill-remove { opacity:0; width:12px; }
 .note-modal .tag-pill:is(:hover,:focus-visible) .tag-pill-remove { opacity:1; }
-.note-modal :is(button,input,select,label[tabindex]):focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+.note-modal :is(button,input:not(.note-modal-title),select,label[tabindex]):focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 @media(max-width:600px) {
   .note-modal-overlay { align-items:flex-end; padding:8px; }
   .note-modal { min-height:0; max-height:calc(100dvh - 16px); border-radius:8px; }
